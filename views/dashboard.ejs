@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Service Status</title>
+  <style>
+    .status-card { padding: 20px; margin: 10px; border-radius: 5px; }
+    .up { background: #d4edda; }
+    .down { background: #f8d7da; }
+  </style>
+</head>
+<body>
+  <h1>Service Status Dashboard</h1>
+  
+  <% statuses.forEach(status => { %>
+    <div class="status-card <%= status.status %>">
+      <h3>Monitor #<%= status.monitorId %></h3>
+      <p>Status: <%= status.status.toUpperCase() %></p>
+      <p>Response: <%= status.responseTime %>ms</p>
+      <small><%= status.createdAt %></small>
+    </div>
+  <% }); %>
+
+  <h2>Uptime: <%= uptime %>%</h2>
+</body>
+</html>
