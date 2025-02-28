@@ -1,0 +1,12 @@
+version: '3'
+services:
+  bot:
+    build: .
+    environment:
+      NODE_ENV: production
+      DISCORD_TOKEN: ${DISCORD_TOKEN}
+      WEB_PORT: 3000
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./data:/app/data
