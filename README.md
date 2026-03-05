@@ -1,4 +1,4 @@
-# Status Discord Bot
+## Bockis Discord Bot
 
 ## Features
 - Echtzeit-Serviceüberwachung
