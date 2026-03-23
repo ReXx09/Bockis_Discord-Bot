@@ -83,20 +83,27 @@ npm start
 
 ## 🍓 Deployment auf dem Raspberry Pi
 
-### ⚡ Schnellstart (empfohlen)
+### ⚡ Schnellstart mit dem Verwaltungsmenü (empfohlen)
 
-Alle Schritte (Node.js, Konfiguration, systemd) laufen automatisch ab:
+Das interaktive **whiptail-Menü** führt dich durch alle Schritte:
 
 ```bash
-# Repo klonen & Skript starten
 git clone https://github.com/ReXx09/Bockis_Discord-Bot.git bockis-bot
 cd bockis-bot
-bash start-bot.sh
+bash raspi-menu.sh
 ```
 
-> Optional: Zielverzeichnis anpassen mit `bash start-bot.sh --bot-dir /pfad/zum/bot`
+Das Menü bietet:
 
-Das Skript erledigt automatisch: Systempaket-Update → Node.js LTS → `node install.js` (TUI-Konfiguration) → systemd-Service.
+| Bereich | Was du damit tun kannst |
+|---|---|
+| 🍓 System vorbereiten | apt-Update, Node.js LTS, Docker, Firewall, Swap, Zeitzone |
+| 📊 Uptime Kuma | Docker-Installation, Start/Stop, Update, Logs |
+| 🤖 Bot-Verwaltung | Installieren, Update, Start/Stop, Logs, Health-Check |
+| 🔍 Status & Prüfungen | Services, Container, CPU/RAM/Temp, Ports, Netzwerk |
+| 🔄 Schnell-Update | Bot + Docker in einem Schritt aktualisieren |
+
+> Alternativ ohne Menü: `bash start-bot.sh` führt direkt die Installation durch.
 
 ---
 

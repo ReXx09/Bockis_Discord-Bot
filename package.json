@@ -7,6 +7,7 @@
     "install:bot": "node install.js",
     "update:bot": "bash update.sh",
     "update:docker": "bash update.sh --mode docker",
+    "menu": "bash raspi-menu.sh",
     "start": "node bot.js",
     "dev": "node --watch bot.js",
     "test": "jest --testPathPattern=tests/"
