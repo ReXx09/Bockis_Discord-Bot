@@ -1,0 +1,15 @@
+# Abhängigkeiten
+node_modules/
+
+# Umgebungsvariablen – niemals committen!
+.env
+
+# Datenbank
+data/
+
+# Logs
+*.log
+
+# IDE
+.vscode/
+.idea/
