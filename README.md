@@ -292,6 +292,79 @@ crontab -e
 
 ---
 
+## 📋 Kurzbefehle (Cheat Sheet)
+
+### Verwaltungsmenü (empfohlen)
+
+```bash
+bash ~/bockis-bot/raspi-menu.sh        # Interaktives Hauptmenü öffnen
+```
+
+### Bot-Service (systemd)
+
+```bash
+sudo systemctl start   bockis-bot      # Bot starten
+sudo systemctl stop    bockis-bot      # Bot stoppen
+sudo systemctl restart bockis-bot      # Bot neu starten
+sudo systemctl status  bockis-bot      # Status anzeigen
+sudo systemctl enable  bockis-bot      # Autostart aktivieren
+sudo systemctl disable bockis-bot      # Autostart deaktivieren
+```
+
+### Logs
+
+```bash
+sudo journalctl -u bockis-bot -f       # Live-Logs (systemd)
+sudo journalctl -u bockis-bot -n 50   # Letzte 50 Zeilen
+tail -f ~/bockis-bot/logs/*.log        # Bot-Logdatei live
+```
+
+### Update
+
+```bash
+bash ~/bockis-bot/update.sh            # Auto-Update (erkennt native/Docker)
+bash ~/bockis-bot/update.sh --mode native   # Nur systemd (git pull + npm ci)
+bash ~/bockis-bot/update.sh --mode docker   # Nur Docker-Container
+bash ~/bockis-bot/update.sh --yes      # Ohne Bestätigungsdialog (Cron)
+```
+
+### Uptime Kuma (Docker)
+
+```bash
+docker start  uptime-kuma             # Starten
+docker stop   uptime-kuma             # Stoppen
+docker restart uptime-kuma            # Neu starten
+docker logs   uptime-kuma -f          # Live-Logs
+docker pull louislam/uptime-kuma:latest && \
+  docker stop uptime-kuma && docker rm uptime-kuma && \
+  docker run -d --name uptime-kuma --restart=unless-stopped \
+    -p 3001:3001 -v ~/uptime-kuma-data:/app/data \
+    louislam/uptime-kuma:latest        # Manuelles Update
+```
+
+### Health-Check & Status
+
+```bash
+curl http://localhost:3000/health      # Bot Health-Endpunkt
+systemctl is-active bockis-bot        # Nur Status (aktiv/inaktiv)
+docker ps                             # Laufende Container
+ss -tlnp | grep -E '3000|3001'       # Ports prüfen
+cat /sys/class/thermal/thermal_zone0/temp  # CPU-Temperatur (Raspi)
+```
+
+### Neu installieren / zurücksetzen
+
+```bash
+# Service entfernen (Dateien bleiben):
+sudo systemctl stop bockis-bot && sudo systemctl disable bockis-bot
+sudo rm /etc/systemd/system/bockis-bot.service && sudo systemctl daemon-reload
+
+# Neu einrichten:
+bash ~/bockis-bot/start-bot.sh
+```
+
+---
+
 ## ⚙️ Konfiguration (.env)
 
 | Variable | Pflicht | Beschreibung |
