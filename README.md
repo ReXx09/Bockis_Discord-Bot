@@ -83,6 +83,25 @@ npm start
 
 ## 🍓 Deployment auf dem Raspberry Pi
 
+### ⚡ Schnellstart (empfohlen)
+
+Alle Schritte (Node.js, Konfiguration, systemd) laufen automatisch ab:
+
+```bash
+# Repo klonen & Skript starten
+git clone https://github.com/ReXx09/Bockis_Discord-Bot.git bockis-bot
+cd bockis-bot
+bash start-bot.sh
+```
+
+> Optional: Zielverzeichnis anpassen mit `bash start-bot.sh --bot-dir /pfad/zum/bot`
+
+Das Skript erledigt automatisch: Systempaket-Update → Node.js LTS → `node install.js` (TUI-Konfiguration) → systemd-Service.
+
+---
+
+### Manuelle Installation (Schritt für Schritt)
+
 ### Voraussetzungen
 
 - Raspberry Pi mit **Raspberry Pi OS** (Lite oder Desktop, 64-bit empfohlen)
@@ -154,47 +173,37 @@ Der Installer führt dich automatisch durch die gesamte Konfiguration.
 
 ### Schritt 4 – Bot dauerhaft laufen lassen (systemd)
 
+> **Tipp:** Bei Nutzung von `start-bot.sh` wird der systemd-Service automatisch eingerichtet — Schritt 4 kann übersprungen werden.
+
 Damit der Bot automatisch startet und bei Absturz neu gestartet wird:
 
 ```bash
-sudo nano /etc/systemd/system/bockis-bot.service
-```
-
-Folgenden Inhalt einfügen:
-
-```ini
+sudo tee /etc/systemd/system/bockis-bot.service > /dev/null <<EOF
 [Unit]
-Description=Bockis Discord Bot
+Description=Bockis Discord Uptime Bot
+Documentation=https://github.com/ReXx09/Bockis_Discord-Bot
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
-User=pi
+User=$USER
 WorkingDirectory=/home/pi/bockis-bot
-ExecStart=/usr/bin/node bot.js
+EnvironmentFile=/home/pi/bockis-bot/.env
+ExecStart=$(command -v node) /home/pi/bockis-bot/bot.js
 Restart=on-failure
 RestartSec=10
-EnvironmentFile=/home/pi/bockis-bot/.env
-StandardOutput=append:/home/pi/bockis-bot/logs/systemd.log
-StandardError=append:/home/pi/bockis-bot/logs/systemd.log
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=bockis-bot
 
 [Install]
 WantedBy=multi-user.target
-```
+EOF
 
-Service aktivieren und starten:
-
-```bash
-# logs-Verzeichnis anlegen (falls noch nicht vorhanden)
-mkdir -p /home/pi/bockis-bot/logs
-
-# Service aktivieren
 sudo systemctl daemon-reload
 sudo systemctl enable bockis-bot
 sudo systemctl start bockis-bot
-
-# Status prüfen
 sudo systemctl status bockis-bot
 ```
 
