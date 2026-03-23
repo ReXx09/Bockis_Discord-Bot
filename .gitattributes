@@ -1,0 +1,17 @@
+# Alle Textdateien normalisieren
+* text=auto
+
+# Shell-Skripte immer mit LF (Linux-kompatibel)
+*.sh text eol=lf
+
+# Code & Config
+*.js   text eol=lf
+*.json text eol=lf
+*.yml  text eol=lf
+*.yaml text eol=lf
+*.md   text eol=lf
+*.env* text eol=lf
+
+# Binärdateien
+*.db   binary
+*.zip  binary
