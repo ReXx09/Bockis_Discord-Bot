@@ -3,23 +3,35 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D18-green.svg)](https://nodejs.org)
 [![Version](https://img.shields.io/badge/version-1.1.0-informational.svg)](https://github.com/ReXx09/Bockis_Discord-Bot/releases)
+[![Platform](https://img.shields.io/badge/platform-Raspberry%20Pi%20%7C%20Linux-lightgrey.svg)](https://www.raspberrypi.org)
+[![Uptime Kuma](https://img.shields.io/badge/powered%20by-Uptime%20Kuma-blueviolet.svg)](https://github.com/louislam/uptime-kuma)
 
-Ein Discord-Bot zur Echtzeit-Überwachung deiner Services via **Uptime Kuma**.  
-Er postet automatisch eine Live-Status-Nachricht in einen Discord-Channel und benachrichtigt bei Statusänderungen.
+> **Echtzeit-Monitoring für deinen Discord-Server — powered by Uptime Kuma.**
+
+Bockis Discord Bot verbindet deine **Uptime Kuma**-Instanz mit Discord und hält deinen Server immer auf dem Laufenden: Er postet eine automatisch aktualisierte Live-Status-Nachricht, sendet Alerts bei Ausfällen und stellt Slash-Commands, ein Web-Dashboard sowie Prometheus-Metriken bereit.
+
+Optimiert für den Betrieb auf dem **Raspberry Pi** — mit interaktivem Installer, whiptail-Verwaltungsmenü, automatischem Update-Skript und systemd-Integration.
 
 ---
 
 ## ✨ Features
 
 | Feature | Beschreibung |
-|---------|-------------|
-| 📡 Live-Status | Pinnt eine Embed-Nachricht mit allen Service-Statusseiten in Discord |
-| 🔔 Benachrichtigungen | Sendet Alerts bei Service-Ausfall oder Wiederherstellung |
-| 💬 Slash-Commands | `/status`, `/uptime`, `/refresh` direkt in Discord |
-| 📈 Web-Dashboard | Übersicht aller Checks unter `http://localhost:3000/dashboard` |
-| 📊 Prometheus | Metriken unter `/metrics` für Grafana & Co. |
-| 🗄️ Datenbank | Speichert Checks lokal in SQLite (automatisches Cleanup nach 30 Tagen) |
-| 🔄 Log-Rotation | Logs werden täglich rotiert und nach 14 Tagen gelöscht |
+|---|---|
+| 📡 Live-Status | Automatisch aktualisierte Embed-Nachricht mit Status aller überwachten Services |
+| 🔔 Benachrichtigungen | Sofort-Alerts in Discord bei Service-Ausfall und Wiederherstellung |
+| 💬 Slash-Commands | `/status`, `/uptime`, `/refresh` — direkt in Discord nutzbar |
+| 📈 Web-Dashboard | Statusübersicht aller Checks unter `http://localhost:3000/dashboard` (passwortgeschützt) |
+| 📊 Prometheus-Metriken | Metriken unter `/metrics` für Grafana, Prometheus & Co. |
+| 🗄️ SQLite-Datenbank | Speichert Checks lokal, automatisches Cleanup nach 30 Tagen |
+| 🔄 Log-Rotation | Tägliche Log-Rotation, automatische Löschung nach 14 Tagen |
+| 🔁 Retry-Logik | 3 Versuche mit exponentiellem Backoff bei API-Fehlern |
+| ⚡ Rate-Limit-Schutz | Mindestabstand zwischen Discord-Edits verhindert API-Sperren |
+| 💾 State-Persistenz | `statusMessageId` bleibt auch nach Bot-Neustart erhalten |
+| 🛡️ Endpoint-Sicherheit | `/metrics` und `/health` nur lokal erreichbar (`localOnly`-Middleware) |
+| 🍓 Raspi-Verwaltungsmenü | whiptail-Menü für System-Setup, Uptime Kuma, Updates und Statusprüfungen |
+| 🔧 TUI-Installer | Geführte Ersteinrichtung ohne manuelle Dateibearbeitung (`node install.js`) |
+| 🔄 Auto-Updater | `update.sh` aktualisiert Bot und Docker-Container in einem Schritt |
 
 ---
 
@@ -27,18 +39,21 @@ Er postet automatisch eine Live-Status-Nachricht in einen Discord-Channel und be
 
 ```
 .
-├── bot.js                 # Haupt-Bot-Code
-├── install.js             # Interaktiver TUI-Installer
+├── bot.js                  # Haupt-Bot-Code
+├── install.js              # Interaktiver TUI-Installer
+├── start-bot.sh            # System-Setup für Raspberry Pi (Node.js, systemd)
+├── update.sh               # Auto-Updater (native systemd & Docker)
+├── raspi-menu.sh           # Interaktives whiptail-Verwaltungsmenü
+├── docker-compose.yml      # Docker-Deployment
 ├── config/
-│   └── config.js          # Konfigurationsschema (convict)
+│   └── config.js           # Konfigurationsschema (convict)
 ├── models/
-│   └── MonitorStatus.js   # Datenbankmodell
+│   └── MonitorStatus.js    # SQLite-Datenbankmodell
 ├── views/
-│   └── dashboard.ejs      # Web-Dashboard Template
+│   └── dashboard.ejs       # Web-Dashboard Template
 ├── tests/
 │   └── integration.test.js
-├── docker-compose.yml
-├── .env.example           # Vorlage für die Konfiguration
+├── .env.example            # Vorlage für die Konfiguration
 └── README.md
 ```
 
