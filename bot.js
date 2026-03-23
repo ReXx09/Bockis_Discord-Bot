@@ -1,4 +1,14 @@
-﻿require('dotenv').config();
+﻿/**
+ * Bockis Discord Bot
+ * Copyright (c) 2026 ReXx09 (https://github.com/ReXx09)
+ *
+ * This software is licensed under the MIT License.
+ * See the LICENSE file in the project root for full license details.
+ *
+ * SPDX-License-Identifier: MIT
+ */
+
+require('dotenv').config();
 const { Client, GatewayIntentBits, ActivityType, REST, Routes, SlashCommandBuilder } = require('discord.js');
 const axios = require('axios');
 const winston = require('winston');

@@ -1,5 +1,9 @@
 ﻿# 🤖 Bockis Discord Bot
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Node.js](https://img.shields.io/badge/Node.js-%3E%3D18-green.svg)](https://nodejs.org)
+[![Version](https://img.shields.io/badge/version-1.1.0-informational.svg)](https://github.com/ReXx09/Bockis_Discord-Bot/releases)
+
 Ein Discord-Bot zur Echtzeit-Überwachung deiner Services via **Uptime Kuma**.  
 Er postet automatisch eine Live-Status-Nachricht in einen Discord-Channel und benachrichtigt bei Statusänderungen.
 
@@ -293,4 +297,8 @@ npm test
 
 ## 📜 Lizenz
 
-ISC
+Dieses Projekt steht unter der **MIT-Lizenz**. Siehe [LICENSE](LICENSE) für alle Details.
+
+```
+Copyright (c) 2026 ReXx09 (https://github.com/ReXx09)
+```

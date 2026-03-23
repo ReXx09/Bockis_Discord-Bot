@@ -3,6 +3,12 @@
 
 /**
  * Bockis Discord Bot – Interaktiver TUI-Installer
+ * Copyright (c) 2026 ReXx09 (https://github.com/ReXx09)
+ *
+ * This software is licensed under the MIT License.
+ * See the LICENSE file in the project root for full license details.
+ *
+ * SPDX-License-Identifier: MIT
  * Keine externen Abhängigkeiten – läuft mit Node.js >= 18 out-of-the-box.
  */
 
