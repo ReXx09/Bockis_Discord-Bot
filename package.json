@@ -5,6 +5,8 @@
   "main": "bot.js",
   "scripts": {
     "install:bot": "node install.js",
+    "update:bot": "bash update.sh",
+    "update:docker": "bash update.sh --mode docker",
     "start": "node bot.js",
     "dev": "node --watch bot.js",
     "test": "jest --testPathPattern=tests/"

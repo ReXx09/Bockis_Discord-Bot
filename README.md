@@ -217,6 +217,25 @@ sudo journalctl -u bockis-bot -f    # Live-Logs anzeigen
 
 ---
 
+### 🔄 Bot aktualisieren (native)
+
+```bash
+cd ~/bockis-bot
+
+# Automatische Erkennung (native oder Docker)
+bash update.sh
+
+# Oder explizit für native systemd-Installation
+bash update.sh --mode native
+
+# Ohne Bestätigungsdialog
+bash update.sh --yes
+```
+
+Das Skript erledigt automatisch: git pull → npm ci → Service-Neustart. Eine `.env`-Sicherungskopie wird vor jedem Update angelegt.
+
+---
+
 ### Option: Mit Docker auf dem Raspberry Pi
 
 Falls Docker auf dem Pi installiert ist:
@@ -229,6 +248,7 @@ sudo usermod -aG docker pi
 newgrp docker
 
 # Bot starten
+cd ~/bockis-bot
 docker compose up -d
 
 # Logs anschauen
@@ -237,6 +257,31 @@ docker compose logs -f
 
 > **Hinweis:** Docker auf dem Raspi Pi 3 kann langsam sein.  
 > Für Pi 4 / Pi 5 ist Docker problemlos nutzbar.
+
+### 🔄 Docker-Container aktualisieren
+
+```bash
+cd ~/bockis-bot
+
+# Automatische Erkennung — findet Docker falls Container laufen
+bash update.sh
+
+# Oder explizit Docker-Modus
+bash update.sh --mode docker
+
+# Ohne Bestätigungsdialog (z.B. in Cron)
+bash update.sh --mode docker --yes
+```
+
+Das Skript pullt neue Images, baut den Bot-Container neu, führt den Health-Check durch und räumt alte Images auf. Eine `.env`-Sicherungskopie wird vor jedem Update angelegt.
+
+**Automatische Updates per Cron:**
+```bash
+# Jeden Sonntag um 03:00 Uhr automatisch updaten
+crontab -e
+# Folgende Zeile einfügen:
+0 3 * * 0 cd $HOME/bockis-bot && bash update.sh --yes >> $HOME/bockis-bot/logs/update.log 2>&1
+```
 
 ---
 
