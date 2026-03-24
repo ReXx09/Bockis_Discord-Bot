@@ -13,7 +13,7 @@
  */
 
 const readline = require('readline');
-const { execSync } = require('child_process');
+const { execSync, spawn } = require('child_process');
 const fs = require('fs');
 
 // ── ANSI-Farben ───────────────────────────────────────────────────────────────
@@ -232,17 +232,63 @@ async function installDeps(rl) {
   }
 
   nl();
-  const s = spinner('npm install wird ausgeführt...');
-  try {
-    execSync('npm install', { stdio: 'ignore' });
-    s.succeed('Alle Pakete erfolgreich installiert.');
-  } catch (e) {
-    s.fail('npm install ist fehlgeschlagen.');
-    print(`     ${C.red}${e.message}${C.r}`);
-    nl();
-    const cont = await confirm(rl, 'Trotzdem mit der Konfiguration fortfahren?', false);
-    if (!cont) process.exit(1);
-  }
+  print(`${SYM.info}  ${C.b}Hinweis:${C.r} Das Paket ${C.cyn}sqlite3${C.r} wird nativ kompiliert.`);
+  print(`         Auf einem Raspberry Pi kann dies ${C.byel}5–15 Minuten${C.r} dauern — bitte warten.`);
+  nl();
+  print(`${C.dim}${'─'.repeat(60)}${C.r}`);
+
+  await new Promise((resolve) => {
+    const proc = spawn('npm', ['install'], {
+      cwd: process.cwd(),
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: { ...process.env, FORCE_COLOR: '0' },
+    });
+
+    let lastLine = '';
+    const printLine = (data) => {
+      const lines = data.toString().split('\n');
+      for (const line of lines) {
+        const trimmed = line.replace(/\r/g, '').trim();
+        if (!trimmed) continue;
+        // Fortschrittszeilen überschreiben (npm progress)
+        if (trimmed.startsWith('npm') || trimmed.includes('added') || trimmed.includes('warn')) {
+          process.stdout.write(`\r  ${C.dim}${trimmed.slice(0, 70).padEnd(72)}${C.r}`);
+          lastLine = trimmed;
+        } else {
+          if (lastLine) { process.stdout.write('\n'); lastLine = ''; }
+          print(`  ${C.dim}${trimmed}${C.r}`);
+        }
+      }
+    };
+
+    proc.stdout.on('data', printLine);
+    proc.stderr.on('data', printLine);
+
+    proc.on('close', (code) => {
+      if (lastLine) process.stdout.write('\n');
+      print(`${C.dim}${'─'.repeat(60)}${C.r}`);
+      nl();
+      if (code === 0) {
+        print(`${SYM.ok}  Alle Pakete erfolgreich installiert.`);
+      } else {
+        print(`${SYM.fail}  npm install ist fehlgeschlagen (Exit-Code ${code}).`);
+        print(`     Manuell versuchen: ${C.cyn}npm install${C.r}`);
+      }
+      resolve(code);
+    });
+
+    proc.on('error', (err) => {
+      if (lastLine) process.stdout.write('\n');
+      print(`${SYM.fail}  Fehler beim Starten von npm: ${err.message}`);
+      resolve(1);
+    });
+  }).then(async (code) => {
+    if (code !== 0) {
+      nl();
+      const cont = await confirm(rl, 'Trotzdem mit der Konfiguration fortfahren?', false);
+      if (!cont) process.exit(1);
+    }
+  });
 }
 
 // ── SCHRITT 3: DISCORD ────────────────────────────────────────────────────────
