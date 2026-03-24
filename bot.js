@@ -75,6 +75,8 @@ app.use(express.json());
 app.use(express.static('public'));
 
 // ── 7. MIDDLEWARE ─────────────────────────────────────────────────────────────
+// Redirect: / → /dashboard
+app.get('/', (req, res) => res.redirect('/dashboard'));
 function localOnly(req, res, next) {
   const ip = req.ip || req.connection.remoteAddress || '';
   if (ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1') return next();
@@ -840,13 +842,29 @@ function initializeUpdateCycle() {
 }
 
 // ── 24. STARTUP ───────────────────────────────────────────────────────────────
+
+// Webserver SOFORT starten — unabhängig vom Discord-Login
+// Damit ist das Dashboard auch erreichbar wenn der Token noch nicht stimmt
+initializeDatabase().then(() => startWebServer()).catch(err => {
+  logger.error(`DB/Webserver-Startfehler: ${err.message}`);
+  startWebServer(); // Webserver trotzdem starten (ohne DB)
+});
+
 client.once('ready', async () => {
   logger.info(`Bot eingeloggt als ${client.user.tag}`);
   client.user.setActivity('Service Health', { type: ActivityType.Watching });
-  await initializeDatabase();
   await registerSlashCommands();
-  startWebServer();
   initializeUpdateCycle();
+});
+
+client.on('error', (err) => {
+  logger.error(`Discord Client Fehler: ${err.message}`);
+});
+
+// Discord-Login (Fehler werden geloggt, Webserver läuft weiter)
+client.login(config.get('discord.token')).catch(err => {
+  logger.error(`Discord Login fehlgeschlagen: ${err.message}`);
+  logger.warn('Bot läuft im eingeschränkten Modus — Dashboard unter http://localhost:' + config.get('webPort'));
 });
 
 async function initializeDatabase() {
@@ -856,8 +874,18 @@ async function initializeDatabase() {
 
 function startWebServer() {
   const port = config.get('webPort');
-  app.listen(port, () => {
-    logger.info(`Dashboard verf\u00fcgbar unter http://localhost:${port}`);
+  const os   = require('os');
+  const ifaces = os.networkInterfaces();
+  let localIp = 'localhost';
+  for (const name of Object.keys(ifaces)) {
+    for (const iface of ifaces[name]) {
+      if (iface.family === 'IPv4' && !iface.internal) { localIp = iface.address; break; }
+    }
+    if (localIp !== 'localhost') break;
+  }
+  app.listen(port, '0.0.0.0', () => {
+    logger.info(`Dashboard verfügbar unter http://${localIp}:${port}/dashboard`);
+    logger.info(`(Auch erreichbar als http://localhost:${port}/dashboard)`);
   });
 }
 
@@ -893,5 +921,3 @@ async function shutdown() {
   client.destroy();
   process.exit(0);
 }
-
-client.login(config.get('discord.token'));
