@@ -148,13 +148,73 @@ update_native() {
   fi
 
   # 2. npm-Pakete aktualisieren
-  print_status "Aktualisiere npm-Abhängigkeiten..."
+  print_status "Aktualisiere npm-Abhaengigkeiten..."
+  echo ""
+
+  _npm_spinner() {
+    local CMD="$1"
+    local FRAMES=('⠋' '⠙' '⠹' '⠸' '⠼' '⠴' '⠦' '⠧' '⠇' '⠏')
+    local elapsed=0 frame=0 phase="download" pid_file
+    pid_file=$(mktemp)
+
+    # npm im Hintergrund starten, stdout+stderr in Tempfile
+    local OUT; OUT=$(mktemp)
+    eval "$CMD" > "$OUT" 2>&1 &
+    local npm_pid=$!
+
+    while kill -0 "$npm_pid" 2>/dev/null; do
+      local spin="${FRAMES[frame % 10]}"
+      ((frame++))
+      local label="Pakete werden geladen…"
+      # Letzten relevanten Output auslesen
+      local last
+      last=$(tail -1 "$OUT" 2>/dev/null | tr -d '\r')
+      if echo "$last" | grep -qiE 'gyp|CXX|compil|SOLINK'; then
+        phase="compile"
+      elif echo "$last" | grep -qiE 'added [0-9]+|packages in'; then
+        phase="finalize"
+      fi
+      case "$phase" in
+        compile)  label="Kompiliere sqlite3 (C++) — normal, dauert 5-15 Min auf ARM…" ;;
+        finalize) label="Finalisiere Pakete…" ;;
+      esac
+      local min=$(( elapsed / 60 )) sec=$(( elapsed % 60 ))
+      local t="${min}m$(printf '%02d' $sec)s"
+      printf "\x1b[2K\r  %s [%s]  %s" "$spin" "$t" "$label"
+      # Alle 60s Lebenszeichen
+      if (( elapsed > 0 && elapsed % 60 == 0 )); then
+        printf "\n"
+        print_status "${elapsed}s vergangen — sqlite3-Kompilierung laeuft noch (normal auf Raspberry Pi)"
+      fi
+      sleep 1
+      (( elapsed++ ))
+    done
+
+    wait "$npm_pid"
+    local rc=$?
+    printf "\x1b[2K\r"
+    rm -f "$OUT" "$pid_file"
+    return $rc
+  }
+
   if [[ -f "$BOT_DIR/package-lock.json" ]]; then
-    npm ci --omit=dev --silent 2>&1 | tail -3
+    if _npm_spinner "npm ci --omit=dev --prefix '$BOT_DIR'"; then
+      print_success "npm-Pakete aktualisiert"
+    else
+      print_warn "npm ci fehlgeschlagen, versuche npm install..."
+      if _npm_spinner "npm install --omit=dev --prefix '$BOT_DIR'"; then
+        print_success "npm-Pakete aktualisiert (fallback)"
+      else
+        print_error "npm install fehlgeschlagen" || true
+      fi
+    fi
   else
-    npm install --omit=dev --silent 2>&1 | tail -3
+    if _npm_spinner "npm install --omit=dev --prefix '$BOT_DIR'"; then
+      print_success "npm-Pakete aktualisiert"
+    else
+      print_error "npm install fehlgeschlagen" || true
+    fi
   fi
-  print_success "npm-Pakete aktualisiert"
 
   # 3. Service neu starten
   if systemctl is-active --quiet bockis-bot 2>/dev/null; then

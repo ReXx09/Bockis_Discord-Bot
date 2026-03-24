@@ -244,34 +244,59 @@ async function installDeps(rl) {
       env: { ...process.env, FORCE_COLOR: '0' },
     });
 
-    const FRAMES = ['|', '/', '-', '\\'];
-    let frame = 0;
-    let elapsed = 0;
-    let statusMsg = 'Pakete werden heruntergeladen...';
-    let isNative  = false;
+    const FRAMES  = ['⠋','⠙','⠹','⠸','⠼','⠴','⠦','⠧','⠇','⠏'];  // Braille-Spinner
+    let frame     = 0;
+    let elapsed   = 0;
+    let phase     = 'download';  // download | compile | finalize
+    let lastPkg   = '';
+    let warnCount = 0;
 
-    const renderSpinner = () => {
-      const timeStr  = `${elapsed}s`.padStart(4);
-      const label    = isNative
-        ? `${C.yel}Kompiliere native Module (sqlite3)...${C.r}`
-        : `${C.dim}${statusMsg.slice(0, 55).padEnd(57)}${C.r}`;
-      process.stdout.write(`\r  ${C.cyn}${FRAMES[frame++ % FRAMES.length]}${C.r} ${C.dim}[${timeStr}]${C.r}  ${label}`);
+    const phases = {
+      download: { label: 'Pakete werden heruntergeladen…', color: C.cyn },
+      compile:  { label: 'Kompiliere sqlite3 (C++ → nativ) — bitte warten…', color: C.yel },
+      finalize: { label: 'Abschluss & Verknüpfungen werden gesetzt…', color: C.grn },
     };
 
-    renderSpinner();
-    const iv = setInterval(() => { elapsed++; renderSpinner(); }, 1000);
+    const renderLine = () => {
+      const f   = phases[phase];
+      const spin = FRAMES[frame++ % FRAMES.length];
+      const min  = Math.floor(elapsed / 60);
+      const sec  = elapsed % 60;
+      const t    = min > 0 ? `${min}m${sec.toString().padStart(2,'0')}s` : `${elapsed}s`.padStart(4);
+      const sub  = (phase === 'compile')
+        ? '' : lastPkg ? `  ${C.dim}${lastPkg.slice(0,45)}${C.r}` : '';
+      const line = `  ${f.color}${spin}${C.r} ${C.dim}[${t}]${C.r}  ${f.color}${f.label}${C.r}${sub}`;
+      // \x1b[2K = Zeile löschen, \r = Anfang — sicher in SSH+tmux+screen
+      process.stdout.write(`\x1b[2K\r${line}`);
+    };
+
+    renderLine();
+    const iv = setInterval(() => {
+      elapsed++;
+      // Alle 60s extra-Hinweis in neuer Zeile
+      if (elapsed > 0 && elapsed % 60 === 0) {
+        process.stdout.write(`\x1b[2K\r`);
+        print(`${SYM.info}  ${elapsed}s vergangen — sqlite3-Kompilierung kann 10–15 Min dauern auf ARM`);
+      }
+      renderLine();
+    }, 1000);
 
     const handleData = (data) => {
       const text = data.toString();
       for (const raw of text.split('\n')) {
         const t = raw.trim();
         if (!t) continue;
-        if (/gyp|node-pre-gyp|compil|CXX|SOLINK/i.test(t)) {
-          isNative = true;
+        if (/gyp info|node-pre-gyp|CXX|SOLINK|compil/i.test(t)) {
+          phase = 'compile';
         } else if (/^added \d+|packages in/i.test(t)) {
-          statusMsg = t;
+          phase = 'finalize';
+          lastPkg = t;
         } else if (/^npm warn/i.test(t)) {
-          statusMsg = t;
+          warnCount++;
+        } else if (/^\s*\d+ packages? (added|changed)/i.test(t)) {
+          lastPkg = t;
+        } else if (phase === 'download' && /^(added|resolved|http)/i.test(t)) {
+          lastPkg = t;
         }
       }
     };
@@ -281,11 +306,11 @@ async function installDeps(rl) {
 
     proc.on('close', (code) => {
       clearInterval(iv);
-      process.stdout.write('\r' + ' '.repeat(78) + '\r');
+      process.stdout.write('\x1b[2K\r');
       print(`${C.dim}${'─'.repeat(60)}${C.r}`);
       nl();
       if (code === 0) {
-        print(`${SYM.ok}  Alle Pakete erfolgreich installiert. ${C.dim}(${elapsed}s)${C.r}`);
+        print(`${SYM.ok}  Alle Pakete erfolgreich installiert. ${C.dim}(${elapsed}s${warnCount ? ', ' + warnCount + ' Warnungen' : ''})${C.r}`);
       } else {
         print(`${SYM.fail}  npm install fehlgeschlagen (Exit-Code ${code}).`);
         print(`     Manuell versuchen: ${C.cyn}npm install${C.r}`);
@@ -295,7 +320,7 @@ async function installDeps(rl) {
 
     proc.on('error', (err) => {
       clearInterval(iv);
-      process.stdout.write('\r' + ' '.repeat(78) + '\r');
+      process.stdout.write('\x1b[2K\r');
       print(`${SYM.fail}  Fehler beim Starten von npm: ${err.message}`);
       resolve(1);
     });
