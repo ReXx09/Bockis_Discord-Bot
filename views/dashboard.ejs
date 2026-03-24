@@ -299,6 +299,38 @@
     .ul-ok   { color: var(--green); }
     .ul-err  { color: var(--red); }
     .ul-warn { color: var(--yellow); }
+
+    /* CONFIG FORM */
+    .cfg-form { margin-top: 4px; }
+    .cfg-field { margin-bottom: 14px; }
+    .cfg-label {
+      display: block;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+    .cfg-input {
+      width: 100%;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      font-family: 'SFMono-Regular', Consolas, monospace;
+      font-size: 12px;
+      padding: 8px 10px;
+      box-sizing: border-box;
+      outline: none;
+      transition: border-color .15s;
+    }
+    .cfg-input:focus { border-color: var(--blue); }
+    .cfg-hint { font-size: 11px; color: var(--muted); margin-top: 4px; }
+    .cfg-actions { display: flex; gap: 10px; align-items: center; margin-top: 6px; }
+    #cfgStatus { font-size: 12px; }
+    #cfgStatus.ok  { color: var(--green); }
+    #cfgStatus.err { color: var(--red); }
   </style>
 </head>
 <body>
@@ -367,6 +399,39 @@
   <div id="tunnelInfo">
     <div class="sk"></div>
     <div class="sk" style="width:55%"></div>
+  </div>
+</div>
+
+<!-- ── ROW 1c: DISCORD KONFIGURATION ───────────────────── -->
+<div class="card" id="cfgCard" style="margin-top:16px">
+  <div class="card-title">⚙️ Discord-Konfiguration</div>
+  <div class="cfg-form">
+    <div class="cfg-field">
+      <label class="cfg-label" for="cfgToken">Discord Bot Token</label>
+      <input class="cfg-input" id="cfgToken" type="password" autocomplete="off"
+             placeholder="Neuen Token eingeben (leer lassen = unverändert)">
+      <div class="cfg-hint">Leer lassen, um den bestehenden Token zu behalten.</div>
+    </div>
+    <div class="cfg-field">
+      <label class="cfg-label" for="cfgStatusCh">Status-Channel ID</label>
+      <input class="cfg-input" id="cfgStatusCh" type="text" autocomplete="off"
+             placeholder="z. B. 123456789012345678">
+    </div>
+    <div class="cfg-field">
+      <label class="cfg-label" for="cfgNotifCh">Benachrichtigungs-Channel ID</label>
+      <input class="cfg-input" id="cfgNotifCh" type="text" autocomplete="off"
+             placeholder="z. B. 123456789012345678">
+    </div>
+    <div class="cfg-field">
+      <label class="cfg-label" for="cfgKumaUrl">Uptime Kuma URL</label>
+      <input class="cfg-input" id="cfgKumaUrl" type="text" autocomplete="off"
+             placeholder="http://192.168.x.x:3001">
+    </div>
+    <div class="cfg-actions">
+      <button class="btn btn-green" id="btnCfgSave" onclick="saveConfig()">💾 Speichern &amp; Neu starten</button>
+      <button class="btn" onclick="loadConfig()">↺ Zurücksetzen</button>
+      <span id="cfgStatus"></span>
+    </div>
   </div>
 </div>
 
@@ -704,6 +769,86 @@
       btn.textContent = '▶ Update jetzt starten';
     }
   }
+
+  // ── Config laden ─────────────────────────────────────
+  async function loadConfig() {
+    try {
+      const d = await fetch('/api/config').then(r => r.json());
+      if (!d.ok) { document.getElementById('cfgStatus').textContent = d.error; return; }
+      // Token-Feld leer lassen (Platzhalter zeigt Hinweis)
+      document.getElementById('cfgToken').value    = '';
+      document.getElementById('cfgStatusCh').value = d.STATUS_CHANNEL_ID || '';
+      document.getElementById('cfgNotifCh').value  = d.DISCORD_NOTIFICATION_CHANNEL || '';
+      document.getElementById('cfgKumaUrl').value  = d.UPTIME_KUMA_URL || '';
+      document.getElementById('cfgStatus').textContent = '';
+      document.getElementById('cfgToken').placeholder = d.DISCORD_TOKEN
+        ? `Aktuell: ${d.DISCORD_TOKEN} — leer lassen = unverändert`
+        : 'Neuen Token eingeben';
+    } catch (e) {
+      document.getElementById('cfgStatus').textContent = 'Ladefehler: ' + e.message;
+      document.getElementById('cfgStatus').className = 'err';
+    }
+  }
+
+  // ── Config speichern ──────────────────────────────────
+  async function saveConfig() {
+    const btn = document.getElementById('btnCfgSave');
+    const st  = document.getElementById('cfgStatus');
+    btn.disabled = true;
+    btn.textContent = '⏳ Speichern…';
+    st.textContent = '';
+    st.className = '';
+
+    const body = {};
+    const token   = document.getElementById('cfgToken').value.trim();
+    const statusCh= document.getElementById('cfgStatusCh').value.trim();
+    const notifCh = document.getElementById('cfgNotifCh').value.trim();
+    const kumaUrl = document.getElementById('cfgKumaUrl').value.trim();
+
+    if (token)    body.DISCORD_TOKEN                = token;
+    if (statusCh) body.STATUS_CHANNEL_ID            = statusCh;
+    if (notifCh)  body.DISCORD_NOTIFICATION_CHANNEL = notifCh;
+    if (kumaUrl)  body.UPTIME_KUMA_URL              = kumaUrl;
+
+    if (!Object.keys(body).length) {
+      st.textContent = 'Keine Änderungen eingegeben.';
+      st.className = 'err';
+      btn.disabled = false;
+      btn.textContent = '💾 Speichern & Neu starten';
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/config', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify(body),
+      }).then(r => r.json());
+
+      if (res.ok) {
+        st.textContent = `✓ Gespeichert: ${res.updated.join(', ')}${res.restarted ? ' · Bot wird neu gestartet…' : ''}`;
+        st.className = 'ok';
+        toast('✓ Konfiguration gespeichert', 'ok');
+        // Nach 4s neu laden (Bot braucht Zeit zum Neustart)
+        if (res.restarted) setTimeout(() => { loadConfig(); fetchAll(); }, 4000);
+        else loadConfig();
+      } else {
+        st.textContent = '✗ ' + res.error;
+        st.className = 'err';
+        toast('Fehler: ' + res.error, 'err');
+      }
+    } catch (e) {
+      st.textContent = 'Verbindungsfehler: ' + e.message;
+      st.className = 'err';
+      toast('Verbindungsfehler', 'err');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '💾 Speichern & Neu starten';
+    }
+  }
+
+  // Config beim Start laden
+  loadConfig();
 </script>
 </body>
 </html>

@@ -1733,6 +1733,126 @@ net_tunnel_uninstall() {
 
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Discord-Konfiguration nachträglich ändern
+# ─────────────────────────────────────────────────────────────────────────────
+menu_discord_config() {
+  if [[ ! -f "$BOT_DIR/.env" ]]; then
+    whiptail --title "⚠ .env nicht gefunden" --msgbox \
+      "Die Datei $BOT_DIR/.env existiert nicht.\n\nBitte zuerst den Bot über Schritt 3 (Bot-Verwaltung → Installieren) einrichten." \
+      10 $W
+    return
+  fi
+
+  # Aktuelle Werte aus .env lesen (Token maskieren)
+  _dc_get() { grep -E "^${1}=" "$BOT_DIR/.env" 2>/dev/null | cut -d'=' -f2- | tr -d '"' | tr -d "'"; }
+  local CUR_TOKEN CUR_STATUS CUR_NOTIF CUR_KUMA CUR_TOKEN_SHOW
+  CUR_TOKEN=$(_dc_get DISCORD_TOKEN)
+  CUR_STATUS=$(_dc_get STATUS_CHANNEL_ID)
+  CUR_NOTIF=$(_dc_get DISCORD_NOTIFICATION_CHANNEL)
+  CUR_KUMA=$(_dc_get UPTIME_KUMA_URL)
+
+  # Token maskieren: erste 6 + *** + letzte 4 Zeichen
+  if [[ ${#CUR_TOKEN} -gt 10 ]]; then
+    CUR_TOKEN_SHOW="${CUR_TOKEN:0:6}$(printf '%0.s*' $(seq 1 $((${#CUR_TOKEN}-10))))${CUR_TOKEN: -4}"
+  else
+    CUR_TOKEN_SHOW="${CUR_TOKEN:0:3}***"
+  fi
+
+  while true; do
+    local SUBMENU_CHOICE
+    SUBMENU_CHOICE=$(whiptail --title "🔑 Discord-Konfiguration" \
+      --menu "Aktuell gespeicherte Werte:\n  Token: $CUR_TOKEN_SHOW\n  Status-Ch: ${CUR_STATUS:-nicht gesetzt}\n  Notif-Ch:  ${CUR_NOTIF:-nicht gesetzt}\n  Kuma-URL:  ${CUR_KUMA:-nicht gesetzt}" \
+      18 $W 5 \
+      "1" "Discord Bot-Token ändern" \
+      "2" "Status-Channel-ID ändern      (aktuell: ${CUR_STATUS:-nicht gesetzt})" \
+      "3" "Benachrichtigungs-Channel-ID  (aktuell: ${CUR_NOTIF:-nicht gesetzt})" \
+      "4" "Uptime Kuma URL ändern        (aktuell: ${CUR_KUMA:-nicht gesetzt})" \
+      "←" "Zurück" \
+      3>&1 1>&2 2>&3) || return
+
+    case "$SUBMENU_CHOICE" in
+      "1")
+        local NEW_TOKEN
+        NEW_TOKEN=$(whiptail --title "Discord Bot-Token" --passwordbox \
+          "Neuen Bot-Token eingeben:\n(Discord Developer Portal → Deine App → Bot → Token)" \
+          10 $W 3>&1 1>&2 2>&3) || continue
+        NEW_TOKEN=$(echo "$NEW_TOKEN" | tr -d '[:space:]')
+        [[ -z "$NEW_TOKEN" ]] && { whiptail --title "Abgebrochen" --msgbox "Kein Token eingegeben — keine Änderung." 7 $W; continue; }
+        _dc_write DISCORD_TOKEN "$NEW_TOKEN"
+        CUR_TOKEN="$NEW_TOKEN"
+        CUR_TOKEN_SHOW="${NEW_TOKEN:0:6}$(printf '%0.s*' $(seq 1 $((${#NEW_TOKEN}-10))))${NEW_TOKEN: -4}"
+        ok "DISCORD_TOKEN aktualisiert"
+        _dc_restart_bot
+        ;;
+      "2")
+        local NEW_STATUS
+        NEW_STATUS=$(whiptail --title "Status-Channel-ID" --inputbox \
+          "Channel-ID für die gepinnte Status-Nachricht:\n(Discord: Entwicklermodus → Rechtsklick auf Channel → ID kopieren)" \
+          10 $W "$CUR_STATUS" 3>&1 1>&2 2>&3) || continue
+        NEW_STATUS=$(echo "$NEW_STATUS" | tr -d '[:space:]')
+        if ! echo "$NEW_STATUS" | grep -qE '^[0-9]+$'; then
+          whiptail --title "Ungültige ID" --msgbox "Channel-IDs bestehen nur aus Zahlen." 7 $W; continue
+        fi
+        _dc_write STATUS_CHANNEL_ID "$NEW_STATUS"
+        CUR_STATUS="$NEW_STATUS"
+        ok "STATUS_CHANNEL_ID aktualisiert"
+        _dc_restart_bot
+        ;;
+      "3")
+        local NEW_NOTIF
+        NEW_NOTIF=$(whiptail --title "Benachrichtigungs-Channel-ID" --inputbox \
+          "Channel-ID für Statusänderungs-Benachrichtigungen:\n(Kann dieselbe ID wie der Status-Channel sein.)" \
+          10 $W "$CUR_NOTIF" 3>&1 1>&2 2>&3) || continue
+        NEW_NOTIF=$(echo "$NEW_NOTIF" | tr -d '[:space:]')
+        if ! echo "$NEW_NOTIF" | grep -qE '^[0-9]+$'; then
+          whiptail --title "Ungültige ID" --msgbox "Channel-IDs bestehen nur aus Zahlen." 7 $W; continue
+        fi
+        _dc_write DISCORD_NOTIFICATION_CHANNEL "$NEW_NOTIF"
+        CUR_NOTIF="$NEW_NOTIF"
+        ok "DISCORD_NOTIFICATION_CHANNEL aktualisiert"
+        _dc_restart_bot
+        ;;
+      "4")
+        local NEW_KUMA
+        NEW_KUMA=$(whiptail --title "Uptime Kuma URL" --inputbox \
+          "URL der Uptime Kuma Instanz:\n(z.B. http://192.168.1.50:3001 oder https://uptime.deinedomain.de)" \
+          10 $W "$CUR_KUMA" 3>&1 1>&2 2>&3) || continue
+        NEW_KUMA=$(echo "$NEW_KUMA" | tr -d '[:space:]')
+        if ! echo "$NEW_KUMA" | grep -qE '^https?://'; then
+          whiptail --title "Ungültige URL" --msgbox "URL muss mit http:// oder https:// beginnen." 7 $W; continue
+        fi
+        _dc_write UPTIME_KUMA_URL "$NEW_KUMA"
+        CUR_KUMA="$NEW_KUMA"
+        ok "UPTIME_KUMA_URL aktualisiert"
+        _dc_restart_bot
+        ;;
+      "←") return ;;
+    esac
+  done
+}
+
+# Hilfsfunktion: Wert in .env schreiben oder ergänzen
+_dc_write() {
+  local KEY="$1" VAL="$2"
+  if grep -q "^${KEY}=" "$BOT_DIR/.env"; then
+    sed -i "s|^${KEY}=.*|${KEY}=${VAL}|" "$BOT_DIR/.env"
+  else
+    echo "${KEY}=${VAL}" >> "$BOT_DIR/.env"
+  fi
+}
+
+# Hilfsfunktion: Bot neu starten wenn er läuft
+_dc_restart_bot() {
+  if systemctl is-active --quiet bockis-bot 2>/dev/null; then
+    info "Bot-Service wird neu gestartet..."
+    sudo systemctl restart bockis-bot 2>/dev/null && ok "Bot neu gestartet" || err "Neustart fehlgeschlagen"
+  else
+    info "Bot läuft nicht — Änderung wird beim nächsten Start aktiv."
+  fi
+  sleep 1
+}
+
 menu_settings() {
   while true; do
     # Werte live aus .env lesen wenn vorhanden
@@ -1748,11 +1868,12 @@ menu_settings() {
     local KUMA_LABEL="Port ${KUMA_PORT}"
     [[ -n "${ENV_KUMA_URL:-}" ]] && KUMA_LABEL="extern: $ENV_KUMA_URL"
 
-    CHOICE=$(whiptail --title "⚙ Einstellungen" --menu "Konfiguration anpassen:" 15 $W 5 \
+    CHOICE=$(whiptail --title "⚙ Einstellungen" --menu "Konfiguration anpassen:" 17 $W 6 \
       "1" "Bot-Verzeichnis ändern      (aktuell: $BOT_DIR)" \
       "2" "Bot-Port ändern             (aktuell: $BOT_PORT)" \
       "3" "Uptime-Kuma-Port ändern    (aktuell: $KUMA_LABEL)" \
       "4" "Web-Dashboard-Port ändern  (aktuell: $WEB_PORT  →  $WEB_LABEL)" \
+      "5" "🔑  Discord-Token / Channel-IDs ändern" \
       "←" "Zurück" \
       3>&1 1>&2 2>&3) || return
 
@@ -1810,6 +1931,7 @@ menu_settings() {
           pause
         fi
         ;;
+      "5") menu_discord_config ;;
       "←") return ;;
     esac
   done

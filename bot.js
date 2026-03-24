@@ -650,6 +650,99 @@ app.post('/api/update-run', dashboardAuth, (req, res) => {
 });
 
 // ── Cloudflare Tunnel Status ──────────────────────────────────────────────────
+// ── GET /api/config — Konfigurationswerte lesen (Token maskiert) ──────────────
+app.get('/api/config', dashboardAuth, (req, res) => {
+  const envPath = path.join(__dirname, '.env');
+  if (!fs.existsSync(envPath)) {
+    return res.json({ ok: false, error: '.env nicht gefunden' });
+  }
+  try {
+    const raw = fs.readFileSync(envPath, 'utf8');
+    const get = (key) => {
+      const m = raw.match(new RegExp(`^${key}=(.*)$`, 'm'));
+      return m ? m[1].trim().replace(/^["']|["']$/g, '') : '';
+    };
+    const token = get('DISCORD_TOKEN');
+    const masked = token.length > 12
+      ? `${token.slice(0, 6)}${'*'.repeat(token.length - 12)}${token.slice(-6)}`
+      : token ? '***' : '';
+    res.json({
+      ok: true,
+      DISCORD_TOKEN:                masked,
+      STATUS_CHANNEL_ID:            get('STATUS_CHANNEL_ID'),
+      DISCORD_NOTIFICATION_CHANNEL: get('DISCORD_NOTIFICATION_CHANNEL'),
+      UPTIME_KUMA_URL:              get('UPTIME_KUMA_URL'),
+    });
+  } catch (err) {
+    logger.error(`/api/config GET Fehler: ${err.message}`);
+    res.json({ ok: false, error: err.message });
+  }
+});
+
+// ── POST /api/config — Konfigurationswerte schreiben + Bot neu starten ────────
+app.post('/api/config', dashboardAuth, (req, res) => {
+  const ALLOWED = ['DISCORD_TOKEN', 'STATUS_CHANNEL_ID', 'DISCORD_NOTIFICATION_CHANNEL', 'UPTIME_KUMA_URL'];
+  const envPath = path.join(__dirname, '.env');
+
+  if (!fs.existsSync(envPath)) {
+    return res.json({ ok: false, error: '.env nicht gefunden' });
+  }
+
+  const updates = {};
+  for (const key of ALLOWED) {
+    const raw = req.body?.[key];
+    if (raw === undefined || raw === null || raw === '') continue;
+    const val = String(raw).trim();
+
+    // Token: überspringen wenn noch maskiert (enthält ***)
+    if (key === 'DISCORD_TOKEN') {
+      if (val.includes('*')) continue;
+      if (/[\n\r]/.test(val)) return res.json({ ok: false, error: 'Ungültiger Token (enthält Zeilenumbruch)' });
+    }
+    // Channel-IDs: nur Ziffern
+    if ((key === 'STATUS_CHANNEL_ID' || key === 'DISCORD_NOTIFICATION_CHANNEL') && !/^\d+$/.test(val)) {
+      return res.json({ ok: false, error: `${key}: Nur Zahlen erlaubt (Discord ID)` });
+    }
+    // URL-Format
+    if (key === 'UPTIME_KUMA_URL' && !/^https?:\/\/.+/.test(val)) {
+      return res.json({ ok: false, error: 'UPTIME_KUMA_URL muss mit http:// oder https:// beginnen' });
+    }
+
+    updates[key] = val;
+  }
+
+  if (Object.keys(updates).length === 0) {
+    return res.json({ ok: false, error: 'Keine Änderungen übermittelt' });
+  }
+
+  try {
+    let envContent = fs.readFileSync(envPath, 'utf8');
+    for (const [key, val] of Object.entries(updates)) {
+      if (new RegExp(`^${key}=`, 'm').test(envContent)) {
+        envContent = envContent.replace(new RegExp(`^${key}=.*$`, 'm'), `${key}=${val}`);
+      } else {
+        envContent = envContent.trimEnd() + `\n${key}=${val}\n`;
+      }
+    }
+    fs.writeFileSync(envPath, envContent, 'utf8');
+    logger.info(`Konfiguration aktualisiert: ${Object.keys(updates).join(', ')}`);
+  } catch (err) {
+    logger.error(`/api/config POST Schreibfehler: ${err.message}`);
+    return res.json({ ok: false, error: `Fehler beim Schreiben: ${err.message}` });
+  }
+
+  // Bot-Service neu starten (nur auf systemd-Systemen)
+  const { execFile } = require('child_process');
+  execFile('systemctl', ['restart', 'bockis-bot'], { timeout: 10000 }, (e) => {
+    res.json({
+      ok: true,
+      updated: Object.keys(updates),
+      restarted: !e,
+      restartNote: e ? 'Service-Neustart fehlgeschlagen (kein systemd?)' : null,
+    });
+  });
+});
+
 app.get('/api/tunnel-status', dashboardAuth, (req, res) => {
   const { execFile } = require('child_process');
   execFile('systemctl', ['is-active', 'cloudflared'], { timeout: 4000 }, (err, stdout) => {
