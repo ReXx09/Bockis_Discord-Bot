@@ -426,17 +426,22 @@ async function updateStatusMessage() {
     const uptimeKumaUrl = config.get('uptimeKuma.url');
     const slug = config.get('uptimeKuma.statusPageSlug');
     const statusContent = `**\uD83C\uDF10 LIVE SERVICE STATUS**\n\uD83D\uDD17 [---------->>>>>  Full Status Page  <<<<<----------](${uptimeKumaUrl}/status/${slug})`;
+    const msgOptions = {
+      content: statusContent,
+      embeds: embeds.slice(0, 10),
+      flags: [4096] // MessageFlags.SuppressEmbeds — verhindert URL-Vorschau der Kuma-Seite
+    };
     if (statusMessageId) {
       try {
         const existingMessage = await channel.messages.fetch(statusMessageId);
-        await existingMessage.edit({ content: statusContent, embeds: embeds.slice(0, 10) });
+        await existingMessage.edit(msgOptions);
       } catch {
-        const newMessage = await channel.send({ content: statusContent, embeds: embeds.slice(0, 10) });
+        const newMessage = await channel.send(msgOptions);
         statusMessageId = newMessage.id;
         saveState({ statusMessageId, lastChannelStatus, lastChannelNameMs });
       }
     } else {
-      const newMessage = await channel.send({ content: statusContent, embeds: embeds.slice(0, 10) });
+      const newMessage = await channel.send(msgOptions);
       statusMessageId = newMessage.id;
       saveState({ statusMessageId, lastChannelStatus, lastChannelNameMs });
     }
