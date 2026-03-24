@@ -47,8 +47,13 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# Fenstermaße
-W=70; H=20
+# Fenstermaße – dynamisch an Terminalgröße anpassen
+COLS=$(tput cols  2>/dev/null || echo 80)
+ROWS=$(tput lines 2>/dev/null || echo 24)
+W=$(( COLS > 84 ? 80 : COLS - 4 ))
+H=$(( ROWS > 28 ? 26 : ROWS - 2 ))
+[ "$W" -lt 60 ] && W=60
+[ "$H" -lt 20 ] && H=20
 
 # ── Hilfsfunktionen ──────────────────────────────────────────────────────────
 
@@ -1035,16 +1040,19 @@ main_menu() {
     rm -f "$UPDATE_TMP"
 
     case "$UPDATE_RC" in
-      0) UPDATE_HINT="  ⚠  Bot-Update verfügbar! → Option 6" ;;
-      1) UPDATE_HINT="  ✓  Bot ist aktuell" ;;
-      *) UPDATE_HINT="  –  Update-Status unbekannt (kein Git/Netz)" ;;
+      0) UPDATE_HINT="⚠  Update verfügbar → Option 7" ;;
+      1) UPDATE_HINT="✓  Bot ist aktuell" ;;
+      *) UPDATE_HINT="–  Update-Status unbekannt" ;;
     esac
+
+    LIST_H=$(( H - 11 ))
+    [ "$LIST_H" -lt 9 ] && LIST_H=9
 
     CHOICE=$(whiptail \
       --title "🤖 Bockis Discord Bot — Raspberry Pi Manager" \
-      --menu "$(printf "Bot: %-10s  |  Uptime Kuma: %-10s\n%s\nWas möchtest du tun?" \
+      --menu "$(printf "Bot: %-8s | Uptime Kuma: %-8s | %s\n\nWas möchtest du tun?" \
               "$BOT_ST" "$KUMA_ST" "$UPDATE_HINT")" \
-      $H $W 9 \
+      $H $W $LIST_H \
       "1" "🍓  System vorbereiten     (apt, Node.js, Docker, Firewall, ...)" \
       "2" "📊  Uptime Kuma            (installieren, starten, aktualisieren)" \
       "3" "🤖  Bot-Verwaltung         (installieren, starten, Logs, Update)" \
