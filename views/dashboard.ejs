@@ -361,6 +361,15 @@
   </div>
 </div>
 
+<!-- ── ROW 1b: CLOUDFLARE TUNNEL ─────────────────────── -->
+<div class="card" id="tunnelCard" style="margin-top:16px">
+  <div class="card-title">🌐 Cloudflare Tunnel</div>
+  <div id="tunnelInfo">
+    <div class="sk"></div>
+    <div class="sk" style="width:55%"></div>
+  </div>
+</div>
+
 <!-- ── ROW 2: MONITORS ────────────────────────────────── -->
 <div class="section-hdr">
   <span class="title">Services</span>
@@ -529,6 +538,36 @@
     } catch (e) {
       toast('Verbindungsfehler – ' + e.message, 'err');
     }
+    // Tunnel-Status separat (non-blocking, cloudflared optional)
+    try {
+      const t = await fetch('/api/tunnel-status').then(r => r.json());
+      renderTunnel(t);
+    } catch { /* cloudflared nicht zwingend installiert */ }
+  }
+
+  // ── Tunnel Status ────────────────────────────────────
+  function renderTunnel(d) {
+    const el = document.getElementById('tunnelInfo');
+    const card = document.getElementById('tunnelCard');
+    if (!d.installed) {
+      el.innerHTML = row('Status', '<span class="badge" style="background:var(--surface2);color:var(--muted)">nicht installiert</span>') +
+                     row('Hinweis', '<span class="muted">cloudflared nicht gefunden – im Raspi-Menü unter "Netzwerk &amp; Cloudflare" einrichten</span>');
+      card.style.borderTop = '3px solid var(--border)';
+      return;
+    }
+    const stBadge = d.active
+      ? '<span class="badge b-green">AKTIV</span>'
+      : '<span class="badge b-red">GESTOPPT</span>';
+    card.style.borderTop = d.active ? '3px solid var(--green)' : '3px solid var(--red)';
+    let html = row('Service', stBadge) + row('Version', d.version || '–');
+    if (d.tunnels && d.tunnels.length) {
+      html += row('Tunnel', d.tunnels.map(t =>
+        `<span class="commit-hash">${t.id.slice(0,8)}</span> ${t.name.replace(/</g,'&lt;').replace(/>/g,'&gt;')}`
+      ).join('<br>'));
+    } else {
+      html += row('Tunnel', '<span class="muted">kein Tunnel konfiguriert</span>');
+    }
+    el.innerHTML = html;
   }
 
   // ── Manual Refresh ───────────────────────────────────

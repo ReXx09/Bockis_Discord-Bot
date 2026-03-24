@@ -1035,7 +1035,7 @@ main_menu() {
     rm -f "$UPDATE_TMP"
 
     case "$UPDATE_RC" in
-      0) UPDATE_HINT="  ⚠  Bot-Update verfügbar! → Option 5" ;;
+      0) UPDATE_HINT="  ⚠  Bot-Update verfügbar! → Option 6" ;;
       1) UPDATE_HINT="  ✓  Bot ist aktuell" ;;
       *) UPDATE_HINT="  –  Update-Status unbekannt (kein Git/Netz)" ;;
     esac
@@ -1049,10 +1049,11 @@ main_menu() {
       "2" "📊  Uptime Kuma            (installieren, starten, aktualisieren)" \
       "3" "🤖  Bot-Verwaltung         (installieren, starten, Logs, Update)" \
       "4" "🔍  Status & Prüfungen     (Services, Ressourcen, Health-Check)" \
-      "5" "🔄  Schnell-Update         (Bot + Docker in einem Schritt)" \
-      "6" "🔎  Update-Prüfung         (GitHub vergleichen, neue Commits anzeigen)" \
-      "7" "⚙   Einstellungen          (Bot-Verzeichnis, Ports)" \
-      "8" "✗   Beenden" \
+      "5" "🌐  Netzwerk & Cloudflare  (CG-NAT, Tunnel, DNS-Prüfung)" \
+      "6" "🔄  Schnell-Update         (Bot + Docker in einem Schritt)" \
+      "7" "🔎  Update-Prüfung         (GitHub vergleichen, neue Commits anzeigen)" \
+      "8" "⚙   Einstellungen          (Bot-Verzeichnis, Ports)" \
+      "9" "✗   Beenden" \
       3>&1 1>&2 2>&3) || break
 
     case "$CHOICE" in
@@ -1060,10 +1061,11 @@ main_menu() {
       "2") menu_kuma ;;
       "3") menu_bot ;;
       "4") menu_status ;;
-      "5") quick_update ;;
-      "6") menu_update_check ;;
-      "7") menu_settings ;;
-      "8") break ;;
+      "5") menu_network ;;
+      "6") quick_update ;;
+      "7") menu_update_check ;;
+      "8") menu_settings ;;
+      "9") break ;;
     esac
   done
 }
@@ -1076,6 +1078,500 @@ quick_update() {
   bash "$SCRIPT_DIR/update.sh" --bot-dir "$BOT_DIR" --mode auto --yes
   pause
 }
+
+# ════════════════════════════════════════════════════════════════════════════════
+# MODUL 5 — NETZWERK & CLOUDFLARE
+# ════════════════════════════════════════════════════════════════════════════════
+
+menu_network() {
+  while true; do
+    CHOICE=$(whiptail --title "🌐 Netzwerk & Cloudflare Tunnel" --menu \
+      "CG-NAT-Erkennung, Cloudflare Tunnel, DNS-Prüfung:" $H $W 8 \
+      "1" "🔍  Netzwerk & CG-NAT analysieren" \
+      "2" "🔑  Cloudflare Token prüfen  (API-Validierung)" \
+      "3" "🚇  Cloudflare Tunnel einrichten  (cloudflared)" \
+      "4" "▶   Tunnel-Service starten / stoppen" \
+      "5" "📋  Tunnel-Service Status & Logs" \
+      "6" "🌍  Domain / DNS prüfen" \
+      "7" "🗑   Tunnel deinstallieren" \
+      "←" "Zurück zum Hauptmenü" \
+      3>&1 1>&2 2>&3) || return
+
+    case "$CHOICE" in
+      "1") net_cgnat_check ;;
+      "2") net_cf_token_check ;;
+      "3") net_cf_tunnel_setup ;;
+      "4") net_tunnel_startstop ;;
+      "5") net_tunnel_status ;;
+      "6") net_dns_check ;;
+      "7") net_tunnel_uninstall ;;
+      "←") return ;;
+    esac
+  done
+}
+
+# ── Hilfsfunktion: Öffentliche IP ermitteln ────────────────────────────────────
+get_public_ip() {
+  curl -sf --max-time 6 https://ifconfig.me 2>/dev/null || \
+  curl -sf --max-time 6 https://api.ipify.org 2>/dev/null || \
+  curl -sf --max-time 6 https://checkip.amazonaws.com 2>/dev/null || \
+  echo ""
+}
+
+# ── Hilfsfunktion: IP im CG-NAT-Bereich? (100.64.0.0/10) ─────────────────────
+is_cgnat_ip() {
+  local IP="$1"
+  python3 -c "
+import sys, ipaddress
+try:
+    ip = ipaddress.ip_address('$IP')
+    cgnat = ipaddress.ip_network('100.64.0.0/10')
+    sys.exit(0 if ip in cgnat else 1)
+except:
+    sys.exit(1)
+" 2>/dev/null
+}
+
+# ── 1. CG-NAT-Analyse ─────────────────────────────────────────────────────────
+net_cgnat_check() {
+  clear
+  echo -e "${BOLD}${CYAN}━━ Netzwerk & CG-NAT Analyse ━━${NC}\n"
+
+  # Lokale IPs
+  echo -e "${BOLD}Lokale Netzwerk-Interfaces:${NC}"
+  ip -o addr show 2>/dev/null | awk '{print "  " $2 ": " $4}' | grep -v "^  lo"
+  echo ""
+
+  # Öffentliche IP
+  info "Ermittle öffentliche IP-Adresse..."
+  local PUBLIC_IP
+  PUBLIC_IP=$(get_public_ip)
+
+  if [[ -z "$PUBLIC_IP" ]]; then
+    err "Öffentliche IP nicht ermittelbar — keine Internetverbindung?"
+    pause; return
+  fi
+
+  echo -e "  ${BOLD}Öffentliche IP:${NC}  ${BOLD}${PUBLIC_IP}${NC}"
+  echo ""
+
+  # CG-NAT-Erkennung
+  if is_cgnat_ip "$PUBLIC_IP"; then
+    echo -e "  ${RED}${BOLD}⚠  CG-NAT erkannt!${NC}"
+    echo -e "  ${YELLOW}Die öffentliche IP ${PUBLIC_IP} liegt im RFC-6598-Bereich (100.64.0.0/10).${NC}"
+    echo -e "  ${YELLOW}Das bedeutet: Dein ISP verwendet Carrier-Grade NAT.${NC}"
+    echo ""
+    echo -e "  Port-Weiterleitungen am Router funktionieren NICHT."
+    echo -e "  Lösung: Cloudflare Tunnel (Option 3 in diesem Menü)."
+  else
+    # Prüfen ob normales NAT (öffentliche IP ≠ lokale IPs)
+    local LOCAL_IPS
+    LOCAL_IPS=$(ip -o addr show 2>/dev/null | awk '{print $4}' | cut -d'/' -f1 | grep -v '^127\.' | grep -v '^::1')
+    if echo "$LOCAL_IPS" | grep -qF "$PUBLIC_IP"; then
+      ok "Direkte öffentliche IP — kein NAT erkannt"
+    else
+      ok "Standard-NAT (kein CG-NAT) — Public IP: ${PUBLIC_IP}"
+      echo -e "  ${CYAN}Port-Weiterleitung am Router ist grundsätzlich möglich.${NC}"
+      echo -e "  ${CYAN}Für dynamische IPs trotzdem DynDNS oder Cloudflare Tunnel empfohlen.${NC}"
+    fi
+  fi
+
+  echo ""
+
+  # Discord-Erreichbarkeit prüfen
+  info "Prüfe Discord-API Erreichbarkeit..."
+  if curl -sf --max-time 8 https://discord.com/api/v10/gateway >/dev/null 2>&1; then
+    ok "discord.com ist erreichbar"
+  else
+    err "discord.com nicht erreichbar — Internetverbindung prüfen"
+  fi
+
+  # Cloudflare erreichbar?
+  info "Prüfe Cloudflare-Erreichbarkeit..."
+  if curl -sf --max-time 5 https://1.1.1.1 >/dev/null 2>&1; then
+    ok "Cloudflare (1.1.1.1) erreichbar"
+  else
+    err "Cloudflare nicht erreichbar"
+  fi
+
+  pause
+}
+
+# ── 2. Cloudflare Token prüfen ────────────────────────────────────────────────
+net_cf_token_check() {
+  clear
+  echo -e "${BOLD}${CYAN}━━ Cloudflare API-Token prüfen ━━${NC}\n"
+
+  echo -e "  ${CYAN}ℹ${NC}  Token erstellen unter:"
+  echo -e "  ${CYAN}   https://dash.cloudflare.com/profile/api-tokens${NC}"
+  echo -e "  ${DIM}   Vorlage: 'Edit zone DNS' oder eigene Berechtigungen${NC}"
+  echo ""
+
+  local CF_TOKEN
+  CF_TOKEN=$(whiptail --title "Cloudflare API-Token" --passwordbox \
+    "Cloudflare API-Token eingeben:\n(wird nicht gespeichert — nur zur Prüfung)" \
+    10 $W "" 3>&1 1>&2 2>&3) || return
+
+  [[ -z "$CF_TOKEN" ]] && { err "Kein Token eingegeben"; pause; return; }
+
+  info "Prüfe Token bei Cloudflare API..."
+
+  local RESULT HTTP_CODE
+  RESULT=$(curl -sf --max-time 8 \
+    -X GET "https://api.cloudflare.com/client/v4/user/tokens/verify" \
+    -H "Authorization: Bearer ${CF_TOKEN}" \
+    -H "Content-Type: application/json" 2>/dev/null)
+
+  if [[ -z "$RESULT" ]]; then
+    err "Keine Antwort von der Cloudflare API — Internetverbindung prüfen"
+    pause; return
+  fi
+
+  local SUCCESS STATUS
+  SUCCESS=$(echo "$RESULT" | python3 -c "import sys,json; d=json.load(sys.stdin); print(str(d.get('success',False)).lower())" 2>/dev/null)
+  STATUS=$(echo "$RESULT"  | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('result',{}).get('status','unbekannt'))" 2>/dev/null)
+
+  echo ""
+  if [[ "$SUCCESS" == "true" && "$STATUS" == "active" ]]; then
+    ok "Token ist GÜLTIG und aktiv"
+
+    # Zugehörige Account-ID und E-Mail anzeigen
+    local ACCT_RESULT
+    ACCT_RESULT=$(curl -sf --max-time 8 \
+      -X GET "https://api.cloudflare.com/client/v4/accounts" \
+      -H "Authorization: Bearer ${CF_TOKEN}" \
+      -H "Content-Type: application/json" 2>/dev/null)
+
+    local ACCT_NAME ACCT_ID
+    ACCT_NAME=$(echo "$ACCT_RESULT" | python3 -c "import sys,json; r=json.load(sys.stdin).get('result',[]); print(r[0]['name'] if r else '–')" 2>/dev/null || echo "–")
+    ACCT_ID=$(echo "$ACCT_RESULT"   | python3 -c "import sys,json; r=json.load(sys.stdin).get('result',[]); print(r[0]['id']   if r else '–')" 2>/dev/null || echo "–")
+
+    echo -e "  ${BOLD}Account:${NC}     $ACCT_NAME"
+    echo -e "  ${BOLD}Account-ID:${NC}  $ACCT_ID"
+    echo ""
+    echo -e "  ${DIM}Die Account-ID wird für die Tunnel-Einrichtung benötigt.${NC}"
+  else
+    err "Token ungültig oder inaktiv (Status: $STATUS)"
+    echo -e "  ${DIM}Antwort: $RESULT${NC}"
+  fi
+
+  pause
+}
+
+# ── 3. Cloudflare Tunnel einrichten ──────────────────────────────────────────
+net_cf_tunnel_setup() {
+  clear
+  echo -e "${BOLD}${CYAN}━━ Cloudflare Tunnel einrichten ━━${NC}\n"
+
+  # cloudflared installieren?
+  if ! command -v cloudflared >/dev/null 2>&1; then
+    if ! whiptail --title "cloudflared installieren" --yesno \
+      "cloudflared ist nicht installiert.\n\nJetzt über das offizielle Cloudflare-Repository installieren?" \
+      10 $W; then return; fi
+
+    info "Füge Cloudflare APT-Repository hinzu..."
+    curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg | \
+      sudo tee /usr/share/keyrings/cloudflare-main.gpg >/dev/null 2>&1
+    echo 'deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared any main' | \
+      sudo tee /etc/apt/sources.list.d/cloudflared.list >/dev/null
+    sudo apt-get update -qq 2>/dev/null
+    sudo apt-get install -y cloudflared 2>&1 | tail -3
+    ok "cloudflared installiert: $(cloudflared --version 2>/dev/null | head -1)"
+  else
+    ok "cloudflared bereits installiert: $(cloudflared --version 2>/dev/null | head -1)"
+  fi
+
+  echo ""
+
+  # Einrichtungsmethode wählen
+  local METHOD
+  METHOD=$(whiptail --title "Einrichtungsmethode" --menu \
+"Wie soll der Tunnel eingerichtet werden?\n
+  Methode A (empfohlen für Einsteiger):
+    Tunnel im Cloudflare Zero Trust Dashboard anlegen,
+    Token kopieren → hier einfügen → fertig.
+
+  Methode B (für Fortgeschrittene):
+    cloudflared führt Browser-Login durch,
+    Tunnel wird lokal per CLI verwaltet." \
+    18 $W 2 \
+    "A" "Token-Methode  (Zero Trust Dashboard → Token einfügen)" \
+    "B" "CLI-Methode    (cloudflared tunnel login via Browser)" \
+    3>&1 1>&2 2>&3) || return
+
+  case "$METHOD" in
+    "A") _cf_tunnel_token_method ;;
+    "B") _cf_tunnel_cli_method ;;
+  esac
+}
+
+_cf_tunnel_token_method() {
+  clear
+  echo -e "${BOLD}${CYAN}━━ Tunnel via Token (Zero Trust) ━━${NC}\n"
+  echo -e "  ${CYAN}Schritt-für-Schritt:${NC}"
+  echo -e "  1. Öffne: ${BOLD}https://one.dash.cloudflare.com/${NC}"
+  echo -e "  2. Networks → Tunnels → 'Create a Tunnel'"
+  echo -e "  3. Wähle 'cloudflared' → Tunnel benennen (z.B. 'bockis-bot')"
+  echo -e "  4. Betriebssystem: Debian, Architektur: arm64 (für Raspi) oder amd64"
+  echo -e "  5. Den langen Token aus dem Installations-Befehl kopieren"
+  echo -e "     (nur den Teil nach --token)"
+  echo -e "  6. Public Hostnames konfigurieren:"
+  echo -e "     Subdomain: uptime.deinedomain.de → Service: http://localhost:3001"
+  echo ""
+  read -rp "  Enter drücken wenn Token bereit ist..."
+
+  local TUNNEL_TOKEN
+  TUNNEL_TOKEN=$(whiptail --title "Tunnel-Token einfügen" --passwordbox \
+    "Tunnel-Token aus dem Zero Trust Dashboard einfügen:" \
+    10 $W "" 3>&1 1>&2 2>&3) || return
+
+  [[ -z "$TUNNEL_TOKEN" ]] && { err "Kein Token eingegeben"; pause; return; }
+
+  clear
+  echo -e "${BOLD}${CYAN}━━ cloudflared Service installieren ━━${NC}\n"
+
+  info "Installiere cloudflared als systemd-Service..."
+  if sudo cloudflared service install "$TUNNEL_TOKEN" 2>&1 | tail -5; then
+    sudo systemctl enable cloudflared 2>/dev/null
+    sudo systemctl start cloudflared 2>/dev/null
+    sleep 2
+    if systemctl is-active --quiet cloudflared; then
+      ok "Cloudflare Tunnel läuft als systemd-Service!"
+      ok "Public Hostnames sind jetzt erreichbar."
+    else
+      err "Service gestartet, aber Status prüfen:"
+      sudo systemctl status cloudflared --no-pager -l | tail -10
+    fi
+  else
+    err "Installation fehlgeschlagen — Token korrekt?"
+  fi
+  pause
+}
+
+_cf_tunnel_cli_method() {
+  clear
+  echo -e "${BOLD}${CYAN}━━ Tunnel via CLI-Login ━━${NC}\n"
+
+  local TUNNEL_NAME
+  TUNNEL_NAME=$(whiptail --title "Tunnel benennen" --inputbox \
+    "Name für den Cloudflare Tunnel:" \
+    8 $W "bockis-bot" 3>&1 1>&2 2>&3) || return
+
+  info "Starte cloudflared Tunnel Login..."
+  echo -e "  ${YELLOW}⚠  Ein Browser-Link wird angezeigt — bitte im Browser öffnen und autorisieren.${NC}"
+  echo ""
+  cloudflared tunnel login
+
+  if [[ ! -f "$HOME/.cloudflared/cert.pem" ]]; then
+    err "Login fehlgeschlagen — cert.pem nicht gefunden"
+    pause; return
+  fi
+  ok "Login erfolgreich"
+
+  info "Erstelle Tunnel: $TUNNEL_NAME ..."
+  cloudflared tunnel create "$TUNNEL_NAME" 2>&1 | tail -5
+
+  local TUNNEL_ID
+  TUNNEL_ID=$(cloudflared tunnel list 2>/dev/null | grep "$TUNNEL_NAME" | awk '{print $1}')
+  [[ -z "$TUNNEL_ID" ]] && { err "Tunnel-ID nicht ermittelbar"; pause; return; }
+  ok "Tunnel erstellt — ID: $TUNNEL_ID"
+
+  # Uptime Kuma Domain routen
+  local DOMAIN
+  DOMAIN=$(whiptail --title "Domain für Uptime Kuma" --inputbox \
+    "Subdomain für Uptime Kuma eingeben:\n(z.B. uptime.deinedomain.de)" \
+    9 $W "" 3>&1 1>&2 2>&3) || return
+
+  if [[ -n "$DOMAIN" ]]; then
+    info "Richte DNS-Route ein: $DOMAIN → localhost:3001"
+    cloudflared tunnel route dns "$TUNNEL_NAME" "$DOMAIN" 2>&1 | tail -3
+    ok "DNS-Route eingerichtet"
+  fi
+
+  # Config-Datei schreiben
+  local CF_CONFIG="$HOME/.cloudflared/config.yml"
+  info "Schreibe Konfigurationsdatei $CF_CONFIG ..."
+  sudo mkdir -p /etc/cloudflared
+  cat > "$CF_CONFIG" <<EOF
+tunnel: ${TUNNEL_ID}
+credentials-file: ${HOME}/.cloudflared/${TUNNEL_ID}.json
+ingress:
+  - hostname: ${DOMAIN}
+    service: http://localhost:${KUMA_PORT}
+  - service: http_status:404
+EOF
+  sudo cp "$CF_CONFIG" /etc/cloudflared/config.yml
+  ok "Konfiguration gespeichert"
+
+  # Service installieren
+  info "Installiere als systemd-Service..."
+  sudo cloudflared service install 2>&1 | tail -3
+  sudo systemctl start cloudflared 2>/dev/null
+  systemctl is-active --quiet cloudflared && \
+    ok "Cloudflare Tunnel Service läuft!" || \
+    err "Service prüfen: sudo systemctl status cloudflared"
+
+  pause
+}
+
+# ── 4. Tunnel starten / stoppen ───────────────────────────────────────────────
+net_tunnel_startstop() {
+  command -v cloudflared >/dev/null 2>&1 || { err "cloudflared nicht installiert"; pause; return; }
+
+  local ACTION
+  ACTION=$(whiptail --title "Tunnel-Service" --menu "Aktion wählen:" 10 $W 3 \
+    "start"   "Tunnel starten" \
+    "stop"    "Tunnel stoppen" \
+    "restart" "Tunnel neu starten" \
+    3>&1 1>&2 2>&3) || return
+
+  clear
+  sudo systemctl "$ACTION" cloudflared 2>&1 && \
+    ok "cloudflared $ACTION erfolgreich" || \
+    err "Fehler bei: systemctl $ACTION cloudflared"
+  pause
+}
+
+# ── 5. Tunnel Status & Logs ───────────────────────────────────────────────────
+net_tunnel_status() {
+  clear
+  echo -e "${BOLD}${CYAN}━━ Cloudflare Tunnel Status ━━${NC}\n"
+
+  command -v cloudflared >/dev/null 2>&1 || { err "cloudflared nicht installiert"; pause; return; }
+
+  echo -e "${BOLD}cloudflared Version:${NC}"
+  echo "  $(cloudflared --version 2>/dev/null | head -1)"
+  echo ""
+
+  echo -e "${BOLD}Service-Status:${NC}"
+  if systemctl is-active --quiet cloudflared 2>/dev/null; then
+    ok "cloudflared Service läuft"
+  else
+    err "cloudflared Service gestoppt"
+  fi
+  echo ""
+
+  echo -e "${BOLD}Tunnel-Liste:${NC}"
+  cloudflared tunnel list 2>/dev/null | head -10 || echo "  (keine Tunnel oder nicht eingeloggt)"
+  echo ""
+
+  # Logs anzeigen
+  local LOGS
+  LOGS=$(sudo journalctl -u cloudflared -n 40 --no-pager 2>&1)
+  show_output "cloudflared Logs (letzte 40 Zeilen)" "$LOGS"
+}
+
+# ── 6. DNS / Domain prüfen ────────────────────────────────────────────────────
+net_dns_check() {
+  clear
+  echo -e "${BOLD}${CYAN}━━ Domain & DNS Prüfung ━━${NC}\n"
+
+  local DOMAIN
+  DOMAIN=$(whiptail --title "Domain eingeben" --inputbox \
+    "Domain oder Subdomain prüfen:\n(z.B. uptime.deinedomain.de)" \
+    9 $W "" 3>&1 1>&2 2>&3) || return
+
+  [[ -z "$DOMAIN" ]] && { err "Keine Domain eingegeben"; pause; return; }
+
+  clear
+  echo -e "${BOLD}${CYAN}━━ DNS-Prüfung: $DOMAIN ━━${NC}\n"
+
+  # DNS-Auflösung
+  info "DNS-Auflösung..."
+  local RESOLVED_IPS
+  if command -v dig >/dev/null 2>&1; then
+    RESOLVED_IPS=$(dig +short "$DOMAIN" 2>/dev/null | grep -E '^[0-9]+\.' | head -5)
+  elif command -v host >/dev/null 2>&1; then
+    RESOLVED_IPS=$(host "$DOMAIN" 2>/dev/null | grep 'has address' | awk '{print $NF}' | head -5)
+  elif command -v nslookup >/dev/null 2>&1; then
+    RESOLVED_IPS=$(nslookup "$DOMAIN" 2>/dev/null | awk '/^Address: / {print $2}' | grep -v '#' | head -5)
+  else
+    RESOLVED_IPS=""
+    err "Kein DNS-Tool verfügbar (dig/host/nslookup) — installieren: sudo apt-get install -y dnsutils"
+  fi
+
+  if [[ -n "$RESOLVED_IPS" ]]; then
+    ok "Domain löst auf:"
+    echo "$RESOLVED_IPS" | while read -r IP; do echo "    → $IP"; done
+  else
+    err "Domain nicht auflösbar — DNS-Eintrag prüfen"
+  fi
+  echo ""
+
+  # CNAME-Check (Cloudflare Tunnel)
+  info "CNAME-Prüfung (Cloudflare Tunnel)..."
+  local CNAME
+  if command -v dig >/dev/null 2>&1; then
+    CNAME=$(dig +short CNAME "$DOMAIN" 2>/dev/null | head -1)
+  fi
+  if [[ -n "$CNAME" ]]; then
+    ok "CNAME gefunden: $CNAME"
+    echo "$CNAME" | grep -qi "cloudflare\|cfargotunnel\|trycloudflare" && \
+      ok "→ Cloudflare Tunnel CNAME erkannt ✓" || \
+      info "→ CNAME zeigt nicht auf Cloudflare"
+  else
+    info "Kein CNAME-Eintrag (A-Record oder direkter Eintrag)"
+  fi
+  echo ""
+
+  # HTTP-Erreichbarkeit
+  info "HTTP-Erreichbarkeit prüfen (https://$DOMAIN)..."
+  local HTTP_CODE
+  HTTP_CODE=$(curl -o /dev/null -sf -w "%{http_code}" --max-time 10 "https://$DOMAIN" 2>/dev/null || echo "000")
+  if [[ "$HTTP_CODE" == "200" || "$HTTP_CODE" == "301" || "$HTTP_CODE" == "302" ]]; then
+    ok "HTTPS erreichbar → HTTP-Status: $HTTP_CODE"
+  elif [[ "$HTTP_CODE" == "000" ]]; then
+    err "Domain nicht erreichbar (Timeout / kein TLS)"
+  else
+    info "HTTP-Status: $HTTP_CODE (z.B. Auth-geschützt oder Redirect)"
+  fi
+  echo ""
+
+  # Öffentliche IP vs. aufgelöste IP vergleichen
+  info "Vergleiche mit öffentlicher IP..."
+  local PUBLIC_IP
+  PUBLIC_IP=$(get_public_ip)
+  if [[ -n "$PUBLIC_IP" && -n "$RESOLVED_IPS" ]]; then
+    if echo "$RESOLVED_IPS" | grep -qF "$PUBLIC_IP"; then
+      ok "Aufgelöste IP stimmt mit öffentlicher IP überein ($PUBLIC_IP)"
+    else
+      info "Aufgelöste IP stimmt NICHT mit öffentlicher IP überein"
+      info "→ Öffentliche IP:   $PUBLIC_IP"
+      info "→ Aufgelöste IP(s): $(echo "$RESOLVED_IPS" | tr '\n' ' ')"
+      info "→ Das ist normal bei Cloudflare Proxy / Tunnel"
+    fi
+  fi
+
+  pause
+}
+
+# ── 7. Tunnel deinstallieren ──────────────────────────────────────────────────
+net_tunnel_uninstall() {
+  command -v cloudflared >/dev/null 2>&1 || { err "cloudflared nicht installiert"; pause; return; }
+
+  whiptail --title "⚠ Tunnel deinstallieren" --yesno \
+    "cloudflared Service und apt-Paket entfernen?\n\nTunnel-Konfigurationen unter ~/.cloudflared/ bleiben erhalten." \
+    10 $W || return
+
+  clear
+  info "Stoppe und entferne cloudflared Service..."
+  sudo cloudflared service uninstall 2>/dev/null || true
+  sudo systemctl stop cloudflared 2>/dev/null || true
+  sudo systemctl disable cloudflared 2>/dev/null || true
+  sudo rm -f /etc/systemd/system/cloudflared.service
+  sudo systemctl daemon-reload
+
+  info "Entferne cloudflared Paket..."
+  sudo apt-get remove -y cloudflared 2>&1 | tail -3
+  sudo rm -f /etc/apt/sources.list.d/cloudflared.list
+  sudo rm -f /usr/share/keyrings/cloudflare-main.gpg
+
+  ok "cloudflared vollständig entfernt"
+  info "Konfigurationen unter ~/.cloudflared/ sind noch vorhanden."
+  pause
+}
+
+
 
 menu_settings() {
   while true; do

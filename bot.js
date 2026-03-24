@@ -649,7 +649,30 @@ app.post('/api/update-run', dashboardAuth, (req, res) => {
   });
 });
 
-// ── 23. UPDATE-ZYKLUS ─────────────────────────────────────────────────────────
+// ── Cloudflare Tunnel Status ──────────────────────────────────────────────────
+app.get('/api/tunnel-status', dashboardAuth, (req, res) => {
+  const { execFile } = require('child_process');
+  execFile('systemctl', ['is-active', 'cloudflared'], { timeout: 4000 }, (err, stdout) => {
+    const active = (stdout || '').trim() === 'active';
+    execFile('cloudflared', ['--version'], { timeout: 4000 }, (e2, ver) => {
+      const installed = !e2;
+      const version = installed ? (ver || '').trim().split('\n')[0] : null;
+      execFile('cloudflared', ['tunnel', 'list'], { timeout: 6000 }, (e3, tunnelOut) => {
+        const tunnels = [];
+        if (!e3 && tunnelOut) {
+          const lines = tunnelOut.trim().split('\n').slice(1);
+          for (const line of lines) {
+            const parts = line.trim().split(/\s{2,}/);
+            if (parts.length >= 2) tunnels.push({ id: parts[0], name: parts[1] });
+          }
+        }
+        res.json({ installed, active, version, tunnels });
+      });
+    });
+  });
+});
+
+ ─────────────────────────────────────────────────────────
 function initializeUpdateCycle() {
   const interval = config.get('checkIntervalMs');
   logger.info(`Update-Zyklus gestartet (alle ${interval / 1000}s)`);
