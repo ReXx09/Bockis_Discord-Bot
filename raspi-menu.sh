@@ -263,9 +263,20 @@ sys_all() {
   sys_packages
   sys_nodejs
   sys_docker
-  whiptail --title "✓ Vorbereitung abgeschlossen" --msgbox \
-    "Das System ist bereit!\n\nNächste Schritte:\n  • Uptime Kuma installieren (Menü → Uptime Kuma)\n  • Bot installieren (Menü → Bot-Verwaltung → Installieren)" \
-    12 $W
+  local NEXT
+  NEXT=$(whiptail --title "✓ Vorbereitung abgeschlossen" --menu \
+    "Das System ist bereit!\n\nWas möchtest du als nächstes tun?" \
+    14 $W 3 \
+    "1" "Uptime Kuma lokal installieren  (Docker, auf diesem Raspi)" \
+    "2" "Externe Uptime Kuma URL konfigurieren  (Unraid, NAS, Cloud ...)" \
+    "3" "Weiter  →  direkt zum Bot installieren" \
+    3>&1 1>&2 2>&3) || return
+
+  case "$NEXT" in
+    "1") menu_kuma ;;
+    "2") kuma_external_setup ;;
+    "3") ;;
+  esac
 }
 
 # ════════════════════════════════════════════════════════════════════════════════
