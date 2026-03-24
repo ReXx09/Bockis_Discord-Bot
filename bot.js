@@ -830,7 +830,7 @@ app.get('/api/tunnel-status', dashboardAuth, (req, res) => {
   });
 });
 
- ─────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────
 function initializeUpdateCycle() {
   const interval = config.get('checkIntervalMs');
   logger.info(`Update-Zyklus gestartet (alle ${interval / 1000}s)`);
