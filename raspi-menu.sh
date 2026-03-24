@@ -1013,7 +1013,49 @@ status_health() {
     echo "  $HEALTH"
   else
     err "Health-Endpunkt nicht erreichbar"
-    info "Ist der Bot gestartet?  →  sudo systemctl status bockis-bot"
+    echo ""
+
+    # ── Auto-Diagnose ────────────────────────────────────────────────────────
+    local SVC_STATE; SVC_STATE=$(systemctl is-active bockis-bot 2>/dev/null || echo "inactive")
+
+    if [[ "$SVC_STATE" != "active" ]]; then
+      err "Bot-Service ist nicht aktiv  (Status: ${SVC_STATE})"
+      echo ""
+      info "Letzte Journal-Einträge (bockis-bot):"
+      sudo journalctl -u bockis-bot -n 20 --no-pager 2>/dev/null | tail -20
+      echo ""
+      if whiptail --title "Bot starten?" --yesno \
+        "Der Bot-Service ist nicht aktiv (${SVC_STATE}).\n\nJetzt starten?" 8 $W; then
+        sudo systemctl start bockis-bot
+        sleep 3
+        if curl -sf --max-time 5 "http://localhost:${PORT}/health" >/dev/null; then
+          ok "Bot gestartet – Health-Check OK auf Port ${PORT}"
+        else
+          err "Bot gestartet, antwortet aber noch nicht auf Port ${PORT}"
+          info "Logs: sudo journalctl -u bockis-bot -f"
+        fi
+      fi
+    else
+      ok "Service bockis-bot ist aktiv"
+      # Prüfen ob der Bot auf einem anderen Port läuft (Port-Mismatch nach Portänderung)
+      local ACTUAL_PORT
+      ACTUAL_PORT=$(ss -tlnp 2>/dev/null | grep -oP '(?<=:)\d+(?=.*node)' | head -1)
+      if [[ -n "$ACTUAL_PORT" && "$ACTUAL_PORT" != "$PORT" ]]; then
+        err "Port-Konflikt: Bot läuft auf Port ${ACTUAL_PORT}, .env hat WEB_PORT=${PORT}"
+        info "Der Port wurde geändert, aber der Service läuft noch mit dem alten Port."
+        echo ""
+        if whiptail --title "Service neu starten?" --yesno \
+          "Bot läuft auf Port ${ACTUAL_PORT}, .env hat aber WEB_PORT=${PORT}.\n\nService neu starten um Port ${PORT} zu aktivieren?" \
+          10 $W; then
+          sudo systemctl restart bockis-bot && ok "Bot neu gestartet (Port ${PORT})" || err "Neustart fehlgeschlagen"
+        fi
+      else
+        err "Service aktiv, aber Port ${PORT} antwortet nicht"
+        echo ""
+        info "Letzte Journal-Einträge (bockis-bot):"
+        sudo journalctl -u bockis-bot -n 20 --no-pager 2>/dev/null | tail -20
+      fi
+    fi
   fi
   pause
 }
