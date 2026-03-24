@@ -640,6 +640,7 @@ bot_update() {
   check_bot_installed || return
   clear
 
+  local UPDATE_MODE
   UPDATE_MODE=$(whiptail --title "Update-Modus" --menu \
     "Wie soll der Bot aktualisiert werden?" 12 $W 3 \
     "native" "systemd  (git pull + npm ci + service restart)" \
@@ -647,7 +648,14 @@ bot_update() {
     "auto"   "Automatisch erkennen" \
     3>&1 1>&2 2>&3) || return
 
-  bash "$SCRIPT_DIR/update.sh" --bot-dir "$BOT_DIR" --mode "$UPDATE_MODE" --yes
+  local SKIP_FLAG=""
+  if ! whiptail --title "npm-Abhaengigkeiten" --yesno \
+    "npm-Pakete ebenfalls aktualisieren?\n\n  Ja  = git pull + npm ci  (langsam, sqlite3 neu kompiliert)\n  Nein = nur git pull       (schnell, fuer reine Code-Updates)" \
+    11 $W; then
+    SKIP_FLAG="--skip-npm"
+  fi
+
+  bash "$SCRIPT_DIR/update.sh" --bot-dir "$BOT_DIR" --mode "$UPDATE_MODE" --yes $SKIP_FLAG
   pause
 }
 
@@ -1231,11 +1239,20 @@ check_bot_installed() {
 
 quick_update() {
   check_bot_installed || return
-  if ! whiptail --title "Schnell-Update" --yesno \
-    "Bot und Docker-Container werden jetzt aktualisiert.\n\nFortfahren?" 9 $W; then return; fi
+
+  local UPDATE_SCOPE
+  UPDATE_SCOPE=$(whiptail --title "Schnell-Update" --menu \
+    "Was soll aktualisiert werden?" 12 $W 2 \
+    "code" "Nur Code     (git pull, schnell – kein npm)" \
+    "full" "Code + npm   (git pull + npm ci, dauert laenger)" \
+    3>&1 1>&2 2>&3) || return
+
+  local SKIP_FLAG=""
+  [[ "$UPDATE_SCOPE" == "code" ]] && SKIP_FLAG="--skip-npm"
+
   clear
   echo -e "${BOLD}${CYAN}━━ Schnell-Update ━━${NC}\n"
-  bash "$SCRIPT_DIR/update.sh" --bot-dir "$BOT_DIR" --mode auto --yes
+  bash "$SCRIPT_DIR/update.sh" --bot-dir "$BOT_DIR" --mode auto --yes $SKIP_FLAG
   pause
 }
 

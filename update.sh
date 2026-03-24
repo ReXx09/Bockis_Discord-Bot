@@ -37,20 +37,23 @@ echo -e "${NC}"
 BOT_DIR="$HOME/bockis-bot"
 MODE="auto"
 SKIP_CONFIRM=false
+SKIP_NPM=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --bot-dir)     BOT_DIR="$2"; shift 2 ;;
     --mode)        MODE="$2"; shift 2 ;;
     --yes|-y)      SKIP_CONFIRM=true; shift ;;
+    --skip-npm)    SKIP_NPM=true; shift ;;
     --help|-h)
       echo "Verwendung: bash update.sh [OPTIONEN]"
       echo ""
       echo "Optionen:"
-      echo "  --bot-dir <pfad>         Bot-Verzeichnis (Standard: \$HOME/bockis-bot)"
+      echo "  --bot-dir <pfad>             Bot-Verzeichnis (Standard: \$HOME/bockis-bot)"
       echo "  --mode <auto|native|docker>  Update-Modus (Standard: auto)"
-      echo "  --yes, -y                Alle Bestätigungen überspringen"
-      echo "  --help, -h               Diese Hilfe anzeigen"
+      echo "  --yes, -y                    Alle Bestätigungen überspringen"
+      echo "  --skip-npm                   npm-Abhängigkeiten NICHT aktualisieren"
+      echo "  --help, -h                   Diese Hilfe anzeigen"
       echo ""
       echo "Modi:"
       echo "  auto    Erkennt automatisch ob Docker oder native systemd genutzt wird"
@@ -148,7 +151,10 @@ update_native() {
   fi
 
   # 2. npm-Pakete aktualisieren
-  print_status "Aktualisiere npm-Abhaengigkeiten..."
+  if [[ "$SKIP_NPM" == "true" ]]; then
+    print_warn "npm-Abhängigkeiten übersprungen (--skip-npm)"
+  else
+    print_status "Aktualisiere npm-Abhaengigkeiten..."
   echo ""
 
   _npm_spinner() {
@@ -215,6 +221,7 @@ update_native() {
       print_error "npm install fehlgeschlagen" || true
     fi
   fi
+  fi  # end SKIP_NPM
 
   # 3. Service neu starten
   if systemctl is-active --quiet bockis-bot 2>/dev/null; then
