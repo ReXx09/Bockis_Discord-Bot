@@ -274,71 +274,56 @@ function calculateUptime(heartbeats) {
 }
 
 // ── 16. EMBED-GENERIERUNG ─────────────────────────────────────────────────────
-function buildStatusEmbed(monitors, operationalCount) {
-  const groups = [...new Set(monitors.map(m => m.group))].sort();
-  const fields = [];
+function buildCompactEmbed(monitors, operationalCount) {
+  // ANSI-Farben (Discord unterstützt diese in ```ansi Blöcken)
+  const R   = '\u001b[0m';   // reset
+  const G   = '\u001b[32m'; // grün
+  const RE  = '\u001b[31m'; // rot
+  const Y   = '\u001b[33m'; // gelb
+  const DIM = '\u001b[2m';  // gedimmt
 
-  groups.forEach(group => {
+  const groups     = [...new Set(monitors.map(m => m.group))].sort();
+  const maxNameLen = Math.max(...monitors.map(m => m.name.length), 10);
+  const lines      = [];
+
+  groups.forEach((group, gi) => {
+    if (gi > 0) lines.push('');
     const services = monitors.filter(m => m.group === group);
-    const allUp    = services.every(m => m.status === 1);
-    const anyDown  = services.some(m => m.status === 0);
-    const groupDot = allUp ? '🟢' : anyDown ? '🔴' : '🟡';
+    lines.push(`${DIM}${group.toUpperCase()}  [${services.length}]${R}`);
 
-    // Gruppen-Header als eigenes Field
-    fields.push({
-      name: `${groupDot}  ${group.toUpperCase()}  [${services.length}]`,
-      value: '─'.repeat(32),
-      inline: false
-    });
-
-    // Dienste als inline-Fields (je 3 nebeneinander)
-    services.forEach((monitor, index) => {
-      const status = !monitor.active ? 'deactivated' :
-        monitor.status === 1 ? 'online' :
-        monitor.status === 0 ? 'offline' :
-        monitor.status === 2 ? 'pending' : 'maintenance';
-      const theme     = STATUS_THEME[status];
-      const barFilled = Math.round(Math.min(parseFloat(monitor.uptime), 100) / 10);
-      const bar       = theme.bar.slice(0, barFilled).padEnd(10, '▱');
+    services.forEach(monitor => {
+      const isUp      = monitor.status === 1;
+      const isPending = monitor.status === 2;
+      const C         = isUp ? G : isPending ? Y : RE;
+      const statusLbl = (isUp ? 'OPERATIONAL' : isPending ? 'PENDING' : 'OUTAGE').padEnd(11);
+      const uptime    = parseFloat(monitor.uptime ?? 0);
+      const barLen    = 20;
+      const filled    = Math.round(uptime / 100 * barLen);
+      const bar       = '\u2588'.repeat(filled) + '\u2591'.repeat(barLen - filled);
+      const pct       = `${uptime.toFixed(1)}%`.padStart(6);
       const ts        = monitor.time
-        ? `<t:${Math.floor(new Date(monitor.time).getTime() / 1000)}:R>`
-        : '--';
+        ? new Date(monitor.time).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })
+        : '--:--';
+      const name      = monitor.name.padEnd(maxNameLen);
 
-      fields.push({
-        name:   `${theme.icon} ${monitor.name}`,
-        value:  [
-          `**${theme.title}**`,
-          `\`${bar}\``,
-          `📊 **${monitor.uptime}%**  ${ts}`,
-          monitor.ping ? `📶 ${monitor.ping}ms` : ''
-        ].filter(Boolean).join('  \n'),
-        inline: true
-      });
-
-      // Zeilenumbruch nach je 3 Services
-      if ((index + 1) % 3 === 0 && index + 1 < services.length) {
-        fields.push({ name: '\u200B', value: '\u200B', inline: false });
-      }
+      lines.push(`${C}\u25CF${R} ${name}  ${C}${statusLbl}${R}  ${C}${bar}${R}  ${pct}  ${ts}`);
     });
-
-    // Leerzeile zwischen Gruppen
-    fields.push({ name: '\u200B', value: '\u200B', inline: false });
   });
 
-  const allUp    = monitors.every(m => m.status === 1);
-  const anyDown  = monitors.some(m => m.status === 0);
-  const color    = allUp ? 0x43B581 : anyDown ? 0xF04747 : 0xFAA61A;
-  const timeStr  = new Date().toLocaleString('de-DE', {
+  const ansiBlock = '```ansi\n' + lines.join('\n') + '\n```';
+  const allUp     = monitors.every(m => m.status === 1);
+  const anyDown   = monitors.some(m => m.status === 0);
+  const color     = allUp ? 0x43B581 : anyDown ? 0xF04747 : 0xFAA61A;
+  const timeStr   = new Date().toLocaleString('de-DE', {
     day: '2-digit', month: '2-digit', year: 'numeric',
     hour: '2-digit', minute: '2-digit'
   });
 
   return {
     color,
-    title: '🎮  DIENSTE STATUS-ÜBERSICHT',
-    description: `Stand: ${timeStr}`,
-    fields: fields.slice(0, 25),
-    footer: { text: `${operationalCount}/${monitors.length} Dienste online  •  Uptime Kuma Status – Automatisch generiert` },
+    title: '\uD83D\uDCCA  DIENSTE STATUS-\u00dcBERSICHT',
+    description: `Stand: ${timeStr}\n\n${ansiBlock}`,
+    footer: { text: `${operationalCount}/${monitors.length} Dienste online  \u2022  Uptime Kuma Status \u2013 Automatisch generiert` },
     timestamp: new Date().toISOString()
   };
 }
@@ -433,7 +418,7 @@ async function updateStatusMessage() {
   uptimeGauge.set(uptimePercent);
   statusCheckCounter.inc();
 
-  const embed = buildStatusEmbed(monitors, operationalCount);
+  const embed = buildCompactEmbed(monitors, operationalCount);
   const uptimeKumaUrl = config.get('uptimeKuma.url');
   const slug = config.get('uptimeKuma.statusPageSlug');
   const statusContent = `**🌐 LIVE SERVICE STATUS** | [🔗 Statusseite öffnen](<${uptimeKumaUrl}/status/${slug}>)`;
