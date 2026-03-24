@@ -532,8 +532,8 @@ bot_install() {
 }
 
 bot_update() {
+  check_bot_installed || return
   clear
-  [[ -f "$BOT_DIR/bot.js" ]] || { err "Bot nicht installiert"; pause; return; }
 
   UPDATE_MODE=$(whiptail --title "Update-Modus" --menu \
     "Wie soll der Bot aktualisiert werden?" 12 $W 3 \
@@ -1007,6 +1007,7 @@ menu_update_check() {
   if [[ "$BEHIND" -gt 0 ]]; then
     if whiptail --title "Update verfügbar" --yesno \
       "$BEHIND neue Version(en) verfügbar.\n\nJetzt updaten?" 9 $W; then
+      check_bot_installed || { pause; return; }
       bash "$SCRIPT_DIR/update.sh" --bot-dir "$BOT_DIR" --mode auto --yes
     fi
   fi
@@ -1078,7 +1079,25 @@ main_menu() {
   done
 }
 
+# ── Hilfsfunktion: Bot-Installation prüfen ───────────────────────────────────
+check_bot_installed() {
+  if [[ ! -d "$BOT_DIR" ]]; then
+    whiptail --title "⚠ Bot nicht installiert" --msgbox \
+      "Das Bot-Verzeichnis wurde nicht gefunden:\n\n  $BOT_DIR\n\nBitte zuerst den Bot installieren:\n  node install.js\n\n(Verzeichnis in den Einstellungen ändern → Option 8)" \
+      14 $W
+    return 1
+  fi
+  if [[ ! -f "$BOT_DIR/.env" ]]; then
+    whiptail --title "⚠ Bot nicht konfiguriert" --msgbox \
+      "Die Konfigurationsdatei fehlt:\n\n  $BOT_DIR/.env\n\nDer Bot wurde noch nicht vollständig eingerichtet.\nBitte zuerst den Bot installieren:\n  node install.js" \
+      13 $W
+    return 1
+  fi
+  return 0
+}
+
 quick_update() {
+  check_bot_installed || return
   if ! whiptail --title "Schnell-Update" --yesno \
     "Bot und Docker-Container werden jetzt aktualisiert.\n\nFortfahren?" 9 $W; then return; fi
   clear
