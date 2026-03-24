@@ -715,11 +715,31 @@ bot_logs() {
 bot_service_status() {
   clear
   echo -e "${BOLD}${CYAN}━━ Service-Status ━━${NC}\n"
-  sudo systemctl status bockis-bot --no-pager -l 2>&1 || err "Service nicht gefunden"
-  echo ""
-  local IP; IP=$(hostname -I | awk '{print $1}')
+
+  local SVC_STATE; SVC_STATE=$(systemctl is-active bockis-bot 2>/dev/null || echo "unknown")
+  local SVC_SUB;   SVC_SUB=$(systemctl show -p SubState --value bockis-bot 2>/dev/null || echo "unknown")
+  local SVC_RESULT; SVC_RESULT=$(systemctl show -p Result --value bockis-bot 2>/dev/null || echo "unknown")
+
+  sudo systemctl status bockis-bot --no-pager -l 2>&1
+
+  # ── Diagnose bei Absturz / Crash-Loop ────────────────────────────────────
+  if [[ "$SVC_STATE" != "active" ]]; then
+    echo ""
+    if [[ "$SVC_SUB" == "auto-restart" || "$SVC_RESULT" == "exit-code" || "$SVC_RESULT" == "signal" ]]; then
+      err "Bot startet, stürzt aber sofort ab (${SVC_RESULT}) — Absturzursache:"
+    elif systemctl list-unit-files bockis-bot.service >/dev/null 2>&1; then
+      err "Bot-Service existiert, ist aber nicht aktiv (Status: ${SVC_STATE})"
+    else
+      err "Service 'bockis-bot' nicht gefunden"
+    fi
+    echo ""
+    echo -e "${BOLD}${YELLOW}━━ Letzte Journal-Logs (Absturzursache) ━━${NC}"
+    sudo journalctl -u bockis-bot -n 40 --no-pager 2>/dev/null
+    echo ""
+  fi
+
   local PORT; PORT=$(grep -oP '(?<=WEB_PORT=)\d+' "$BOT_DIR/.env" 2>/dev/null || echo "$BOT_PORT")
-  info "Prüfe Health-Endpoint..."
+  info "Prüfe Health-Endpoint (Port ${PORT})..."
   if curl -sf --max-time 5 "http://localhost:${PORT}/health" >/dev/null 2>&1; then
     ok "http://localhost:${PORT}/health antwortet"
   else
