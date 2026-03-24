@@ -30,7 +30,7 @@ CYAN='\033[0;36m'; BOLD='\033[1m'; NC='\033[0m'
 ok()   { echo -e "${GREEN}  ✓${NC} $1"; }
 info() { echo -e "${YELLOW}  →${NC} $1"; }
 err()  { echo -e "${RED}  ✗${NC} $1" >&2; }
-pause(){ echo ""; read -rp "  Enter drücken um fortzufahren..."; }
+pause(){ echo ""; read -rt 0.1 -N 10000 _ 2>/dev/null || true; read -rp "  Enter drücken um fortzufahren..." </dev/tty; }
 
 # ── Konfiguration ─────────────────────────────────────────────────────────────
 BOT_DIR="$HOME/bockis-bot"
