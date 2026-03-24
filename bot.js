@@ -843,6 +843,42 @@ function initializeUpdateCycle() {
 
 // ── 24. STARTUP ───────────────────────────────────────────────────────────────
 
+// Beim Start: alte Bot-Nachrichten im Status-Channel löschen (Crash-Loop-Überreste)
+async function cleanupOldStatusMessages() {
+  try {
+    const channelId = config.get('discord.statusChannelId');
+    const channel = client.channels.cache.get(channelId);
+    if (!channel) return;
+
+    // Letzte 50 Nachrichten holen, alle vom Bot (außer der gespeicherten) löschen
+    const messages = await channel.messages.fetch({ limit: 50 });
+    const botMessages = messages.filter(m => m.author.id === client.user.id);
+
+    if (botMessages.size <= 1) return; // Nur eine → alles OK
+
+    // Neueste behalten (oder die aus state.json), Rest löschen
+    const sorted = [...botMessages.values()].sort((a, b) => b.createdTimestamp - a.createdTimestamp);
+    const keep = statusMessageId
+      ? sorted.find(m => m.id === statusMessageId) ?? sorted[0]
+      : sorted[0];
+
+    statusMessageId = keep.id;
+    saveState({ statusMessageId, lastChannelStatus, lastChannelNameMs });
+
+    let deleted = 0;
+    for (const msg of sorted) {
+      if (msg.id !== keep.id) {
+        await msg.delete().catch(() => {});
+        deleted++;
+        await new Promise(r => setTimeout(r, 500)); // Rate-Limit-Schutz
+      }
+    }
+    if (deleted > 0) logger.info(`Startup-Cleanup: ${deleted} alte Status-Nachricht(en) gelöscht`);
+  } catch (err) {
+    logger.warn(`Startup-Cleanup fehlgeschlagen (nicht kritisch): ${err.message}`);
+  }
+}
+
 // Webserver SOFORT starten — unabhängig vom Discord-Login
 // Damit ist das Dashboard auch erreichbar wenn der Token noch nicht stimmt
 initializeDatabase().then(() => startWebServer()).catch(err => {
@@ -854,6 +890,7 @@ client.once('ready', async () => {
   logger.info(`Bot eingeloggt als ${client.user.tag}`);
   client.user.setActivity('Service Health', { type: ActivityType.Watching });
   await registerSlashCommands();
+  await cleanupOldStatusMessages();
   initializeUpdateCycle();
 });
 
