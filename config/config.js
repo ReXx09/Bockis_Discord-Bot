@@ -73,6 +73,12 @@ const config = convict({
       format: String,
       default: '',
       env: 'DISCORD_NOTIFICATION_CHANNEL'
+    },
+    channelStatusIndicator: {
+      doc: 'Channel-Name und Topic automatisch mit Statusfarbe aktualisieren (🟢/🟡/🔴)',
+      format: Boolean,
+      default: true,
+      env: 'CHANNEL_STATUS_INDICATOR'
     }
   }
 });

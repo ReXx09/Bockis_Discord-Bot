@@ -187,11 +187,17 @@ function saveState(state) {
   }
 }
 
-let statusMessageId = loadState().statusMessageId ?? null;
+const _initState           = loadState();
+let statusMessageId        = _initState.statusMessageId    ?? null;
+let lastChannelStatus      = _initState.lastChannelStatus  ?? null;
+let lastChannelNameMs      = _initState.lastChannelNameMs  ?? 0;
 
 // ── 12. RATE-LIMIT SCHUTZ ─────────────────────────────────────────────────────
 let lastEditTimestamp = 0;
-const MIN_EDIT_INTERVAL_MS = 5_000;
+const MIN_EDIT_INTERVAL_MS        = 5_000;
+const MIN_CHANNEL_RENAME_MS       = 6 * 60 * 1000;  // 6 min sicherer Puffer (Discord: max 2/10min)
+const CHANNEL_INDICATOR_ENABLED   = process.env.CHANNEL_STATUS_INDICATOR !== 'false';
+const STATUS_DOT = { green: '🟢', yellow: '🟡', red: '🔴' };
 
 // ── 13. RETRY-LOGIK ───────────────────────────────────────────────────────────
 async function withRetry(fn, retries = 3, baseDelayMs = 1000) {
@@ -289,6 +295,55 @@ function createServiceField(monitor) {
   };
 }
 
+// ── 17a. CHANNEL-INDIKATOR (Name + Topic) ────────────────────────────────────
+function _overallStatus(monitors) {
+  const active = monitors.filter(m => m.active !== false);
+  if (!active.length) return 'green';
+  const anyDown    = active.some(m => m.status === 0);
+  const anyPending = active.some(m => m.status === 2);
+  if (anyDown)    return 'red';
+  if (anyPending) return 'yellow';
+  return 'green';
+}
+
+async function updateChannelIndicator(channel, monitors) {
+  if (!CHANNEL_INDICATOR_ENABLED) return;
+
+  const status = _overallStatus(monitors);
+  if (status === lastChannelStatus) return;   // kein Wechsel → kein API-Call
+
+  const now = Date.now();
+  if (now - lastChannelNameMs < MIN_CHANNEL_RENAME_MS) {
+    const remaining = Math.ceil((MIN_CHANNEL_RENAME_MS - (now - lastChannelNameMs)) / 1000);
+    logger.warn(`Channel-Indikator: Status → ${status}, Rate-Limit-Cooldown (noch ${remaining}s)`);
+    return;
+  }
+
+  // Basis-Name: vorhandene Status-Emoji am Anfang entfernen
+  const baseName = channel.name.replace(/^[🟢🟡🔴]+/u, '').trim();
+  const dot      = STATUS_DOT[status];
+  const newName  = `${dot}${baseName}`;
+
+  // Topic-Zusammenfassung
+  const active   = monitors.filter(m => m.active !== false);
+  const online   = active.filter(m => m.status === 1).length;
+  const offline  = active.filter(m => m.status === 0).length;
+  const timeStr  = new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+  const newTopic = `${dot} ${online}/${active.length} Dienste online`
+    + (offline > 0 ? ` · ${offline} offline` : '')
+    + ` · Stand: ${timeStr}`;
+
+  try {
+    await channel.edit({ name: newName, topic: newTopic });
+    lastChannelStatus = status;
+    lastChannelNameMs = now;
+    saveState({ statusMessageId, lastChannelStatus, lastChannelNameMs });
+    logger.info(`Channel-Indikator: ${channel.name} → ${newName} | ${newTopic}`);
+  } catch (err) {
+    logger.error(`Channel-Indikator fehlgeschlagen: ${err.message}`);
+  }
+}
+
 // ── 17. DISCORD STATUS-NACHRICHT ──────────────────────────────────────────────
 async function updateStatusMessage() {
   const now = Date.now();
@@ -376,15 +431,18 @@ async function updateStatusMessage() {
       } catch {
         const newMessage = await channel.send({ content: statusContent, embeds: embeds.slice(0, 10) });
         statusMessageId = newMessage.id;
-        saveState({ statusMessageId });
+        saveState({ statusMessageId, lastChannelStatus, lastChannelNameMs });
       }
     } else {
       const newMessage = await channel.send({ content: statusContent, embeds: embeds.slice(0, 10) });
       statusMessageId = newMessage.id;
-      saveState({ statusMessageId });
+      saveState({ statusMessageId, lastChannelStatus, lastChannelNameMs });
     }
     lastEditTimestamp = Date.now();
     logger.info(`Status aktualisiert: ${operationalCount}/${monitors.length} Dienste online`);
+
+    // Channel-Name + Topic bei Statuswechsel aktualisieren
+    await updateChannelIndicator(channel, monitors);
   } catch (error) {
     logger.error(`Discord-Nachrichtenfehler: ${error.message}`);
     statusMessageId = null;
@@ -672,6 +730,7 @@ app.get('/api/config', dashboardAuth, (req, res) => {
       STATUS_CHANNEL_ID:            get('STATUS_CHANNEL_ID'),
       DISCORD_NOTIFICATION_CHANNEL: get('DISCORD_NOTIFICATION_CHANNEL'),
       UPTIME_KUMA_URL:              get('UPTIME_KUMA_URL'),
+      CHANNEL_STATUS_INDICATOR:     get('CHANNEL_STATUS_INDICATOR') || 'true',
     });
   } catch (err) {
     logger.error(`/api/config GET Fehler: ${err.message}`);
@@ -681,7 +740,7 @@ app.get('/api/config', dashboardAuth, (req, res) => {
 
 // ── POST /api/config — Konfigurationswerte schreiben + Bot neu starten ────────
 app.post('/api/config', dashboardAuth, (req, res) => {
-  const ALLOWED = ['DISCORD_TOKEN', 'STATUS_CHANNEL_ID', 'DISCORD_NOTIFICATION_CHANNEL', 'UPTIME_KUMA_URL'];
+  const ALLOWED = ['DISCORD_TOKEN', 'STATUS_CHANNEL_ID', 'DISCORD_NOTIFICATION_CHANNEL', 'UPTIME_KUMA_URL', 'CHANNEL_STATUS_INDICATOR'];
   const envPath = path.join(__dirname, '.env');
 
   if (!fs.existsSync(envPath)) {
@@ -706,6 +765,10 @@ app.post('/api/config', dashboardAuth, (req, res) => {
     // URL-Format
     if (key === 'UPTIME_KUMA_URL' && !/^https?:\/\/.+/.test(val)) {
       return res.json({ ok: false, error: 'UPTIME_KUMA_URL muss mit http:// oder https:// beginnen' });
+    }
+    // Boolean
+    if (key === 'CHANNEL_STATUS_INDICATOR' && !['true', 'false'].includes(val)) {
+      return res.json({ ok: false, error: 'CHANNEL_STATUS_INDICATOR muss true oder false sein' });
     }
 
     updates[key] = val;

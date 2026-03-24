@@ -427,6 +427,16 @@
       <input class="cfg-input" id="cfgKumaUrl" type="text" autocomplete="off"
              placeholder="http://192.168.x.x:3001">
     </div>
+    <div class="cfg-field">
+      <label class="cfg-label">Channel-Status-Indikator</label>
+      <div style="display:flex;align-items:center;gap:12px;margin-top:2px">
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px">
+          <input type="checkbox" id="cfgChannelIndicator" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
+          <span>Channel-Name und Topic automatisch mit 🟢 / 🟡 / 🔴 aktualisieren</span>
+        </label>
+      </div>
+      <div class="cfg-hint">Bei Statuswechsel wird z.B. aus <code>dienste-status</code> → <code>🟢dienste-status</code> (max. 2× / 10 min)</div>
+    </div>
     <div class="cfg-actions">
       <button class="btn btn-green" id="btnCfgSave" onclick="saveConfig()">💾 Speichern &amp; Neu starten</button>
       <button class="btn" onclick="loadConfig()">↺ Zurücksetzen</button>
@@ -784,6 +794,8 @@
       document.getElementById('cfgToken').placeholder = d.DISCORD_TOKEN
         ? `Aktuell: ${d.DISCORD_TOKEN} — leer lassen = unverändert`
         : 'Neuen Token eingeben';
+      document.getElementById('cfgChannelIndicator').checked =
+        (d.CHANNEL_STATUS_INDICATOR || 'true') !== 'false';
     } catch (e) {
       document.getElementById('cfgStatus').textContent = 'Ladefehler: ' + e.message;
       document.getElementById('cfgStatus').className = 'err';
@@ -809,15 +821,9 @@
     if (statusCh) body.STATUS_CHANNEL_ID            = statusCh;
     if (notifCh)  body.DISCORD_NOTIFICATION_CHANNEL = notifCh;
     if (kumaUrl)  body.UPTIME_KUMA_URL              = kumaUrl;
+    body.CHANNEL_STATUS_INDICATOR = document.getElementById('cfgChannelIndicator').checked ? 'true' : 'false';
 
-    if (!Object.keys(body).length) {
-      st.textContent = 'Keine Änderungen eingegeben.';
-      st.className = 'err';
-      btn.disabled = false;
-      btn.textContent = '💾 Speichern & Neu starten';
-      return;
-    }
-
+    // immer mindestens CHANNEL_STATUS_INDICATOR → body nie leer
     try {
       const res = await fetch('/api/config', {
         method:  'POST',

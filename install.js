@@ -441,6 +441,8 @@ async function finalize(rl, discord, kuma, optional) {
     `DISCORD_TOKEN=${discord.token}`,
     `STATUS_CHANNEL_ID=${discord.statusChannelId}`,
     `DISCORD_NOTIFICATION_CHANNEL=${discord.notifChannel}`,
+    '# Channel-Name automatisch mit Statusfarbe (🟢/🟡/🔴) aktualisieren',
+    'CHANNEL_STATUS_INDICATOR=true',
     '',
     '# ── Uptime Kuma ─────────────────────────────────────────────────────────────',
     `UPTIME_KUMA_URL=${kuma.url}`,
