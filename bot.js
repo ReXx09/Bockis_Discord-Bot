@@ -280,7 +280,6 @@ function buildCompactEmbed(monitors, operationalCount, uptimeKumaUrl, slug) {
 
   groups.forEach(group => {
     const services = monitors.filter(m => m.group === group);
-    const groupOnline = services.filter(m => m.status === 1).length;
 
     // Gruppen-Header
     fields.push({
@@ -289,7 +288,7 @@ function buildCompactEmbed(monitors, operationalCount, uptimeKumaUrl, slug) {
       inline: false
     });
 
-    // Jeder Dienst als eigene Zeile
+    // Jeder Dienst als eigene volle Zeile (kein inline)
     services.forEach(monitor => {
       const isUp      = monitor.status === 1;
       const isPending = monitor.status === 2;
@@ -299,13 +298,13 @@ function buildCompactEmbed(monitors, operationalCount, uptimeKumaUrl, slug) {
       const barFilled = Math.round(uptime / 10);
       const bar       = '\u2588'.repeat(barFilled) + '\u2591'.repeat(10 - barFilled);
       const ts        = monitor.time
-        ? `<t:${Math.floor(new Date(monitor.time).getTime() / 1000)}:t>`
-        : '—';
+        ? new Date(monitor.time).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })
+        : '\u2014';
 
       fields.push({
         name: `${dot}  ${monitor.name}`,
-        value: `${statusLbl}\n\`${bar}\`  **${uptime.toFixed(1)}%**  ${ts}`,
-        inline: true
+        value: `\`${statusLbl}\`  \`${bar}\`  **${uptime.toFixed(1)}%**  \`${ts}\``,
+        inline: false
       });
     });
 
@@ -324,7 +323,7 @@ function buildCompactEmbed(monitors, operationalCount, uptimeKumaUrl, slug) {
   return {
     color,
     title: '\uD83D\uDCCA  DIENSTE STATUS-\u00dcBERSICHT',
-    description: `Stand: ${timeStr}\n[\uD83D\uDD17 Statusseite \u00f6ffnen](<${uptimeKumaUrl}/status/${slug}>)`,
+    description: `Stand: ${timeStr}`,
     fields: fields.slice(0, 25),
     footer: { text: `${operationalCount}/${monitors.length} Dienste online  \u2022  Uptime Kuma Status \u2013 Automatisch generiert` },
     timestamp: new Date().toISOString()
