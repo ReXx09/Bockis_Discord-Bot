@@ -611,15 +611,129 @@ bot_service_status() {
 }
 
 bot_uninstall() {
-  whiptail --title "⚠ Bot deinstallieren" --yesno \
-    "Bot wirklich deinstallieren?\n\n  • systemd-Service wird gestoppt & entfernt\n  • Bot-Ordner BLEIBT erhalten\n\nFortfahren?" \
-    12 $W || return
+  local BOT_PORT_VAL
+  BOT_PORT_VAL=$(grep -oP '(?<=WEB_PORT=)\d+' "$BOT_DIR/.env" 2>/dev/null || echo "$BOT_PORT")
 
+  # ── Stufe wählen ─────────────────────────────────────────────────────────
+  local MODE
+  MODE=$(whiptail --title "🗑  Bot deinstallieren — Stufe wählen" --menu \
+"Wähle den Umfang der Deinstallation:
+
+  ╔══════════════════════════════════════════════════════╗
+  ║  Stufe 1 — Soft-Uninstall  (Konfiguration behalten) ║
+  ║    • systemd-Service stoppen & entfernen             ║
+  ║    • Docker-Container & Image entfernen              ║
+  ║    • UFW-Firewall-Regel entfernen                    ║
+  ║    • Bot-Ordner BLEIBT erhalten                      ║
+  ║      (.env, Datenbank, Logs bleiben gesichert)       ║
+  ╠══════════════════════════════════════════════════════╣
+  ║  Stufe 2 — Full-Uninstall  (alles löschen)          ║
+  ║    • Alles wie Stufe 1, PLUS:                        ║
+  ║    • Bot-Ordner komplett löschen                     ║
+  ║      (inkl. .env, Datenbank, Logs, node_modules)     ║
+  ╚══════════════════════════════════════════════════════╝" \
+    22 $W 3 \
+    "1" "Stufe 1 — Soft-Uninstall  (Konfiguration behalten)" \
+    "2" "Stufe 2 — Full-Uninstall  (alles löschen)" \
+    "←" "Abbrechen" \
+    3>&1 1>&2 2>&3) || return
+
+  [[ "$MODE" == "←" ]] && return
+
+  # ── Bestätigung Stufe 1 ───────────────────────────────────────────────────
+  if [[ "$MODE" == "1" ]]; then
+    local S1_INFO
+    S1_INFO="Folgendes wird entfernt:\n\n"
+    S1_INFO+="  • systemd-Service  bockis-bot\n"
+    command -v ufw >/dev/null 2>&1 && S1_INFO+="  • UFW-Firewall-Regel  Port ${BOT_PORT_VAL}/tcp\n"
+    docker ps -a --format '{{.Names}}' 2>/dev/null | grep -Eq "^bot$|bockis" && \
+      S1_INFO+="  • Docker-Container & Image  (bockis-bot)\n"
+    S1_INFO+="\nDas Bot-Verzeichnis $BOT_DIR wird NICHT gelöscht.\n"
+    S1_INFO+="Deine .env (Token, Channel-IDs) und die Datenbank bleiben erhalten.\n"
+    S1_INFO+="Eine Neuinstallation kann danach direkt mit install.js fortgesetzt werden."
+
+    whiptail --title "Stufe 1 — Soft-Uninstall bestätigen" --yesno \
+      "$S1_INFO" 20 $W || return
+
+  # ── Bestätigung Stufe 2 ───────────────────────────────────────────────────
+  elif [[ "$MODE" == "2" ]]; then
+    local S2_INFO
+    S2_INFO="⚠  ACHTUNG — alles wird gelöscht:\n\n"
+    S2_INFO+="  • systemd-Service  bockis-bot\n"
+    command -v ufw >/dev/null 2>&1 && S2_INFO+="  • UFW-Firewall-Regel  Port ${BOT_PORT_VAL}/tcp\n"
+    docker ps -a --format '{{.Names}}' 2>/dev/null | grep -Eq "^bot$|bockis" && \
+      S2_INFO+="  • Docker-Container & Image  (bockis-bot)\n"
+    S2_INFO+="  • Bot-Ordner  $BOT_DIR\n"
+    S2_INFO+="       (inkl. .env, Datenbank, Logs, node_modules)\n"
+    S2_INFO+="\nDiese Aktion kann NICHT rückgängig gemacht werden!"
+
+    whiptail --title "⚠  Stufe 2 — Full-Uninstall bestätigen" --yesno \
+      "$S2_INFO" 20 $W || return
+
+    # Zweite Bestätigung per eingetippter Phrase
+    local CONFIRM
+    CONFIRM=$(whiptail --title "Sicherheitsabfrage" --inputbox \
+      "Zur Bestätigung bitte  LÖSCHEN  eingeben:" \
+      8 $W "" 3>&1 1>&2 2>&3) || return
+
+    if [[ "$CONFIRM" != "LÖSCHEN" ]]; then
+      whiptail --title "Abgebrochen" --msgbox "Falsche Eingabe — Deinstallation abgebrochen." 8 $W
+      return
+    fi
+  fi
+
+  # ── Gemeinsame Schritte (Stufe 1 + 2) ────────────────────────────────────
+  clear
+  local TITLE="Stufe 1 — Soft-Uninstall"
+  [[ "$MODE" == "2" ]] && TITLE="Stufe 2 — Full-Uninstall"
+  echo -e "${BOLD}${RED}━━ Bot deinstallieren: $TITLE ━━${NC}\n"
+
+  # systemd-Service stoppen & entfernen
+  info "Stoppe und entferne systemd-Service..."
   sudo systemctl stop bockis-bot 2>/dev/null || true
   sudo systemctl disable bockis-bot 2>/dev/null || true
   sudo rm -f /etc/systemd/system/bockis-bot.service
   sudo systemctl daemon-reload
-  ok "Service entfernt — Dateien in $BOT_DIR bleiben erhalten"
+  ok "systemd-Service entfernt"
+
+  # UFW-Firewall-Regel entfernen
+  if command -v ufw >/dev/null 2>&1; then
+    info "Entferne UFW-Regel für Port ${BOT_PORT_VAL}..."
+    sudo ufw delete allow "${BOT_PORT_VAL}"/tcp 2>/dev/null && \
+      ok "UFW-Regel Port ${BOT_PORT_VAL} entfernt" || true
+  fi
+
+  # Docker-Container & Image entfernen (falls vorhanden)
+  if command -v docker >/dev/null 2>&1; then
+    if docker ps -a --format '{{.Names}}' 2>/dev/null | grep -Eq "^bot$|bockis"; then
+      info "Stoppe und entferne Docker-Container..."
+      docker compose -f "$BOT_DIR/docker-compose.yml" down --rmi all --volumes 2>/dev/null || true
+      ok "Docker-Container und Image entfernt"
+    fi
+  fi
+
+  # ── Stufe 2: Bot-Ordner löschen ───────────────────────────────────────────
+  if [[ "$MODE" == "2" ]]; then
+    if [[ -d "$BOT_DIR" ]]; then
+      info "Lösche Bot-Ordner $BOT_DIR ..."
+      rm -rf "$BOT_DIR"
+      ok "Bot-Ordner gelöscht"
+    else
+      info "Bot-Ordner $BOT_DIR nicht gefunden — wird übersprungen"
+    fi
+  fi
+
+  # ── Abschluss-Hinweis ─────────────────────────────────────────────────────
+  echo ""
+  if [[ "$MODE" == "1" ]]; then
+    ok "Soft-Uninstall abgeschlossen."
+    echo -e "  ${GREEN}Deine Konfiguration ist erhalten unter:  ${BOLD}$BOT_DIR/.env${NC}"
+    echo -e "  ${YELLOW}Für eine Neuinstallation:  bash start-bot.sh --bot-dir $BOT_DIR${NC}"
+  else
+    ok "Bot vollständig deinstalliert."
+  fi
+  echo -e "  ${YELLOW}Node.js und Docker wurden NICHT entfernt (Systemkomponenten).${NC}"
+  echo -e "  ${YELLOW}Uptime Kuma läuft weiterhin — bei Bedarf separat deinstallieren.${NC}"
   pause
 }
 
@@ -824,29 +938,121 @@ status_versions() {
 }
 
 # ════════════════════════════════════════════════════════════════════════════════
+# UPDATE-PRÜFUNG
+# ════════════════════════════════════════════════════════════════════════════════
+
+# Gibt 0 zurück wenn Updates verfügbar, 1 wenn aktuell, 2 wenn kein Git-Repo
+check_update_available() {
+  command -v git >/dev/null 2>&1 || return 2
+  [[ -d "$BOT_DIR/.git" ]] || return 2
+
+  # Nur fetch, kein pull — timeout 5s damit das Menü nicht hängt
+  git -C "$BOT_DIR" fetch origin main --quiet 2>/dev/null || return 2
+
+  local BEHIND
+  BEHIND=$(git -C "$BOT_DIR" rev-list HEAD..origin/main --count 2>/dev/null || echo "0")
+  [[ "$BEHIND" -gt 0 ]] && return 0 || return 1
+}
+
+menu_update_check() {
+  clear
+  echo -e "${BOLD}${CYAN}━━ Update-Prüfung ━━${NC}\n"
+
+  command -v git >/dev/null 2>&1 || { err "git ist nicht installiert"; pause; return; }
+  [[ -d "$BOT_DIR/.git" ]] || { err "Bot-Verzeichnis $BOT_DIR ist kein Git-Repository"; pause; return; }
+
+  info "Verbinde mit GitHub..."
+  if ! git -C "$BOT_DIR" fetch origin main --quiet 2>/dev/null; then
+    err "Kein Netzwerkzugriff auf GitHub — Prüfung nicht möglich"
+    pause; return
+  fi
+
+  local LOCAL REMOTE BEHIND AHEAD
+  LOCAL=$(git -C "$BOT_DIR" rev-parse HEAD 2>/dev/null || echo "?")
+  REMOTE=$(git -C "$BOT_DIR" rev-parse origin/main 2>/dev/null || echo "?")
+  BEHIND=$(git -C "$BOT_DIR" rev-list HEAD..origin/main --count 2>/dev/null || echo "0")
+  AHEAD=$(git -C "$BOT_DIR" rev-list origin/main..HEAD --count 2>/dev/null || echo "0")
+
+  local LOCAL_VER REMOTE_VER
+  LOCAL_VER=$(git -C "$BOT_DIR" describe --tags --always HEAD 2>/dev/null || echo "${LOCAL:0:7}")
+  REMOTE_VER=$(git -C "$BOT_DIR" describe --tags --always origin/main 2>/dev/null || echo "${REMOTE:0:7}")
+
+  echo -e "  Lokale Version:   ${BOLD}$LOCAL_VER${NC}  (${LOCAL:0:7})"
+  echo -e "  Remote Version:   ${BOLD}$REMOTE_VER${NC}  (${REMOTE:0:7})"
+  echo ""
+
+  if [[ "$BEHIND" -eq 0 && "$AHEAD" -eq 0 ]]; then
+    ok "Bot ist auf dem aktuellen Stand — kein Update nötig"
+    pause; return
+  fi
+
+  if [[ "$BEHIND" -gt 0 ]]; then
+    echo -e "  ${YELLOW}⚠  $BEHIND neue Commit(s) auf GitHub verfügbar:${NC}"
+    echo ""
+    # Letzte Commits anzeigen
+    git -C "$BOT_DIR" log HEAD..origin/main --oneline --format="    %C(yellow)%h%Creset  %s  %C(dim)(%cr)%Creset" 2>/dev/null | head -10
+    echo ""
+  fi
+
+  if [[ "$AHEAD" -gt 0 ]]; then
+    echo -e "  ${CYAN}ℹ  $AHEAD lokale Commit(s) noch nicht auf GitHub gepusht${NC}"
+    echo ""
+  fi
+
+  if [[ "$BEHIND" -gt 0 ]]; then
+    if whiptail --title "Update verfügbar" --yesno \
+      "$BEHIND neue Version(en) verfügbar.\n\nJetzt updaten?" 9 $W; then
+      bash "$SCRIPT_DIR/update.sh" --bot-dir "$BOT_DIR" --mode auto --yes
+    fi
+  fi
+  pause
+}
+
+# ════════════════════════════════════════════════════════════════════════════════
 # HAUPTMENÜ
 # ════════════════════════════════════════════════════════════════════════════════
 
 main_menu() {
   while true; do
+    # Update-Status im Hintergrund prüfen (non-blocking via tmpfile)
+    local UPDATE_HINT=""
+    local UPDATE_TMP; UPDATE_TMP=$(mktemp)
+    { check_update_available; echo $? > "$UPDATE_TMP"; } 2>/dev/null &
+    local UPDATE_PID=$!
+
     # Status-Zeile für Banner
-    local BOT_STATUS="●" KUMA_STATUS="●"
-    systemctl is-active --quiet bockis-bot 2>/dev/null && BOT_STATUS="${GREEN}● aktiv${NC}" || BOT_STATUS="${RED}● gestoppt${NC}"
-    docker ps --format '{{.Names}}' 2>/dev/null | grep -q "uptime-kuma" && KUMA_STATUS="${GREEN}● aktiv${NC}" || KUMA_STATUS="${RED}● gestoppt${NC}"
+    systemctl is-active --quiet bockis-bot 2>/dev/null && BOT_ST="aktiv" || BOT_ST="gestoppt"
+    docker ps --format '{{.Names}}' 2>/dev/null | grep -q "uptime-kuma" && KUMA_ST="aktiv" || KUMA_ST="gestoppt"
+
+    # Auf Update-Check warten (max 6s)
+    local WAITED=0
+    while kill -0 "$UPDATE_PID" 2>/dev/null && [[ $WAITED -lt 6 ]]; do
+      sleep 0.5; WAITED=$(( WAITED + 1 ))
+    done
+    kill "$UPDATE_PID" 2>/dev/null || true
+    local UPDATE_RC=2
+    [[ -s "$UPDATE_TMP" ]] && UPDATE_RC=$(cat "$UPDATE_TMP")
+    rm -f "$UPDATE_TMP"
+
+    case "$UPDATE_RC" in
+      0) UPDATE_HINT="  ⚠  Bot-Update verfügbar! → Option 5" ;;
+      1) UPDATE_HINT="  ✓  Bot ist aktuell" ;;
+      *) UPDATE_HINT="  –  Update-Status unbekannt (kein Git/Netz)" ;;
+    esac
 
     CHOICE=$(whiptail \
       --title "🤖 Bockis Discord Bot — Raspberry Pi Manager" \
-      --menu "$(printf "Bot: %-12s  |  Uptime Kuma: %-12s\nWas möchtest du tun?" \
-              "$(systemctl is-active bockis-bot 2>/dev/null || echo 'inaktiv')" \
-              "$(docker ps --format '{{.Names}}' 2>/dev/null | grep -c uptime-kuma && echo 'aktiv' || echo 'inaktiv')")" \
-      $H $W 7 \
+      --menu "$(printf "Bot: %-10s  |  Uptime Kuma: %-10s\n%s\nWas möchtest du tun?" \
+              "$BOT_ST" "$KUMA_ST" "$UPDATE_HINT")" \
+      $H $W 9 \
       "1" "🍓  System vorbereiten     (apt, Node.js, Docker, Firewall, ...)" \
       "2" "📊  Uptime Kuma            (installieren, starten, aktualisieren)" \
       "3" "🤖  Bot-Verwaltung         (installieren, starten, Logs, Update)" \
       "4" "🔍  Status & Prüfungen     (Services, Ressourcen, Health-Check)" \
       "5" "🔄  Schnell-Update         (Bot + Docker in einem Schritt)" \
-      "6" "⚙   Einstellungen          (Bot-Verzeichnis, Ports)" \
-      "7" "✗   Beenden" \
+      "6" "🔎  Update-Prüfung         (GitHub vergleichen, neue Commits anzeigen)" \
+      "7" "⚙   Einstellungen          (Bot-Verzeichnis, Ports)" \
+      "8" "✗   Beenden" \
       3>&1 1>&2 2>&3) || break
 
     case "$CHOICE" in
@@ -855,8 +1061,9 @@ main_menu() {
       "3") menu_bot ;;
       "4") menu_status ;;
       "5") quick_update ;;
-      "6") menu_settings ;;
-      "7") break ;;
+      "6") menu_update_check ;;
+      "7") menu_settings ;;
+      "8") break ;;
     esac
   done
 }

@@ -1,25 +1,670 @@
 <!DOCTYPE html>
-<html>
+<html lang="de">
 <head>
-  <title>Service Status</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bockis Bot – Dashboard</title>
   <style>
-    .status-card { padding: 20px; margin: 10px; border-radius: 5px; }
-    .up { background: #d4edda; }
-    .down { background: #f8d7da; }
+    :root {
+      --bg:       #0d1117;
+      --surface:  #161b22;
+      --surface2: #21262d;
+      --border:   #30363d;
+      --text:     #e6edf3;
+      --muted:    #8b949e;
+      --green:    #3fb950;
+      --red:      #f85149;
+      --yellow:   #d29922;
+      --blue:     #388bfd;
+      --purple:   #8957e5;
+      --radius:   8px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 24px;
+    }
+
+    /* HEADER */
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 24px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--border);
+    }
+    .header h1 { font-size: 20px; font-weight: 600; }
+    .header .sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+    .header-right { display: flex; align-items: center; gap: 12px; }
+    .timer { font-size: 12px; color: var(--muted); }
+
+    /* BUTTONS */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 7px 14px;
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      background: var(--surface2);
+      color: var(--text);
+      font-size: 13px;
+      cursor: pointer;
+      transition: background .15s;
+    }
+    .btn:hover { background: var(--border); }
+    .btn-green { background: #238636; border-color: #2ea043; color: #fff; }
+    .btn-green:hover { background: #2ea043; }
+    .btn-green:disabled { opacity: .6; cursor: not-allowed; }
+
+    /* GRID */
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+    @media (max-width: 680px) { .grid-2 { grid-template-columns: 1fr; } }
+    .grid-monitors {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+      gap: 12px;
+    }
+
+    /* CARD */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+    }
+    .card-title {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: .07em;
+      color: var(--muted);
+      margin-bottom: 14px;
+    }
+
+    /* INFO ROW */
+    .row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 7px 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 13px;
+    }
+    .row:last-child { border-bottom: none; }
+    .row-label { color: var(--muted); }
+    .row-value { font-weight: 500; font-family: 'SFMono-Regular', Consolas, monospace; }
+
+    /* BADGE */
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: .04em;
+    }
+    .b-green  { background: rgba(63,185,80,.15);  color: var(--green); }
+    .b-red    { background: rgba(248,81,73,.15);   color: var(--red); }
+    .b-yellow { background: rgba(210,153,34,.15);  color: var(--yellow); }
+    .b-gray   { background: rgba(139,148,158,.15); color: var(--muted); }
+    .b-purple { background: rgba(137,87,229,.15);  color: var(--purple); }
+
+    /* DOT */
+    .dot {
+      display: inline-block;
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      margin-right: 5px;
+    }
+    .dot-g { background: var(--green); box-shadow: 0 0 5px var(--green); }
+    .dot-r { background: var(--red);   box-shadow: 0 0 5px var(--red); }
+
+    /* MONITOR CARD */
+    .mc {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+      position: relative;
+      overflow: hidden;
+    }
+    .mc::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 3px;
+    }
+    .mc.online::before  { background: var(--green); }
+    .mc.offline::before { background: var(--red); }
+    .mc.pending::before { background: var(--yellow); }
+    .mc.inactive::before{ background: var(--muted); }
+    .mc-name {
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 4px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .mc-group { font-size: 11px; color: var(--muted); margin-bottom: 10px; }
+    .uptime-bar {
+      height: 4px;
+      background: var(--surface2);
+      border-radius: 2px;
+      margin: 8px 0;
+      overflow: hidden;
+    }
+    .uptime-fill { height: 100%; border-radius: 2px; transition: width .5s ease; }
+    .uf-g { background: var(--green); }
+    .uf-y { background: var(--yellow); }
+    .uf-r { background: var(--red); }
+    .mc-meta {
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      color: var(--muted);
+      margin-top: 6px;
+    }
+
+    /* SECTION */
+    .section-hdr {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin: 24px 0 12px;
+    }
+    .section-hdr .title { font-size: 14px; font-weight: 600; }
+    .section-hdr .count {
+      font-size: 12px;
+      color: var(--muted);
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 2px 10px;
+    }
+
+    /* LOG VIEWER */
+    .log-viewer {
+      background: #010409;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+      height: 260px;
+      overflow-y: auto;
+      font-family: 'SFMono-Regular', Consolas, monospace;
+      font-size: 12px;
+      line-height: 1.65;
+    }
+    .ll { color: var(--muted); padding: 1px 0; white-space: pre-wrap; word-break: break-all; }
+    .ll.e { color: var(--red); }
+    .ll.w { color: var(--yellow); }
+    .ll.i { color: var(--text); }
+
+    /* SKELETON */
+    .sk {
+      background: linear-gradient(90deg, var(--surface2) 25%, var(--border) 50%, var(--surface2) 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.4s infinite;
+      border-radius: 4px;
+      height: 13px;
+      margin-bottom: 14px;
+    }
+    @keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+
+    /* TOAST */
+    #toast {
+      position: fixed;
+      bottom: 24px; right: 24px;
+      padding: 12px 18px;
+      border-radius: var(--radius);
+      font-size: 13px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      display: none;
+      z-index: 999;
+      box-shadow: 0 4px 20px rgba(0,0,0,.5);
+    }
+    #toast.show  { display: block; animation: fiu .25s ease; }
+    #toast.ok    { border-color: var(--green); color: var(--green); }
+    #toast.err   { border-color: var(--red);   color: var(--red); }
+    @keyframes fiu { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:none} }
+
+    .muted { color: var(--muted); font-size: 12px; }
+    .mb12  { margin-bottom: 12px; }
+
+    /* UPDATE BANNER */
+    #updateBanner {
+      display: none;
+      background: rgba(210,153,34,.08);
+      border: 1px solid rgba(210,153,34,.4);
+      border-radius: var(--radius);
+      padding: 14px 18px;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    #updateBanner.hidden { display: none !important; }
+    .ub-left { display: flex; align-items: center; gap: 10px; }
+    .ub-icon { font-size: 20px; }
+    .ub-title { font-size: 14px; font-weight: 600; color: var(--yellow); }
+    .ub-sub   { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+    /* UPDATE SECTION */
+    #updateSection { display: none; margin-bottom: 24px; }
+    #updateSection.visible { display: block; }
+    .commit-list { margin-top: 10px; }
+    .commit {
+      display: flex; gap: 12px; align-items: baseline;
+      padding: 6px 0; border-bottom: 1px solid var(--border);
+      font-size: 13px;
+    }
+    .commit:last-child { border-bottom: none; }
+    .commit-hash {
+      font-family: 'SFMono-Regular', Consolas, monospace;
+      font-size: 11px; color: var(--blue);
+      min-width: 52px;
+    }
+    .commit-msg  { flex: 1; color: var(--text); }
+    .commit-when { font-size: 11px; color: var(--muted); white-space: nowrap; }
+
+    /* TERMINAL OUTPUT */
+    #updateLog {
+      background: #010409;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 14px;
+      height: 200px;
+      overflow-y: auto;
+      font-family: 'SFMono-Regular', Consolas, monospace;
+      font-size: 12px;
+      line-height: 1.6;
+      display: none;
+      margin-top: 12px;
+    }
+    #updateLog.visible { display: block; }
+    .ul-line { white-space: pre-wrap; word-break: break-all; color: var(--muted); }
+    .ul-ok   { color: var(--green); }
+    .ul-err  { color: var(--red); }
+    .ul-warn { color: var(--yellow); }
   </style>
 </head>
 <body>
-  <h1>Service Status Dashboard</h1>
-  
-  <% statuses.forEach(status => { %>
-    <div class="status-card <%= status.status %>">
-      <h3>Monitor #<%= status.monitorId %></h3>
-      <p>Status: <%= status.status.toUpperCase() %></p>
-      <p>Response: <%= status.responseTime %>ms</p>
-      <small><%= status.createdAt %></small>
-    </div>
-  <% }); %>
 
-  <h2>Uptime: <%= uptime %>%</h2>
+<!-- ── UPDATE BANNER (wird per JS eingeblendet) ─────── -->
+<div id="updateBanner" class="hidden">
+  <div class="ub-left">
+    <span class="ub-icon">⚠️</span>
+    <div>
+      <div class="ub-title">Update verfügbar</div>
+      <div class="ub-sub" id="ubSub">Neue Version auf GitHub gefunden</div>
+    </div>
+  </div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap">
+    <button class="btn" onclick="toggleUpdateSection()">Details anzeigen ↓</button>
+    <button class="btn btn-green" id="btnUpdateRun" onclick="runUpdate()">▶ Update jetzt starten</button>
+  </div>
+</div>
+
+<!-- ── UPDATE DETAIL SECTION ──────────────────────────── -->
+<div id="updateSection">
+  <div class="card" style="margin-bottom:16px">
+    <div class="card-title">Neue Commits auf GitHub</div>
+    <div id="commitList" class="commit-list"></div>
+    <div id="updateLog"></div>
+  </div>
+</div>
+
+<!-- ── HEADER ─────────────────────────────────────────── -->
+<div class="header">
+  <div>
+    <h1>🤖 Bockis Bot · Dashboard</h1>
+    <div class="sub">Service Monitor · Live-Ansicht</div>
+  </div>
+  <div class="header-right">
+    <span class="timer" id="timer">Auto-Refresh in 30s</span>
+    <button class="btn btn-green" id="btnRefresh" onclick="manualRefresh()">
+      ↺ Discord Refresh
+    </button>
+  </div>
+</div>
+
+<!-- ── ROW 1: BOT + SYSTEM ────────────────────────────── -->
+<div class="grid-2">
+  <div class="card">
+    <div class="card-title">Bot Status</div>
+    <div id="botInfo">
+      <div class="sk"></div>
+      <div class="sk" style="width:70%"></div>
+      <div class="sk" style="width:50%"></div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-title">System</div>
+    <div id="sysInfo">
+      <div class="sk"></div>
+      <div class="sk" style="width:70%"></div>
+      <div class="sk" style="width:50%"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ── ROW 2: MONITORS ────────────────────────────────── -->
+<div class="section-hdr">
+  <span class="title">Services</span>
+  <span class="count" id="monCount">–</span>
+</div>
+<div class="grid-monitors" id="monGrid"></div>
+
+<!-- ── ROW 3: LOGS ────────────────────────────────────── -->
+<div class="section-hdr" style="margin-top:28px">
+  <span class="title">Bot-Logs</span>
+  <span class="muted" id="logFile">–</span>
+</div>
+<div class="log-viewer" id="logViewer">
+  <span class="muted">Lade Logs…</span>
+</div>
+
+<!-- ── TOAST ──────────────────────────────────────────── -->
+<div id="toast"></div>
+
+<script>
+  // ── Countdown ────────────────────────────────────────
+  let cd = 30, cdTimer = null;
+
+  function resetCd() {
+    cd = 30;
+    clearInterval(cdTimer);
+    cdTimer = setInterval(() => {
+      cd--;
+      document.getElementById('timer').textContent = `Auto-Refresh in ${cd}s`;
+      if (cd <= 0) { fetchAll(); resetCd(); }
+    }, 1000);
+  }
+
+  // ── Toast ────────────────────────────────────────────
+  function toast(msg, type = 'ok') {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.className = 'show ' + type;
+    clearTimeout(el._t);
+    el._t = setTimeout(() => el.className = '', 3500);
+  }
+
+  // ── Helpers ──────────────────────────────────────────
+  function fmtUptime(sec) {
+    const d = Math.floor(sec / 86400);
+    const h = Math.floor((sec % 86400) / 3600);
+    const m = Math.floor((sec % 3600) / 60);
+    const s = Math.floor(sec % 60);
+    if (d > 0) return `${d}d ${h}h ${m}m`;
+    if (h > 0) return `${h}h ${m}m ${s}s`;
+    return `${m}m ${s}s`;
+  }
+
+  function row(label, value) {
+    return `<div class="row"><span class="row-label">${label}</span><span class="row-value">${value}</span></div>`;
+  }
+
+  // ── Render: Bot Info ─────────────────────────────────
+  function renderBot(d) {
+    const dot   = d.discordReady ? '<span class="dot dot-g"></span>' : '<span class="dot dot-r"></span>';
+    const badge = d.discordReady ? '<span class="badge b-green">ONLINE</span>' : '<span class="badge b-red">OFFLINE</span>';
+    const pingColor = d.ping < 0 ? 'var(--muted)' : d.ping < 100 ? 'var(--green)' : d.ping < 250 ? 'var(--yellow)' : 'var(--red)';
+    const pingStr   = d.ping >= 0 ? `<span style="color:${pingColor}">${d.ping} ms</span>` : '–';
+
+    document.getElementById('botInfo').innerHTML =
+      row('Discord', dot + badge) +
+      row('Bot-Tag', d.tag) +
+      row('WS-Ping', pingStr) +
+      row('Laufzeit', fmtUptime(d.uptime));
+  }
+
+  // ── Render: System ───────────────────────────────────
+  function renderSys(d) {
+    document.getElementById('sysInfo').innerHTML =
+      row('Node.js',      d.nodeVersion) +
+      row('RAM (Prozess)', d.memUsedMb + ' MB') +
+      row('Heap (genutzt)', d.memHeapMb + ' MB') +
+      row('Plattform',    navigator.platform || '–');
+  }
+
+  // ── Render: Monitors ─────────────────────────────────
+  function monClass(m) {
+    if (!m.active)    return 'inactive';
+    if (m.status === 1) return 'online';
+    if (m.status === 0) return 'offline';
+    if (m.status === 2) return 'pending';
+    return 'inactive';
+  }
+  function monBadge(m) {
+    if (!m.active)    return '<span class="badge b-gray">DEAKTIVIERT</span>';
+    if (m.status === 1) return '<span class="badge b-green">ONLINE</span>';
+    if (m.status === 0) return '<span class="badge b-red">OFFLINE</span>';
+    if (m.status === 2) return '<span class="badge b-yellow">PENDING</span>';
+    return '<span class="badge b-gray">UNBEKANNT</span>';
+  }
+  function fillCls(u) {
+    const v = parseFloat(u);
+    return v >= 95 ? 'uf-g' : v >= 80 ? 'uf-y' : 'uf-r';
+  }
+
+  function renderMonitors(monitors) {
+    const grid  = document.getElementById('monGrid');
+    const count = document.getElementById('monCount');
+
+    if (!monitors.length) {
+      grid.innerHTML = '<p class="muted">Keine Daten von Uptime Kuma empfangen.</p>';
+      count.textContent = '0';
+      return;
+    }
+
+    const online  = monitors.filter(m => m.status === 1 && m.active).length;
+    const offline = monitors.filter(m => m.status === 0 && m.active).length;
+    count.textContent = `${online} / ${monitors.length} online` + (offline ? ` · ${offline} offline` : '');
+
+    grid.innerHTML = monitors.map(m => {
+      const lastCheck = m.time ? new Date(m.time).toLocaleTimeString('de-DE') : '–';
+      const ping      = m.ping ? m.ping + ' ms' : '–';
+      return `
+        <div class="mc ${monClass(m)}">
+          <div class="mc-name" title="${m.name}">${m.name}</div>
+          <div class="mc-group">${m.group}</div>
+          ${monBadge(m)}
+          <div class="uptime-bar">
+            <div class="uptime-fill ${fillCls(m.uptime)}" style="width:${m.uptime}%"></div>
+          </div>
+          <div class="mc-meta">
+            <span>${m.uptime}% Uptime</span>
+            <span>${ping}</span>
+          </div>
+          <div class="muted" style="margin-top:6px">⏱ ${lastCheck}</div>
+        </div>`;
+    }).join('');
+  }
+
+  // ── Render: Logs ─────────────────────────────────────
+  function renderLogs(d) {
+    document.getElementById('logFile').textContent = d.file || '–';
+    const viewer = document.getElementById('logViewer');
+
+    if (!d.lines.length) {
+      viewer.innerHTML = '<span class="muted">Keine Log-Einträge gefunden.</span>';
+      return;
+    }
+
+    viewer.innerHTML = d.lines.map(line => {
+      let cls = 'll';
+      if (/ERROR/i.test(line)) cls += ' e';
+      else if (/WARN/i.test(line))  cls += ' w';
+      else if (/INFO/i.test(line))  cls += ' i';
+      const safe = line.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      return `<div class="${cls}">${safe}</div>`;
+    }).join('');
+  }
+
+  // ── Fetch All ────────────────────────────────────────
+  async function fetchAll() {
+    try {
+      const [bot, status, logs] = await Promise.all([
+        fetch('/api/bot-info').then(r => r.json()),
+        fetch('/api/status').then(r => r.json()),
+        fetch('/api/logs').then(r => r.json())
+      ]);
+      if (bot.ok)    { renderBot(bot);    renderSys(bot); }
+      if (status.ok) renderMonitors(status.monitors);
+      if (logs.ok)   renderLogs(logs);
+    } catch (e) {
+      toast('Verbindungsfehler – ' + e.message, 'err');
+    }
+  }
+
+  // ── Manual Refresh ───────────────────────────────────
+  async function manualRefresh() {
+    const btn = document.getElementById('btnRefresh');
+    btn.disabled = true;
+    btn.textContent = '⏳ Wird aktualisiert…';
+    try {
+      const res = await fetch('/api/refresh', { method: 'POST' });
+      const d   = await res.json();
+      if (d.ok) toast('✓ Discord Status-Nachricht aktualisiert');
+      else      toast('Fehler: ' + d.error, 'err');
+      await fetchAll();
+      resetCd();
+    } catch (e) {
+      toast('Netzwerkfehler: ' + e.message, 'err');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '↺ Discord Refresh';
+    }
+  }
+
+  // ── Init ─────────────────────────────────────────────
+  fetchAll();
+  resetCd();
+  checkUpdate();
+
+  // ── Update Check ─────────────────────────────────────
+  let _updateData = null;
+
+  async function checkUpdate() {
+    try {
+      const d = await fetch('/api/update-check').then(r => r.json());
+      if (!d.ok || !d.hasGit || d.fetchFailed) return;
+      _updateData = d;
+
+      const banner = document.getElementById('updateBanner');
+      const sub    = document.getElementById('ubSub');
+
+      if (d.updateAvailable) {
+        sub.textContent = `${d.behind} neuer Commit${d.behind > 1 ? 's' : ''} verfügbar · lokal: ${d.local} · remote: ${d.remote}`;
+        banner.classList.remove('hidden');
+        renderCommits(d.commits);
+      } else {
+        // Kein Update — trotzdem Versioninfo im Bot-Card ergänzen
+        const bi = document.getElementById('botInfo');
+        if (bi) bi.innerHTML += row('Git-Commit', d.local + ' ✓ aktuell');
+      }
+    } catch { /* update check ist nicht kritisch */ }
+  }
+
+  function renderCommits(commits) {
+    const cl = document.getElementById('commitList');
+    if (!commits.length) { cl.innerHTML = '<span class="muted">Keine Details verfügbar.</span>'; return; }
+    cl.innerHTML = commits.map(c =>
+      `<div class="commit">
+        <span class="commit-hash">${c.hash}</span>
+        <span class="commit-msg">${c.subject.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</span>
+        <span class="commit-when">${c.when}</span>
+      </div>`
+    ).join('');
+  }
+
+  function toggleUpdateSection() {
+    const s = document.getElementById('updateSection');
+    s.classList.toggle('visible');
+  }
+
+  async function runUpdate() {
+    const btn = document.getElementById('btnUpdateRun');
+    btn.disabled = true;
+    btn.textContent = '⏳ Update läuft…';
+
+    const log  = document.getElementById('updateLog');
+    const sect = document.getElementById('updateSection');
+    log.innerHTML = '';
+    log.classList.add('visible');
+    sect.classList.add('visible');
+    log.scrollTop = 0;
+
+    const addLine = (text, cls = '') => {
+      const el = document.createElement('div');
+      el.className = 'ul-line ' + cls;
+      // ANSI-Escape-Codes entfernen
+      el.textContent = text.replace(/\x1b\[[0-9;]*m/g, '');
+      log.appendChild(el);
+      log.scrollTop = log.scrollHeight;
+    };
+
+    try {
+      const res  = await fetch('/api/update-run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: 'auto' })
+      });
+
+      const reader = res.body.getReader();
+      const dec    = new TextDecoder();
+      let buf = '';
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        const parts = buf.split('\n\n');
+        buf = parts.pop();
+        for (const part of parts) {
+          if (!part.startsWith('data:')) continue;
+          const line = part.slice(5).trim();
+          if (line.startsWith('__EXIT__:')) {
+            const code = line.split(':')[1];
+            if (code === '0') {
+              addLine('✓ Update erfolgreich abgeschlossen!', 'ul-ok');
+              toast('✓ Bot erfolgreich aktualisiert!', 'ok');
+              document.getElementById('updateBanner').classList.add('hidden');
+            } else {
+              addLine(`✗ Update fehlgeschlagen (Exit-Code ${code})`, 'ul-err');
+              toast('Update fehlgeschlagen', 'err');
+            }
+          } else {
+            let cls = 'ul-line';
+            if (/error|fehler|fail/i.test(line))   cls = 'ul-err';
+            else if (/warn|⚠/i.test(line))         cls = 'ul-warn';
+            else if (/✓|success|erfolgreich/i.test(line)) cls = 'ul-ok';
+            addLine(line, cls);
+          }
+        }
+      }
+    } catch (e) {
+      addLine('Verbindungsfehler: ' + e.message, 'ul-err');
+      toast('Fehler: ' + e.message, 'err');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '▶ Update jetzt starten';
+    }
+  }
+</script>
 </body>
 </html>

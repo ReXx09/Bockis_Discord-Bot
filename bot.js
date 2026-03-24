@@ -71,6 +71,7 @@ const uptimeGauge = new prom.Gauge({
 // ── 6. EXPRESS DASHBOARD ──────────────────────────────────────────────────────
 const app = express();
 app.set('view engine', 'ejs');
+app.use(express.json());
 app.use(express.static('public'));
 
 // ── 7. MIDDLEWARE ─────────────────────────────────────────────────────────────
@@ -514,20 +515,8 @@ app.get('/health', localOnly, async (req, res) => {
   });
 });
 
-app.get('/dashboard', dashboardAuth, async (req, res) => {
-  try {
-    const statusData = await MonitorStatus.findAll({
-      order: [['createdAt', 'DESC']],
-      limit: 50
-    });
-    res.render('dashboard', {
-      statuses: statusData,
-      uptime: await calculateUptimeMetrics()
-    });
-  } catch (error) {
-    logger.error(`Dashboard-Fehler: ${error.message}`);
-    res.status(500).send('Dashboard error');
-  }
+app.get('/dashboard', dashboardAuth, (req, res) => {
+  res.render('dashboard');
 });
 
 app.get('/metrics', localOnly, async (req, res) => {
@@ -538,6 +527,126 @@ app.get('/metrics', localOnly, async (req, res) => {
   } catch (error) {
     res.status(500).end();
   }
+});
+
+// ── 22b. DASHBOARD API ────────────────────────────────────────────────────────
+
+app.get('/api/status', dashboardAuth, async (req, res) => {
+  try {
+    const monitors = await getMonitorData();
+    res.json({ ok: true, monitors: monitors ?? [] });
+  } catch (err) {
+    logger.error(`/api/status Fehler: ${err.message}`);
+    res.json({ ok: false, error: err.message, monitors: [] });
+  }
+});
+
+app.get('/api/bot-info', dashboardAuth, (req, res) => {
+  const mem = process.memoryUsage();
+  res.json({
+    ok:           true,
+    tag:          client.isReady() ? client.user.tag : 'Offline',
+    ping:         client.isReady() ? client.ws.ping : -1,
+    uptime:       process.uptime(),
+    nodeVersion:  process.version,
+    memUsedMb:    (mem.rss      / 1024 / 1024).toFixed(1),
+    memHeapMb:    (mem.heapUsed / 1024 / 1024).toFixed(1),
+    discordReady: client.isReady()
+  });
+});
+
+app.get('/api/logs', dashboardAuth, (req, res) => {
+  try {
+    const logDir = path.join(__dirname, 'logs');
+    if (!fs.existsSync(logDir)) return res.json({ ok: true, lines: [], file: null });
+    const files = fs.readdirSync(logDir)
+      .filter(f => f.endsWith('.log'))
+      .sort()
+      .reverse();
+    if (!files.length) return res.json({ ok: true, lines: [], file: null });
+    const latest  = path.join(logDir, files[0]);
+    const content  = fs.readFileSync(latest, 'utf8');
+    const lines    = content.split('\n').filter(Boolean).slice(-100).reverse();
+    res.json({ ok: true, lines, file: files[0] });
+  } catch (err) {
+    logger.error(`/api/logs Fehler: ${err.message}`);
+    res.json({ ok: false, error: err.message, lines: [], file: null });
+  }
+});
+
+app.post('/api/refresh', dashboardAuth, async (req, res) => {
+  try {
+    await updateStatusMessage();
+    res.json({ ok: true, message: 'Status-Nachricht aktualisiert' });
+  } catch (err) {
+    logger.error(`/api/refresh Fehler: ${err.message}`);
+    res.json({ ok: false, error: err.message });
+  }
+});
+
+app.get('/api/update-check', dashboardAuth, (req, res) => {
+  const { execSync } = require('child_process');
+  try {
+    const botDir = __dirname;
+    // Prüfen ob git-Repo
+    try { execSync('git rev-parse --is-inside-work-tree', { cwd: botDir, stdio: 'ignore' }); }
+    catch { return res.json({ ok: true, hasGit: false, updateAvailable: false }); }
+
+    // fetch mit 8s Timeout
+    try { execSync('git fetch origin main --quiet', { cwd: botDir, timeout: 8000, stdio: 'ignore' }); }
+    catch { return res.json({ ok: true, hasGit: true, fetchFailed: true, updateAvailable: false }); }
+
+    const behind  = parseInt(execSync('git rev-list HEAD..origin/main --count', { cwd: botDir }).toString().trim(), 10) || 0;
+    const ahead   = parseInt(execSync('git rev-list origin/main..HEAD --count', { cwd: botDir }).toString().trim(), 10) || 0;
+    const local   = execSync('git rev-parse --short HEAD',         { cwd: botDir }).toString().trim();
+    const remote  = execSync('git rev-parse --short origin/main',  { cwd: botDir }).toString().trim();
+
+    let commits = [];
+    if (behind > 0) {
+      commits = execSync(
+        'git log HEAD..origin/main --oneline --format=%h|||%s|||%cr',
+        { cwd: botDir }
+      ).toString().trim().split('\n').filter(Boolean).slice(0, 10).map(l => {
+        const [hash, subject, when] = l.split('|||');
+        return { hash, subject, when };
+      });
+    }
+
+    res.json({ ok: true, hasGit: true, fetchFailed: false, updateAvailable: behind > 0,
+               behind, ahead, local, remote, commits });
+  } catch (err) {
+    logger.error(`/api/update-check Fehler: ${err.message}`);
+    res.json({ ok: false, error: err.message });
+  }
+});
+
+app.post('/api/update-run', dashboardAuth, (req, res) => {
+  // Sicherheit: nur zulässige Modi
+  const ALLOWED_MODES = ['auto', 'native', 'docker'];
+  const mode = ALLOWED_MODES.includes(req.body?.mode) ? req.body.mode : 'auto';
+  const { spawn }  = require('child_process');
+  const scriptPath = path.join(__dirname, 'update.sh');
+
+  if (!fs.existsSync(scriptPath)) {
+    return res.json({ ok: false, error: 'update.sh nicht gefunden' });
+  }
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders();
+
+  const proc = spawn('bash', [scriptPath, '--bot-dir', __dirname, '--mode', mode, '--yes'],
+    { cwd: __dirname });
+
+  const send = (line) => res.write(`data: ${line.replace(/\n/g, ' ')}\n\n`);
+
+  proc.stdout.on('data', d => d.toString().split('\n').filter(Boolean).forEach(send));
+  proc.stderr.on('data', d => d.toString().split('\n').filter(Boolean).forEach(send));
+  proc.on('close', code => {
+    res.write(`data: __EXIT__:${code}\n\n`);
+    res.end();
+  });
 });
 
 // ── 23. UPDATE-ZYKLUS ─────────────────────────────────────────────────────────
