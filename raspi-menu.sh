@@ -914,14 +914,43 @@ status_docker() {
   if ! command -v docker >/dev/null 2>&1; then
     err "Docker ist nicht installiert"; pause; return
   fi
+
   echo -e "${BOLD}Laufende Container:${NC}"
-  docker ps --format "table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}" 2>&1
+  local RUNNING; RUNNING=$(docker ps --format "table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}" 2>&1)
+  echo "$RUNNING"
+  if [[ $(docker ps -q 2>/dev/null | wc -l) -eq 0 ]]; then
+    echo -e "  ${YELLOW}(keine laufenden Container — normal bei systemd-Betrieb ohne lokales Docker-Setup)${NC}"
+  fi
+
   echo ""
   echo -e "${BOLD}Alle Container (inkl. gestoppte):${NC}"
-  docker ps -a --format "table {{.Names}}\t{{.Status}}" 2>&1 | tail -10
+  local ALL; ALL=$(docker ps -a --format "table {{.Names}}\t{{.Status}}" 2>&1)
+  echo "$ALL" | tail -10
+  if [[ $(docker ps -aq 2>/dev/null | wc -l) -eq 0 ]]; then
+    echo -e "  ${YELLOW}(keine Container vorhanden)${NC}"
+  fi
+
   echo ""
   echo -e "${BOLD}Images:${NC}"
-  docker images --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}" 2>&1 | head -15
+  docker images --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}" 2>&1 | head -20
+
+  # ── Dangling Images erkennen ─────────────────────────────────────────────
+  local DANGLING; DANGLING=$(docker images -f "dangling=true" -q 2>/dev/null)
+  local DANGLING_COUNT; DANGLING_COUNT=$(echo "$DANGLING" | grep -c . 2>/dev/null || echo 0)
+  if [[ "$DANGLING_COUNT" -gt 0 ]]; then
+    local DANGLING_SIZE; DANGLING_SIZE=$(docker images -f "dangling=true" --format "{{.Size}}" 2>/dev/null | head -1)
+    echo ""
+    echo -e "  ${YELLOW}⚠  ${DANGLING_COUNT} verwaiste Images (<none>) gefunden — je ca. ${DANGLING_SIZE} Speicher${NC}"
+    echo -e "  ${YELLOW}   Das sind Überbleibsel alter Docker-Builds (insgesamt potentially mehrere GB).${NC}"
+    echo ""
+    if whiptail --title "Dangling Images bereinigen?" --yesno \
+      "${DANGLING_COUNT} verwaiste Docker-Images (<none>) belegen unnötig Speicherplatz.\n\nJetzt bereinigen?\n(docker image prune — entfernt nur nicht verwendete Images)" \
+      10 $W; then
+      docker image prune -f 2>&1 | tail -5
+      ok "Verwaiste Images entfernt"
+    fi
+  fi
+
   pause
 }
 
