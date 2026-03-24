@@ -282,26 +282,35 @@ menu_kuma() {
       KUMA_STATUS="AKTIV (systemd)"
     fi
 
+    # Zeige ob extern konfiguriert
+    local KUMA_MODE_LABEL="lokal / Docker"
+    if [[ -f "$BOT_DIR/.env" ]] && grep -q 'UPTIME_KUMA_URL=' "$BOT_DIR/.env" 2>/dev/null; then
+      local KUMA_CONF; KUMA_CONF=$(grep 'UPTIME_KUMA_URL=' "$BOT_DIR/.env" | cut -d'=' -f2- | tr -d '"')
+      [[ -n "$KUMA_CONF" ]] && KUMA_MODE_LABEL="→ $KUMA_CONF"
+    fi
+
     CHOICE=$(whiptail --title "📊 Uptime Kuma  [$KUMA_STATUS]" --menu \
-      "Uptime Kuma Monitoring-Plattform verwalten:" $H $W 8 \
+      "Uptime Kuma Monitoring-Plattform verwalten:\n($KUMA_MODE_LABEL)" $H $W 9 \
       "1" "Status & Verbindung prüfen" \
-      "2" "Mit Docker installieren  (empfohlen)" \
-      "3" "Uptime Kuma starten" \
-      "4" "Uptime Kuma stoppen" \
-      "5" "Uptime Kuma aktualisieren" \
-      "6" "Logs anzeigen" \
-      "7" "Deinstallieren" \
+      "2" "Lokal installieren  (Docker, empfohlen für Raspi)" \
+      "3" "Externe Instanz konfigurieren  (Unraid, NAS, Cloud ...)" \
+      "4" "Uptime Kuma starten" \
+      "5" "Uptime Kuma stoppen" \
+      "6" "Uptime Kuma aktualisieren" \
+      "7" "Logs anzeigen" \
+      "8" "Deinstallieren  (nur lokale Instanz)" \
       "←" "Zurück zum Hauptmenü" \
       3>&1 1>&2 2>&3) || return
 
     case "$CHOICE" in
       "1") kuma_status ;;
       "2") kuma_install_docker ;;
-      "3") kuma_start ;;
-      "4") kuma_stop ;;
-      "5") kuma_update ;;
-      "6") kuma_logs ;;
-      "7") kuma_uninstall ;;
+      "3") kuma_external_setup ;;
+      "4") kuma_start ;;
+      "5") kuma_stop ;;
+      "6") kuma_update ;;
+      "7") kuma_logs ;;
+      "8") kuma_uninstall ;;
       "←") return ;;
     esac
   done
@@ -313,30 +322,47 @@ kuma_status() {
 
   local IP; IP=$(hostname -I | awk '{print $1}')
 
-  # Docker
-  if docker ps --format '{{.Names}}' 2>/dev/null | grep -q "uptime-kuma"; then
-    ok "Container läuft (Docker)"
-    docker ps --filter "name=uptime-kuma" --format "  Image: {{.Image}}\n  Status: {{.Status}}\n  Ports: {{.Ports}}"
-    echo ""
-    ok "Erreichbar unter: http://${IP}:${KUMA_PORT}"
-  elif docker ps -a --format '{{.Names}}' 2>/dev/null | grep -q "uptime-kuma"; then
-    err "Container existiert, ist aber gestoppt"
-    echo "  Starten: docker start uptime-kuma"
-  elif systemctl is-active --quiet uptime-kuma 2>/dev/null; then
-    ok "systemd-Service aktiv"
-  else
-    err "Uptime Kuma ist nicht installiert oder nicht gestartet"
-    echo ""
-    echo "  Installieren über: Menü → Uptime Kuma → Mit Docker installieren"
+  # Konfigurierte URL aus .env lesen (falls vorhanden)
+  local KUMA_URL_ENV=""
+  if [[ -f "$BOT_DIR/.env" ]]; then
+    KUMA_URL_ENV=$(grep 'UPTIME_KUMA_URL=' "$BOT_DIR/.env" 2>/dev/null | cut -d'=' -f2- | tr -d '"' | tr -d "'")
   fi
 
-  # HTTP-Erreichbarkeit prüfen
-  echo ""
-  info "Prüfe HTTP-Verbindung auf Port ${KUMA_PORT}..."
-  if curl -sf --max-time 5 "http://localhost:${KUMA_PORT}" >/dev/null 2>&1; then
-    ok "http://localhost:${KUMA_PORT} antwortet"
+  # Lokale Instanz prüfen
+  if docker ps --format '{{.Names}}' 2>/dev/null | grep -q "uptime-kuma"; then
+    ok "Lokale Instanz: Container läuft (Docker)"
+    docker ps --filter "name=uptime-kuma" --format "  Image: {{.Image}}  |  Status: {{.Status}}  |  Ports: {{.Ports}}"
+    echo ""
+  elif docker ps -a --format '{{.Names}}' 2>/dev/null | grep -q "uptime-kuma"; then
+    err "Lokale Instanz: Container gestoppt"
+    echo "  Starten via: Menü → Uptime Kuma → Starten"
+    echo ""
+  elif systemctl is-active --quiet uptime-kuma 2>/dev/null; then
+    ok "Lokale Instanz: systemd-Service aktiv"
+    echo ""
   else
-    err "http://localhost:${KUMA_PORT} nicht erreichbar"
+    info "Keine lokale Uptime Kuma Instanz gefunden"
+    echo ""
+  fi
+
+  # Erreichbarkeit testen: externe URL bevorzugen, sonst localhost
+  local CHECK_URL="http://localhost:${KUMA_PORT}"
+  if [[ -n "$KUMA_URL_ENV" ]]; then
+    CHECK_URL="$KUMA_URL_ENV"
+    echo -e "  ${BOLD}Konfigurierte URL (Bot .env):${NC}  $CHECK_URL"
+    echo ""
+  fi
+
+  info "Prüfe Verbindung zu $CHECK_URL ..."
+  if curl -sf --max-time 8 "$CHECK_URL" >/dev/null 2>&1; then
+    ok "$CHECK_URL antwortet → Verbindung OK"
+  else
+    err "$CHECK_URL nicht erreichbar"
+    if [[ -n "$KUMA_URL_ENV" ]]; then
+      echo -e "  ${DIM}Prüfe ob die externe Instanz läuft und die URL stimmt.${NC}"
+    else
+      echo -e "  ${DIM}Uptime Kuma lokal installieren oder externe URL konfigurieren.${NC}"
+    fi
   fi
   pause
 }
@@ -455,6 +481,73 @@ kuma_uninstall() {
   docker rm uptime-kuma 2>/dev/null || true
   docker rmi louislam/uptime-kuma:latest 2>/dev/null || true
   ok "Uptime Kuma deinstalliert"
+  pause
+}
+
+kuma_external_setup() {
+  clear
+  echo -e "${BOLD}${CYAN}━━ Externe Uptime Kuma Instanz konfigurieren ━━${NC}\n"
+
+  echo -e "  ${CYAN}ℹ${NC}  Diese Option verbindet den Bot mit einer bereits laufenden"
+  echo -e "     Uptime Kuma Instanz (z.B. auf Unraid, NAS, VPS oder Heimserver)."
+  echo -e "     Auf dem Raspberry Pi wird ${BOLD}keine${NC} lokale Instanz installiert.\n"
+
+  # Aktuellen Wert aus .env lesen
+  local CURRENT_URL="http://192.168.x.x:3001"
+  if [[ -f "$BOT_DIR/.env" ]]; then
+    local FROM_ENV; FROM_ENV=$(grep 'UPTIME_KUMA_URL=' "$BOT_DIR/.env" 2>/dev/null | cut -d'=' -f2- | tr -d '"' | tr -d "'")
+    [[ -n "$FROM_ENV" ]] && CURRENT_URL="$FROM_ENV"
+  fi
+
+  local NEW_URL
+  NEW_URL=$(whiptail --title "Uptime Kuma URL" --inputbox \
+    "URL der externen Uptime Kuma Instanz:\n\nBeispiele:\n  http://192.168.1.50:3001\n  https://uptime.deinedomain.de\n  http://unraid.local:3001" \
+    13 $W "$CURRENT_URL" 3>&1 1>&2 2>&3) || return
+
+  [[ -z "$NEW_URL" ]] && { err "Keine URL eingegeben"; pause; return; }
+
+  # Grundlegende URL-Validierung
+  if ! echo "$NEW_URL" | grep -qE '^https?://'; then
+    whiptail --title "Ungültige URL" --msgbox \
+      "Die URL muss mit http:// oder https:// beginnen.\n\nEingabe: $NEW_URL" 9 $W
+    return
+  fi
+
+  # Verbindung testen
+  info "Teste Verbindung zu $NEW_URL ..."
+  if curl -sf --max-time 8 "$NEW_URL" >/dev/null 2>&1; then
+    ok "Verbindung erfolgreich!"
+  else
+    if ! whiptail --title "⚠ Verbindung fehlgeschlagen" --yesno \
+      "$NEW_URL ist nicht erreichbar.\n\nMögliche Ursachen:\n  • Instanz läuft nicht\n  • Falsche IP/Port\n  • Netzwerk/Firewall blockiert\n  • Bei CG-NAT: Cloudflare Tunnel nötig\n\nURL trotzdem speichern?" \
+      14 $W; then
+      return
+    fi
+  fi
+
+  # In .env schreiben (Bot-Konfiguration)
+  if [[ -f "$BOT_DIR/.env" ]]; then
+    # Vorhandenen Wert ersetzen
+    if grep -q 'UPTIME_KUMA_URL=' "$BOT_DIR/.env"; then
+      sed -i "s|^UPTIME_KUMA_URL=.*|UPTIME_KUMA_URL=${NEW_URL}|" "$BOT_DIR/.env"
+    else
+      echo "UPTIME_KUMA_URL=${NEW_URL}" >> "$BOT_DIR/.env"
+    fi
+    ok "UPTIME_KUMA_URL in $BOT_DIR/.env gespeichert"
+
+    # Bot neu starten wenn er läuft
+    if systemctl is-active --quiet bockis-bot 2>/dev/null; then
+      info "Bot-Service neu starten..."
+      sudo systemctl restart bockis-bot 2>/dev/null && ok "Bot neu gestartet" || err "Neustart fehlgeschlagen"
+    fi
+  else
+    echo ""
+    err ".env nicht gefunden (Bot noch nicht installiert)"
+    info "Merke URL vor — nach der Installation in install.js eintragen:"
+    echo -e "  ${BOLD}$NEW_URL${NC}"
+    info "Oder: UPTIME_KUMA_URL=$NEW_URL manuell in $BOT_DIR/.env einfügen"
+  fi
+
   pause
 }
 
