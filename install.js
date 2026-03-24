@@ -244,41 +244,58 @@ async function installDeps(rl) {
       env: { ...process.env, FORCE_COLOR: '0' },
     });
 
-    let lastLine = '';
-    const printLine = (data) => {
-      const lines = data.toString().split('\n');
-      for (const line of lines) {
-        const trimmed = line.replace(/\r/g, '').trim();
-        if (!trimmed) continue;
-        // Fortschrittszeilen überschreiben (npm progress)
-        if (trimmed.startsWith('npm') || trimmed.includes('added') || trimmed.includes('warn')) {
-          process.stdout.write(`\r  ${C.dim}${trimmed.slice(0, 70).padEnd(72)}${C.r}`);
-          lastLine = trimmed;
-        } else {
-          if (lastLine) { process.stdout.write('\n'); lastLine = ''; }
-          print(`  ${C.dim}${trimmed}${C.r}`);
+    const FRAMES = ['|', '/', '-', '\\'];
+    let frame = 0;
+    let elapsed = 0;
+    let statusMsg = 'Pakete werden heruntergeladen...';
+    let isNative  = false;
+
+    const renderSpinner = () => {
+      const timeStr  = `${elapsed}s`.padStart(4);
+      const label    = isNative
+        ? `${C.yel}Kompiliere native Module (sqlite3)...${C.r}`
+        : `${C.dim}${statusMsg.slice(0, 55).padEnd(57)}${C.r}`;
+      process.stdout.write(`\r  ${C.cyn}${FRAMES[frame++ % FRAMES.length]}${C.r} ${C.dim}[${timeStr}]${C.r}  ${label}`);
+    };
+
+    renderSpinner();
+    const iv = setInterval(() => { elapsed++; renderSpinner(); }, 1000);
+
+    const handleData = (data) => {
+      const text = data.toString();
+      for (const raw of text.split('\n')) {
+        const t = raw.trim();
+        if (!t) continue;
+        if (/gyp|node-pre-gyp|compil|CXX|SOLINK/i.test(t)) {
+          isNative = true;
+        } else if (/^added \d+|packages in/i.test(t)) {
+          statusMsg = t;
+        } else if (/^npm warn/i.test(t)) {
+          statusMsg = t;
         }
       }
     };
 
-    proc.stdout.on('data', printLine);
-    proc.stderr.on('data', printLine);
+    proc.stdout.on('data', handleData);
+    proc.stderr.on('data', handleData);
 
     proc.on('close', (code) => {
-      if (lastLine) process.stdout.write('\n');
+      clearInterval(iv);
+      process.stdout.write('\r' + ' '.repeat(78) + '\r');
       print(`${C.dim}${'─'.repeat(60)}${C.r}`);
       nl();
       if (code === 0) {
-        print(`${SYM.ok}  Alle Pakete erfolgreich installiert.`);
+        print(`${SYM.ok}  Alle Pakete erfolgreich installiert. ${C.dim}(${elapsed}s)${C.r}`);
       } else {
-        print(`${SYM.fail}  npm install ist fehlgeschlagen (Exit-Code ${code}).`);
+        print(`${SYM.fail}  npm install fehlgeschlagen (Exit-Code ${code}).`);
         print(`     Manuell versuchen: ${C.cyn}npm install${C.r}`);
       }
       resolve(code);
     });
 
     proc.on('error', (err) => {
-      if (lastLine) process.stdout.write('\n');
+      clearInterval(iv);
+      process.stdout.write('\r' + ' '.repeat(78) + '\r');
       print(`${SYM.fail}  Fehler beim Starten von npm: ${err.message}`);
       resolve(1);
     });
