@@ -1119,14 +1119,20 @@ menu_update_check() {
           "Das Bot-Verzeichnis existiert noch nicht:\n  $BOT_DIR\n\nBitte zuerst den Bot installieren (Option 3 → Bot installieren)." \
           11 $W
       elif [[ ! -f "$BOT_DIR/.env" ]]; then
-        # Code vorhanden, aber noch nicht konfiguriert → git pull + npm ci, kein Service-Restart
+        # Code vorhanden, aber noch nicht konfiguriert → git pull + npm install, kein Service-Restart
         clear
         echo -e "${BOLD}${CYAN}━━ Code-Update (ohne Neustart) ━━${NC}\n"
         info "git pull..."
         git -C "$BOT_DIR" pull origin main 2>&1 && ok "Code aktualisiert" || { err "git pull fehlgeschlagen"; pause; return; }
         echo ""
-        info "Abhängigkeiten aktualisieren (npm ci)..."
-        npm ci --prefix "$BOT_DIR" 2>&1 && ok "npm ci abgeschlossen" || err "npm ci fehlgeschlagen"
+        # npm ci braucht package-lock.json → bei Erstinstallation npm install verwenden
+        if [[ -f "$BOT_DIR/package-lock.json" ]]; then
+          info "Abhängigkeiten installieren (npm ci)..."
+          npm ci --prefix "$BOT_DIR" 2>&1 && ok "npm ci abgeschlossen" || err "npm ci fehlgeschlagen"
+        else
+          info "Abhängigkeiten installieren (npm install — erstmalig)..."
+          npm install --prefix "$BOT_DIR" 2>&1 && ok "npm install abgeschlossen" || err "npm install fehlgeschlagen"
+        fi
         echo ""
         echo -e "  ${YELLOW}ℹ  Bot-Konfiguration fehlt noch (.env).${NC}"
         echo -e "  ${YELLOW}   Bitte anschließend 'node install.js' ausführen.${NC}"

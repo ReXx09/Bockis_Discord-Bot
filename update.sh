@@ -149,7 +149,11 @@ update_native() {
 
   # 2. npm-Pakete aktualisieren
   print_status "Aktualisiere npm-Abhängigkeiten..."
-  npm ci --omit=dev --silent 2>&1 | tail -3
+  if [[ -f "$BOT_DIR/package-lock.json" ]]; then
+    npm ci --omit=dev --silent 2>&1 | tail -3
+  else
+    npm install --omit=dev --silent 2>&1 | tail -3
+  fi
   print_success "npm-Pakete aktualisiert"
 
   # 3. Service neu starten
