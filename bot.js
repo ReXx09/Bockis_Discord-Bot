@@ -295,7 +295,7 @@ function buildCompactEmbed(monitors, operationalCount) {
       const isUp      = monitor.status === 1;
       const isPending = monitor.status === 2;
       const C         = isUp ? G : isPending ? Y : RE;
-      const statusLbl = (isUp ? 'OPERATIONAL' : isPending ? 'PENDING' : 'OUTAGE').padEnd(11);
+      const statusLbl = isUp ? 'OPERATIONAL' : isPending ? 'PENDING' : 'OUTAGE';
       const uptime    = parseFloat(monitor.uptime ?? 0);
       const barLen    = 20;
       const filled    = Math.round(uptime / 100 * barLen);
@@ -306,7 +306,10 @@ function buildCompactEmbed(monitors, operationalCount) {
         : '--:--';
       const name      = monitor.name.padEnd(maxNameLen);
 
-      lines.push(`${C}\u25CF${R} ${name}  ${C}${statusLbl}${R}  ${C}${bar}${R}  ${pct}  ${ts}`);
+      // Zeile 1: ● name  STATUS  (~35 Zeichen → passt in Discord-ANSI-Block)
+      lines.push(`${C}\u25CF${R} ${name}  ${C}${statusLbl}${R}`);
+      // Zeile 2: eingerückt  bar  pct  time  (~37 Zeichen → passt)
+      lines.push(`  ${C}${bar}${R}  ${pct}  ${ts}`);
     });
   });
 
