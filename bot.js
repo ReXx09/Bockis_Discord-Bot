@@ -274,26 +274,72 @@ function calculateUptime(heartbeats) {
 }
 
 // ── 16. EMBED-GENERIERUNG ─────────────────────────────────────────────────────
-function createServiceField(monitor) {
-  const status = !monitor.active ? 'deactivated' :
-    monitor.status === 1 ? 'online' :
-    monitor.status === 0 ? 'offline' :
-    monitor.status === 2 ? 'pending' : 'maintenance';
+function buildStatusEmbed(monitors, operationalCount) {
+  const groups = [...new Set(monitors.map(m => m.group))].sort();
+  const fields = [];
 
-  const theme = STATUS_THEME[status];
-  const barLength = Math.floor(monitor.uptime / 10);
+  groups.forEach(group => {
+    const services = monitors.filter(m => m.group === group);
+    const allUp    = services.every(m => m.status === 1);
+    const anyDown  = services.some(m => m.status === 0);
+    const groupDot = allUp ? '🟢' : anyDown ? '🔴' : '🟡';
+
+    // Gruppen-Header als eigenes Field
+    fields.push({
+      name: `${groupDot}  ${group.toUpperCase()}  [${services.length}]`,
+      value: '─'.repeat(32),
+      inline: false
+    });
+
+    // Dienste als inline-Fields (je 3 nebeneinander)
+    services.forEach((monitor, index) => {
+      const status = !monitor.active ? 'deactivated' :
+        monitor.status === 1 ? 'online' :
+        monitor.status === 0 ? 'offline' :
+        monitor.status === 2 ? 'pending' : 'maintenance';
+      const theme     = STATUS_THEME[status];
+      const barFilled = Math.round(Math.min(parseFloat(monitor.uptime), 100) / 10);
+      const bar       = theme.bar.slice(0, barFilled).padEnd(10, '▱');
+      const ts        = monitor.time
+        ? `<t:${Math.floor(new Date(monitor.time).getTime() / 1000)}:R>`
+        : '--';
+
+      fields.push({
+        name:   `${theme.icon} ${monitor.name}`,
+        value:  [
+          `**${theme.title}**`,
+          `\`${bar}\``,
+          `📊 **${monitor.uptime}%**  ${ts}`,
+          monitor.ping ? `📶 ${monitor.ping}ms` : ''
+        ].filter(Boolean).join('  \n'),
+        inline: true
+      });
+
+      // Zeilenumbruch nach je 3 Services
+      if ((index + 1) % 3 === 0 && index + 1 < services.length) {
+        fields.push({ name: '\u200B', value: '\u200B', inline: false });
+      }
+    });
+
+    // Leerzeile zwischen Gruppen
+    fields.push({ name: '\u200B', value: '\u200B', inline: false });
+  });
+
+  const allUp    = monitors.every(m => m.status === 1);
+  const anyDown  = monitors.some(m => m.status === 0);
+  const color    = allUp ? 0x43B581 : anyDown ? 0xF04747 : 0xFAA61A;
+  const timeStr  = new Date().toLocaleString('de-DE', {
+    day: '2-digit', month: '2-digit', year: 'numeric',
+    hour: '2-digit', minute: '2-digit'
+  });
 
   return {
-    name: `${theme.icon} ${monitor.name}`,
-    value: [
-      `**${theme.title}**`,
-      `*${theme.description}*`,
-      `\`${theme.bar.slice(0, barLength).padEnd(10, '\u25B1')}\``,
-      `\uD83D\uDCCA **Uptime:** ${monitor.uptime}%`,
-      `\u23F1 **Last Check:** <t:${Math.floor(new Date(monitor.time).getTime() / 1000)}:R>`,
-      monitor.ping ? `\uD83D\uDCF6 **Latency:** ${monitor.ping}ms` : ''
-    ].join('\n'),
-    inline: true
+    color,
+    title: '🎮  DIENSTE STATUS-ÜBERSICHT',
+    description: `Stand: ${timeStr}`,
+    fields: fields.slice(0, 25),
+    footer: { text: `${operationalCount}/${monitors.length} Dienste online  •  Uptime Kuma Status – Automatisch generiert` },
+    timestamp: new Date().toISOString()
   };
 }
 
@@ -387,56 +433,24 @@ async function updateStatusMessage() {
   uptimeGauge.set(uptimePercent);
   statusCheckCounter.inc();
 
-  const embeds = [];
-  const groups = [...new Set(monitors.map(m => m.group))].sort();
-
-  groups.forEach(group => {
-    const services = monitors.filter(m => m.group === group);
-    const fields = [];
-
-    fields.push({
-      name: `\uD83D\uDCC1  ${group.toUpperCase()}  [${services.length}]`,
-      value: '\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC',
-      inline: false
-    });
-
-    services.forEach((service, index) => {
-      fields.push(createServiceField(service));
-      if ((index + 1) % 3 === 0) fields.push({ name: '\u200B', value: '\u200B', inline: false });
-    });
-
-    fields.push({ name: '\u200B', value: '\u2554\u2554\u2554\u2554\u2554\u2554\u2554\u2554\u2554\u2554\u2554\u2554\u2554\u2554\u2554\u2554\u2554\u2554\u2554\u2554\u2554\u2554\u2554\u2554', inline: false });
-
-    embeds.push({
-      color: 0x2F3136,
-      title: '\uD83D\uDDA5\uFE0F\u3000SERVICE\u3000MONITOR',
-      description: [
-        '```ansi',
-        '\u001b[34m\u250F\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2513',
-        '\u001b[34m\u2503\u3000\u3000\u3000\u3000\u3000\u3000\u001b[37m\uD835\uDE02\uD835\uDE08\uD835\uDE02\uD835\uDE03\uD835\uDD74\uD835\uDD74 \uD835\uDE02\uD835\uDE03\uD835\uDD70\uD835\uDE03\uD835\uDE04\uD835\uDE02\u001b[34m\u3000\u3000\u3000\u3000\u3000\u3000\u2503',
-        '\u001b[34m\u2517\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u251B```'
-      ].join('\n'),
-      fields: fields.slice(0, 25),
-      footer: { text: 'Last refresh' },
-      timestamp: new Date().toISOString()
-    });
-  });
+  const embed = buildStatusEmbed(monitors, operationalCount);
+  const uptimeKumaUrl = config.get('uptimeKuma.url');
+  const slug = config.get('uptimeKuma.statusPageSlug');
+  const statusContent = `**🌐 LIVE SERVICE STATUS** | [🔗 Statusseite öffnen](<${uptimeKumaUrl}/status/${slug}>)`;
+  const msgOptions = { content: statusContent, embeds: [embed], flags: [4096] };
 
   try {
-    const uptimeKumaUrl = config.get('uptimeKuma.url');
-    const slug = config.get('uptimeKuma.statusPageSlug');
-    const statusContent = `**\uD83C\uDF10 LIVE SERVICE STATUS**\n\uD83D\uDD17 [---------->>>>>  Full Status Page  <<<<<----------](${uptimeKumaUrl}/status/${slug})`;
     if (statusMessageId) {
       try {
         const existingMessage = await channel.messages.fetch(statusMessageId);
-        await existingMessage.edit({ content: statusContent, embeds: embeds.slice(0, 10) });
+        await existingMessage.edit(msgOptions);
       } catch {
-        const newMessage = await channel.send({ content: statusContent, embeds: embeds.slice(0, 10) });
+        const newMessage = await channel.send(msgOptions);
         statusMessageId = newMessage.id;
         saveState({ statusMessageId, lastChannelStatus, lastChannelNameMs });
       }
     } else {
-      const newMessage = await channel.send({ content: statusContent, embeds: embeds.slice(0, 10) });
+      const newMessage = await channel.send(msgOptions);
       statusMessageId = newMessage.id;
       saveState({ statusMessageId, lastChannelStatus, lastChannelNameMs });
     }
@@ -850,13 +864,19 @@ async function cleanupOldStatusMessages() {
     const channel = client.channels.cache.get(channelId);
     if (!channel) return;
 
-    // Letzte 50 Nachrichten holen, alle vom Bot (außer der gespeicherten) löschen
+    // Permission-Check: MANAGE_MESSAGES benötigt zum Löschen
+    const me = channel.guild?.members?.me;
+    const canDelete = me ? channel.permissionsFor(me).has('ManageMessages') : false;
+    if (!canDelete) {
+      logger.warn('Startup-Cleanup: Bot hat kein MANAGE_MESSAGES – alte Nachrichten können nicht gelöscht werden.');
+      logger.warn('Bitte im Discord-Server unter Servereinstellungen → Rollen → Bot-Rolle → MANAGE_MESSAGES aktivieren.');
+    }
+
     const messages = await channel.messages.fetch({ limit: 50 });
     const botMessages = messages.filter(m => m.author.id === client.user.id);
 
-    if (botMessages.size <= 1) return; // Nur eine → alles OK
+    if (botMessages.size <= 1) return;
 
-    // Neueste behalten (oder die aus state.json), Rest löschen
     const sorted = [...botMessages.values()].sort((a, b) => b.createdTimestamp - a.createdTimestamp);
     const keep = statusMessageId
       ? sorted.find(m => m.id === statusMessageId) ?? sorted[0]
@@ -865,12 +885,14 @@ async function cleanupOldStatusMessages() {
     statusMessageId = keep.id;
     saveState({ statusMessageId, lastChannelStatus, lastChannelNameMs });
 
+    if (!canDelete) return; // Ohne Permission nicht weiterversuchen
+
     let deleted = 0;
     for (const msg of sorted) {
       if (msg.id !== keep.id) {
         await msg.delete().catch(() => {});
         deleted++;
-        await new Promise(r => setTimeout(r, 500)); // Rate-Limit-Schutz
+        await new Promise(r => setTimeout(r, 600));
       }
     }
     if (deleted > 0) logger.info(`Startup-Cleanup: ${deleted} alte Status-Nachricht(en) gelöscht`);
