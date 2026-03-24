@@ -38,6 +38,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 KUMA_DIR="$HOME/uptime-kuma"
 KUMA_PORT=3001
 BOT_PORT=3000
+WEB_PORT=3000   # Dashboard-Port (gleich wie BOT_PORT, aus .env lesbar)
 LOG_LINES=50
 
 while [[ $# -gt 0 ]]; do
@@ -1728,10 +1729,24 @@ net_tunnel_uninstall() {
 
 menu_settings() {
   while true; do
-    CHOICE=$(whiptail --title "⚙ Einstellungen" --menu "Konfiguration anpassen:" 12 $W 4 \
-      "1" "Bot-Verzeichnis ändern  (aktuell: $BOT_DIR)" \
-      "2" "Bot-Port ändern         (aktuell: $BOT_PORT)" \
-      "3" "Uptime-Kuma-Port ändern (aktuell: $KUMA_PORT)" \
+    # Werte live aus .env lesen wenn vorhanden
+    local ENV_WEB_PORT ENV_KUMA_URL
+    if [[ -f "$BOT_DIR/.env" ]]; then
+      ENV_WEB_PORT=$(grep -E '^WEB_PORT=' "$BOT_DIR/.env" 2>/dev/null | cut -d'=' -f2 | tr -d '"' | tr -d "'")
+      [[ -n "$ENV_WEB_PORT" ]] && WEB_PORT="$ENV_WEB_PORT"
+      ENV_KUMA_URL=$(grep -E '^UPTIME_KUMA_URL=' "$BOT_DIR/.env" 2>/dev/null | cut -d'=' -f2- | tr -d '"' | tr -d "'")
+    fi
+
+    local IP; IP=$(hostname -I | awk '{print $1}' 2>/dev/null || echo "<IP>")
+    local WEB_LABEL="http://${IP}:${WEB_PORT}/dashboard"
+    local KUMA_LABEL="Port ${KUMA_PORT}"
+    [[ -n "${ENV_KUMA_URL:-}" ]] && KUMA_LABEL="extern: $ENV_KUMA_URL"
+
+    CHOICE=$(whiptail --title "⚙ Einstellungen" --menu "Konfiguration anpassen:" 15 $W 5 \
+      "1" "Bot-Verzeichnis ändern      (aktuell: $BOT_DIR)" \
+      "2" "Bot-Port ändern             (aktuell: $BOT_PORT)" \
+      "3" "Uptime-Kuma-Port ändern    (aktuell: $KUMA_LABEL)" \
+      "4" "Web-Dashboard-Port ändern  (aktuell: $WEB_PORT  →  $WEB_LABEL)" \
       "←" "Zurück" \
       3>&1 1>&2 2>&3) || return
 
@@ -1740,10 +1755,54 @@ menu_settings() {
         NEW=$(whiptail --title "Bot-Verzeichnis" --inputbox "Pfad:" 8 $W "$BOT_DIR" 3>&1 1>&2 2>&3) && BOT_DIR="$NEW"
         ;;
       "2")
-        NEW=$(whiptail --title "Bot-Port" --inputbox "Port:" 8 $W "$BOT_PORT" 3>&1 1>&2 2>&3) && BOT_PORT="$NEW"
+        NEW=$(whiptail --title "Bot-Port" --inputbox \
+          "Port des Bot-Prozesses (intern, für systemd/Docker):" \
+          8 $W "$BOT_PORT" 3>&1 1>&2 2>&3) && BOT_PORT="$NEW"
         ;;
       "3")
-        NEW=$(whiptail --title "Kuma-Port" --inputbox "Port:" 8 $W "$KUMA_PORT" 3>&1 1>&2 2>&3) && KUMA_PORT="$NEW"
+        NEW=$(whiptail --title "Kuma-Port" --inputbox \
+          "Port der lokalen Uptime Kuma Instanz:\n(Externe URL ändern via: Uptime Kuma → Externe Instanz konfigurieren)" \
+          9 $W "$KUMA_PORT" 3>&1 1>&2 2>&3) && KUMA_PORT="$NEW"
+        ;;
+      "4")
+        NEW=$(whiptail --title "Web-Dashboard-Port" --inputbox \
+          "Port des Bot-Webinterface / Dashboards:\n(Standard: 3000  →  erreichbar unter http://<IP>:PORT/dashboard)" \
+          9 $W "$WEB_PORT" 3>&1 1>&2 2>&3) || continue
+        # Nur Zahlen akzeptieren
+        if ! echo "$NEW" | grep -qE '^[0-9]+$' || [[ "$NEW" -lt 1024 || "$NEW" -gt 65535 ]]; then
+          whiptail --title "Ungültiger Port" --msgbox \
+            "Bitte einen Port zwischen 1024 und 65535 eingeben." 8 $W
+          continue
+        fi
+        WEB_PORT="$NEW"
+        BOT_PORT="$NEW"   # beide sind identisch (WEB_PORT steuert den Express-Server)
+        # In .env schreiben wenn vorhanden
+        if [[ -f "$BOT_DIR/.env" ]]; then
+          if grep -q '^WEB_PORT=' "$BOT_DIR/.env"; then
+            sed -i "s|^WEB_PORT=.*|WEB_PORT=${WEB_PORT}|" "$BOT_DIR/.env"
+          else
+            echo "WEB_PORT=${WEB_PORT}" >> "$BOT_DIR/.env"
+          fi
+          ok "WEB_PORT=${WEB_PORT} in .env gespeichert"
+          # UFW-Regel aktualisieren wenn UFW aktiv
+          if command -v ufw >/dev/null 2>&1 && sudo ufw status 2>/dev/null | grep -q 'Status: active'; then
+            info "Aktualisiere UFW-Regel..."
+            sudo ufw allow "${WEB_PORT}/tcp" >/dev/null 2>&1 && \
+              ok "UFW: Port ${WEB_PORT}/tcp freigegeben"
+          fi
+          # Bot-Service neu starten wenn aktiv
+          if systemctl is-active --quiet bockis-bot 2>/dev/null; then
+            info "Bot-Service neu starten (neuer Port wird aktiv)..."
+            sudo systemctl restart bockis-bot 2>/dev/null && ok "Bot neu gestartet" || err "Neustart fehlgeschlagen"
+          fi
+          local IP2; IP2=$(hostname -I | awk '{print $1}' 2>/dev/null || echo "<IP>")
+          whiptail --title "✔ Dashboard-Port geändert" --msgbox \
+            "Web-Dashboard erreichbar unter:\n\n  http://${IP2}:${WEB_PORT}/dashboard" \
+            9 $W
+        else
+          info ".env noch nicht vorhanden — Port-Änderung wird bei nächstem Start aktiv"
+          pause
+        fi
         ;;
       "←") return ;;
     esac
