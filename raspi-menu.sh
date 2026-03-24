@@ -1007,8 +1007,30 @@ menu_update_check() {
   if [[ "$BEHIND" -gt 0 ]]; then
     if whiptail --title "Update verfügbar" --yesno \
       "$BEHIND neue Version(en) verfügbar.\n\nJetzt updaten?" 9 $W; then
-      check_bot_installed || { pause; return; }
-      bash "$SCRIPT_DIR/update.sh" --bot-dir "$BOT_DIR" --mode auto --yes
+
+      if [[ ! -d "$BOT_DIR" ]]; then
+        # Bot-Code noch gar nicht vorhanden → Installer anbieten
+        whiptail --title "Bot noch nicht installiert" --msgbox \
+          "Das Bot-Verzeichnis existiert noch nicht:\n  $BOT_DIR\n\nBitte zuerst den Bot installieren (Option 3 → Bot installieren)." \
+          11 $W
+      elif [[ ! -f "$BOT_DIR/.env" ]]; then
+        # Code vorhanden, aber noch nicht konfiguriert → git pull + npm ci, kein Service-Restart
+        clear
+        echo -e "${BOLD}${CYAN}━━ Code-Update (ohne Neustart) ━━${NC}\n"
+        info "git pull..."
+        git -C "$BOT_DIR" pull origin main 2>&1 && ok "Code aktualisiert" || { err "git pull fehlgeschlagen"; pause; return; }
+        echo ""
+        info "Abhängigkeiten aktualisieren (npm ci)..."
+        npm ci --prefix "$BOT_DIR" 2>&1 && ok "npm ci abgeschlossen" || err "npm ci fehlgeschlagen"
+        echo ""
+        echo -e "  ${YELLOW}ℹ  Bot-Konfiguration fehlt noch (.env).${NC}"
+        echo -e "  ${YELLOW}   Bitte anschließend 'node install.js' ausführen.${NC}"
+        pause
+      else
+        # Vollständige Installation → normales Update
+        bash "$SCRIPT_DIR/update.sh" --bot-dir "$BOT_DIR" --mode auto --yes
+        pause
+      fi
     fi
   fi
   pause
@@ -1083,13 +1105,13 @@ main_menu() {
 check_bot_installed() {
   if [[ ! -d "$BOT_DIR" ]]; then
     whiptail --title "⚠ Bot nicht installiert" --msgbox \
-      "Das Bot-Verzeichnis wurde nicht gefunden:\n\n  $BOT_DIR\n\nBitte zuerst den Bot installieren:\n  node install.js\n\n(Verzeichnis in den Einstellungen ändern → Option 8)" \
+      "Das Bot-Verzeichnis wurde nicht gefunden:\n\n  $BOT_DIR\n\nBitte zuerst den Bot installieren:\n  → Option 3 → Bot installieren\n\n(Verzeichnis in den Einstellungen ändern → Option 8)" \
       14 $W
     return 1
   fi
   if [[ ! -f "$BOT_DIR/.env" ]]; then
     whiptail --title "⚠ Bot nicht konfiguriert" --msgbox \
-      "Die Konfigurationsdatei fehlt:\n\n  $BOT_DIR/.env\n\nDer Bot wurde noch nicht vollständig eingerichtet.\nBitte zuerst den Bot installieren:\n  node install.js" \
+      "Die Konfigurationsdatei fehlt:\n\n  $BOT_DIR/.env\n\nDer Bot-Code ist vorhanden, aber noch nicht eingerichtet.\nBitte den Installer ausführen:\n  node install.js" \
       13 $W
     return 1
   fi
