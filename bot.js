@@ -274,26 +274,60 @@ function calculateUptime(heartbeats) {
 }
 
 // ── 16. EMBED-GENERIERUNG ─────────────────────────────────────────────────────
-function createServiceField(monitor) {
-  const status = !monitor.active ? 'deactivated' :
-    monitor.status === 1 ? 'online' :
-    monitor.status === 0 ? 'offline' :
-    monitor.status === 2 ? 'pending' : 'maintenance';
+function buildCompactEmbed(monitors, operationalCount, uptimeKumaUrl, slug) {
+  const groups = [...new Set(monitors.map(m => m.group))].sort();
+  const fields = [];
 
-  const theme = STATUS_THEME[status];
-  const barLength = Math.floor(monitor.uptime / 10);
+  groups.forEach(group => {
+    const services = monitors.filter(m => m.group === group);
+    const groupOnline = services.filter(m => m.status === 1).length;
+
+    // Gruppen-Header
+    fields.push({
+      name: `\uD83D\uDCCA **${group.toUpperCase()}  [${services.length}]**`,
+      value: '\u200B',
+      inline: false
+    });
+
+    // Jeder Dienst als eigene Zeile
+    services.forEach(monitor => {
+      const isUp      = monitor.status === 1;
+      const isPending = monitor.status === 2;
+      const dot       = isUp ? '\uD83D\uDFE2' : isPending ? '\uD83D\uDFE1' : '\uD83D\uDD34';
+      const statusLbl = isUp ? 'OPERATIONAL' : isPending ? 'PENDING' : 'OUTAGE';
+      const uptime    = parseFloat(monitor.uptime ?? 0);
+      const barFilled = Math.round(uptime / 10);
+      const bar       = '\u2588'.repeat(barFilled) + '\u2591'.repeat(10 - barFilled);
+      const ts        = monitor.time
+        ? `<t:${Math.floor(new Date(monitor.time).getTime() / 1000)}:t>`
+        : '—';
+
+      fields.push({
+        name: `${dot}  ${monitor.name}`,
+        value: `${statusLbl}\n\`${bar}\`  **${uptime.toFixed(1)}%**  ${ts}`,
+        inline: true
+      });
+    });
+
+    // Abstand nach jeder Gruppe
+    fields.push({ name: '\u200B', value: '\u200B', inline: false });
+  });
+
+  const allUp   = monitors.every(m => m.status === 1);
+  const anyDown = monitors.some(m => m.status === 0);
+  const color   = allUp ? 0x43B581 : anyDown ? 0xF04747 : 0xFAA61A;
+  const timeStr = new Date().toLocaleString('de-DE', {
+    day: '2-digit', month: '2-digit', year: 'numeric',
+    hour: '2-digit', minute: '2-digit'
+  });
 
   return {
-    name: `${theme.icon} ${monitor.name}`,
-    value: [
-      `**${theme.title}**`,
-      `*${theme.description}*`,
-      `\`${theme.bar.slice(0, barLength).padEnd(10, '\u25B1')}\``,
-      `\uD83D\uDCCA **Uptime:** ${monitor.uptime}%`,
-      `\u23F1 **Last Check:** <t:${Math.floor(new Date(monitor.time).getTime() / 1000)}:R>`,
-      monitor.ping ? `\uD83D\uDCF6 **Latency:** ${monitor.ping}ms` : ''
-    ].join('\n'),
-    inline: true
+    color,
+    title: '\uD83D\uDCCA  DIENSTE STATUS-\u00dcBERSICHT',
+    description: `Stand: ${timeStr}\n[\uD83D\uDD17 Statusseite \u00f6ffnen](<${uptimeKumaUrl}/status/${slug}>)`,
+    fields: fields.slice(0, 25),
+    footer: { text: `${operationalCount}/${monitors.length} Dienste online  \u2022  Uptime Kuma Status \u2013 Automatisch generiert` },
+    timestamp: new Date().toISOString()
   };
 }
 
@@ -387,49 +421,15 @@ async function updateStatusMessage() {
   uptimeGauge.set(uptimePercent);
   statusCheckCounter.inc();
 
-  const embeds = [];
-  const groups = [...new Set(monitors.map(m => m.group))].sort();
-
-  groups.forEach(group => {
-    const services = monitors.filter(m => m.group === group);
-    const fields = [];
-
-    fields.push({
-      name: `\uD83D\uDCC1  ${group.toUpperCase()}  [${services.length}]`,
-      value: '\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC',
-      inline: false
-    });
-
-    services.forEach((service, index) => {
-      fields.push(createServiceField(service));
-      if ((index + 1) % 3 === 0) fields.push({ name: '\u200B', value: '\u200B', inline: false });
-    });
-
-    fields.push({ name: '\u200B', value: '\u2554\u2554\u2554\u2554\u2554\u2554\u2554\u2554\u2554\u2554\u2554\u2554\u2554\u2554\u2554\u2554\u2554\u2554\u2554\u2554\u2554\u2554\u2554\u2554', inline: false });
-
-    embeds.push({
-      color: 0x2F3136,
-      title: '\uD83D\uDDA5\uFE0F\u3000SERVICE\u3000MONITOR',
-      description: [
-        '```ansi',
-        '\u001b[34m\u250F\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2513',
-        '\u001b[34m\u2503\u3000\u3000\u3000\u3000\u3000\u3000\u001b[37m\uD835\uDE02\uD835\uDE08\uD835\uDE02\uD835\uDE03\uD835\uDD74\uD835\uDD74 \uD835\uDE02\uD835\uDE03\uD835\uDD70\uD835\uDE03\uD835\uDE04\uD835\uDE02\u001b[34m\u3000\u3000\u3000\u3000\u3000\u3000\u2503',
-        '\u001b[34m\u2517\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u251B```'
-      ].join('\n'),
-      fields: fields.slice(0, 25),
-      footer: { text: 'Last refresh' },
-      timestamp: new Date().toISOString()
-    });
-  });
+  const uptimeKumaUrl = config.get('uptimeKuma.url');
+  const slug = config.get('uptimeKuma.statusPageSlug');
+  const embed = buildCompactEmbed(monitors, operationalCount, uptimeKumaUrl, slug);
 
   try {
-    const uptimeKumaUrl = config.get('uptimeKuma.url');
-    const slug = config.get('uptimeKuma.statusPageSlug');
-    const statusContent = `**\uD83C\uDF10 LIVE SERVICE STATUS**\n\uD83D\uDD17 [---------->>>>>  Full Status Page  <<<<<----------](${uptimeKumaUrl}/status/${slug})`;
     const msgOptions = {
-      content: statusContent,
-      embeds: embeds.slice(0, 10),
-      flags: [4096] // MessageFlags.SuppressEmbeds — verhindert URL-Vorschau der Kuma-Seite
+      content: `**\uD83C\uDF10 LIVE SERVICE STATUS** | [\uD83D\uDD17 Statusseite \u00f6ffnen](<${uptimeKumaUrl}/status/${slug}>)`,
+      embeds: [embed],
+      flags: [4096]
     };
     if (statusMessageId) {
       try {
