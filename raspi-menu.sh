@@ -51,9 +51,9 @@ done
 # Fenstermaße – dynamisch an Terminalgröße anpassen
 COLS=$(tput cols  2>/dev/null || echo 80)
 ROWS=$(tput lines 2>/dev/null || echo 24)
-W=$(( COLS > 84 ? 80 : COLS - 4 ))
+W=$(( COLS > 90 ? 86 : COLS - 2 ))
 H=$(( ROWS > 28 ? 26 : ROWS - 2 ))
-[ "$W" -lt 60 ] && W=60
+[ "$W" -lt 64 ] && W=64
 [ "$H" -lt 20 ] && H=20
 
 # ── Hilfsfunktionen ──────────────────────────────────────────────────────────
@@ -1187,15 +1187,15 @@ main_menu() {
       --menu "$(printf "Bot: %-8s | Uptime Kuma: %-8s | %s\n\nWas möchtest du tun?" \
               "$BOT_ST" "$KUMA_ST" "$UPDATE_HINT")" \
       $H $W $LIST_H \
-      "1" "🍓  System vorbereiten     (apt, Node.js, Docker, Firewall, ...)" \
-      "2" "📊  Uptime Kuma            (installieren, starten, aktualisieren)" \
-      "3" "🤖  Bot-Verwaltung         (installieren, starten, Logs, Update)" \
-      "4" "🔍  Status & Prüfungen     (Services, Ressourcen, Health-Check)" \
-      "5" "🌐  Netzwerk & Cloudflare  (CG-NAT, Tunnel, DNS-Prüfung)" \
-      "6" "🔄  Schnell-Update         (Bot + Docker in einem Schritt)" \
-      "7" "🔎  Update-Prüfung         (GitHub vergleichen, neue Commits anzeigen)" \
-      "8" "⚙   Einstellungen          (Bot-Verzeichnis, Ports)" \
-      "9" "✗   Beenden" \
+      "1" "🍓   System vorbereiten     (apt, Node.js, Docker, Firewall, ...)" \
+      "2" "📊   Uptime Kuma            (installieren, starten, aktualisieren)" \
+      "3" "🤖   Bot-Verwaltung         (installieren, starten, Logs, Update)" \
+      "4" "🔍   Status & Prüfungen     (Services, Ressourcen, Health-Check)" \
+      "5" "🌐   Netzwerk & Cloudflare  (CG-NAT, Tunnel, DNS-Prüfung)" \
+      "6" "🔄   Schnell-Update         (Bot + Docker in einem Schritt)" \
+      "7" "🔎   Update-Prüfung         (GitHub vergleichen, neue Commits anzeigen)" \
+      "8" "⚙    Einstellungen          (Bot-Verzeichnis, Ports)" \
+      "9" "✗    Beenden" \
       3>&1 1>&2 2>&3) || break
 
     case "$CHOICE" in
