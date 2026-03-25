@@ -274,28 +274,9 @@ function calculateUptime(heartbeats) {
 }
 
 // ── 16. EMBED-GENERIERUNG ─────────────────────────────────────────────────────
-function createServiceField(monitor) {
-  const status = !monitor.active ? 'deactivated' :
-    monitor.status === 1 ? 'online' :
-    monitor.status === 0 ? 'offline' :
-    monitor.status === 2 ? 'pending' : 'maintenance';
-
-  const theme = STATUS_THEME[status];
-  const barLength = Math.floor(monitor.uptime / 10);
-
-  return {
-    name: `${theme.icon} ${monitor.name}`,
-    value: [
-      `**${theme.title}**`,
-      `*${theme.description}*`,
-      `\`${theme.bar.slice(0, barLength).padEnd(10, '▱')}\``,
-      `📊 **Uptime:** ${monitor.uptime}%`,
-      `⏱ **Last Check:** <t:${Math.floor(new Date(monitor.time).getTime() / 1000)}:R>`,
-      monitor.ping ? `📶 **Latency:** ${monitor.ping}ms` : ''
-    ].join('\n'),
-    inline: true
-  };
-}
+// Discord zeigt die Uptime Kuma Status-Seite als natives Link-Preview an.
+// Für das Link-Unfurling muss CLOUDFLARE_PUBLIC_URL auf die öffentliche
+// Tunnel-URL gesetzt sein (z.B. https://status.example.com).
 
 // ── 17a. CHANNEL-INDIKATOR (Name + Topic) ────────────────────────────────────
 function _overallStatus(monitors) {
@@ -387,57 +368,33 @@ async function updateStatusMessage() {
   uptimeGauge.set(uptimePercent);
   statusCheckCounter.inc();
 
-  const uptimeKumaUrl = config.get('uptimeKuma.url');
-  const slug = config.get('uptimeKuma.statusPageSlug');
-  const embeds = [];
-  const groups = [...new Set(monitors.map(m => m.group))].sort();
+  // ── URL aufbauen: Cloudflare-Tunnel-URL bevorzugen, sonst interne URL ────────
+  const uptimeKumaUrl    = config.get('uptimeKuma.url');
+  const cloudflareUrl    = config.get('cloudflare.publicUrl');
+  const slug             = config.get('uptimeKuma.statusPageSlug');
+  const publicUrl        = cloudflareUrl
+    ? `${cloudflareUrl}/status/${slug}`
+    : `${uptimeKumaUrl}/status/${slug}`;
 
-  groups.forEach(group => {
-    const services = monitors.filter(m => m.group === group);
-    const fields = [];
+  if (!cloudflareUrl) {
+    logger.warn('CLOUDFLARE_PUBLIC_URL nicht konfiguriert – Discord postet interne URL (kein Link-Preview)');
+  }
 
-    fields.push({
-      name: `📁  ${group.toUpperCase()}  [${services.length}]`,
-      value: '▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬',
-      inline: false
-    });
-
-    services.forEach((service, index) => {
-      fields.push(createServiceField(service));
-      if ((index + 1) % 3 === 0) fields.push({ name: '\u200B', value: '\u200B', inline: false });
-    });
-
-    fields.push({ name: '\u200B', value: '▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔', inline: false });
-
-    embeds.push({
-      color: 0x2F3136,
-      title: '🖥️\u3000SERVICE\u3000MONITOR',
-      description: [
-        '```ansi',
-        '\u001b[34m┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓',
-        '\u001b[34m┃      \u001b[37mSYSTEM STATUS\u001b[34m      ┃',
-        '\u001b[34m┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛```'
-      ].join('\n'),
-      fields: fields.slice(0, 25),
-      footer: { text: 'Last refresh' },
-      timestamp: new Date().toISOString()
-    });
-  });
-
-  const statusContent = `**🌐 LIVE SERVICE STATUS**\n🔗 [---------->>>>>  Full Status Page  <<<<<----------](${uptimeKumaUrl}/status/${slug})`;
+  // Discord unfurlt die URL automatisch als natives Uptime-Kuma-Embed
+  const statusContent = publicUrl;
 
   try {
     if (statusMessageId) {
       try {
         const existingMessage = await channel.messages.fetch(statusMessageId);
-        await existingMessage.edit({ content: statusContent, embeds: embeds.slice(0, 10) });
+        await existingMessage.edit({ content: statusContent });
       } catch {
-        const newMessage = await channel.send({ content: statusContent, embeds: embeds.slice(0, 10) });
+        const newMessage = await channel.send({ content: statusContent });
         statusMessageId = newMessage.id;
         saveState({ statusMessageId, lastChannelStatus, lastChannelNameMs });
       }
     } else {
-      const newMessage = await channel.send({ content: statusContent, embeds: embeds.slice(0, 10) });
+      const newMessage = await channel.send({ content: statusContent });
       statusMessageId = newMessage.id;
       saveState({ statusMessageId, lastChannelStatus, lastChannelNameMs });
     }

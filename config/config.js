@@ -80,6 +80,14 @@ const config = convict({
       default: true,
       env: 'CHANNEL_STATUS_INDICATOR'
     }
+  },
+  cloudflare: {
+    publicUrl: {
+      doc: 'Öffentliche Cloudflare Tunnel URL (z.B. https://status.example.com). Wird als Status-Seiten-Link in Discord gepostet – muss öffentlich erreichbar sein damit Discord die Seite einbetten kann.',
+      format: String,
+      default: '',
+      env: 'CLOUDFLARE_PUBLIC_URL'
+    }
   }
 });
 
