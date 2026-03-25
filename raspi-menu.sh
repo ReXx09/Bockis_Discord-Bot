@@ -1482,16 +1482,59 @@ net_cf_token_check() {
 
   [[ -z "$CF_TOKEN" ]] && { err "Kein Token eingegeben"; pause; return; }
 
+  # ── Vorab-Diagnose: Internetverbindung und DNS prüfen ──────────────────────
+  info "Prüfe Internetverbindung..."
+  local NET_OK=0
+
+  # 1. DNS-Auflösung prüfen
+  if ! getent hosts api.cloudflare.com >/dev/null 2>&1; then
+    err "DNS-Auflösung für api.cloudflare.com fehlgeschlagen"
+    echo -e "  ${YELLOW}  → Mögliche Ursache: kein DNS-Server erreichbar${NC}"
+    echo -e "  ${YELLOW}  → DNS prüfen: cat /etc/resolv.conf${NC}"
+    echo -e "  ${YELLOW}  → Workaround: echo 'nameserver 1.1.1.1' | sudo tee /etc/resolv.conf${NC}"
+    pause; return
+  fi
+  ok "DNS OK (api.cloudflare.com auflösbar)"
+
+  # 2. Erreichbarkeit prüfen (TCP Port 443)
+  if ! timeout 5 bash -c 'cat < /dev/null > /dev/tcp/api.cloudflare.com/443' 2>/dev/null; then
+    err "api.cloudflare.com:443 nicht erreichbar (TCP-Verbindung fehlgeschlagen)"
+    echo -e "  ${YELLOW}  → Mögliche Ursachen:${NC}"
+    echo -e "  ${YELLOW}    • Firewall blockiert ausgehende HTTPS-Verbindungen${NC}"
+    echo -e "  ${YELLOW}    • CGNAT blockiert ausgehende Verbindungen (unwahrscheinlich)${NC}"
+    echo -e "  ${YELLOW}    • Kein Internet auf diesem Interface${NC}"
+    echo -e "  ${YELLOW}  → Test manuell: curl -v https://api.cloudflare.com/client/v4/user/tokens/verify${NC}"
+    pause; return
+  fi
+  ok "TCP-Port 443 erreichbar"
+
   info "Prüfe Token bei Cloudflare API..."
 
   local RESULT HTTP_CODE
-  RESULT=$(curl -sf --max-time 8 \
+  # HTTP-Code separat auslesen für bessere Fehlerdiagnose
+  HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 \
+    -X GET "https://api.cloudflare.com/client/v4/user/tokens/verify" \
+    -H "Authorization: Bearer ${CF_TOKEN}" \
+    -H "Content-Type: application/json" 2>/dev/null)
+
+  RESULT=$(curl -sf --max-time 10 \
     -X GET "https://api.cloudflare.com/client/v4/user/tokens/verify" \
     -H "Authorization: Bearer ${CF_TOKEN}" \
     -H "Content-Type: application/json" 2>/dev/null)
 
   if [[ -z "$RESULT" ]]; then
-    err "Keine Antwort von der Cloudflare API — Internetverbindung prüfen"
+    err "Keine Antwort von der Cloudflare API (HTTP: ${HTTP_CODE:-keine})"
+    echo ""
+    echo -e "  ${YELLOW}Diagnose:${NC}"
+    echo -e "  ${YELLOW}  HTTP-Code: ${HTTP_CODE:-Timeout/keine Verbindung}${NC}"
+    if [[ "$HTTP_CODE" == "400" ]]; then
+      echo -e "  ${YELLOW}  → Token-Format ungültig (zu kurz oder falsch kopiert)${NC}"
+    elif [[ "$HTTP_CODE" == "403" ]]; then
+      echo -e "  ${YELLOW}  → Token existiert, hat aber keine Berechtigung${NC}"
+    elif [[ "$HTTP_CODE" == "000" || -z "$HTTP_CODE" ]]; then
+      echo -e "  ${YELLOW}  → Verbindungs-Timeout — Cloudflare API nicht erreichbar${NC}"
+      echo -e "  ${YELLOW}  → Manuell testen: curl -v https://1.1.1.1${NC}"
+    fi
     pause; return
   fi
 
