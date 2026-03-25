@@ -639,6 +639,11 @@
       html += row('Tunnel', d.tunnels.map(t =>
         `<span class="commit-hash">${t.id.slice(0,8)}</span> ${t.name.replace(/</g,'&lt;').replace(/>/g,'&gt;')}`
       ).join('<br>'));
+    } else if (d.zeroTrust) {
+      html += row('Tunnel', '<span class="badge b-green">Zero Trust (Token-Methode)</span>');
+      if (d.publicUrl) {
+        html += row('Public URL', `<a href="${d.publicUrl.replace(/</g,'&lt;')}" target="_blank" style="color:var(--blue)">${d.publicUrl.replace(/</g,'&lt;')}</a>`);
+      }
     } else {
       html += row('Tunnel', '<span class="muted">kein Tunnel konfiguriert</span>');
     }

@@ -353,8 +353,10 @@ function buildFallbackEmbeds(monitors) {
 // ── 16b. CLOUDFLARE-ERREICHBARKEITSCHECK ────────────────────────────────────
 async function isCloudflareReachable(url) {
   try {
-    const resp = await axios.head(url, { timeout: 5_000, maxRedirects: 3 });
-    return resp.status >= 200 && resp.status < 500; // 404 ist noch erreichbar
+    // Nur echte 2xx-Antworten gelten als erreichbar.
+    // 4xx/5xx = Cloudflare-Fehlerseite (Tunnel down, kein Hostname, etc.) → Fallback
+    const resp = await axios.head(url, { timeout: 5_000, maxRedirects: 5 });
+    return resp.status >= 200 && resp.status < 300;
   } catch {
     return false;
   }
@@ -859,6 +861,7 @@ app.post('/api/config', dashboardAuth, (req, res) => {
 
 app.get('/api/tunnel-status', dashboardAuth, (req, res) => {
   const { execFile } = require('child_process');
+  const publicUrl = config.get('cloudflare.publicUrl') || null;
   execFile('systemctl', ['is-active', 'cloudflared'], { timeout: 4000 }, (err, stdout) => {
     const active = (stdout || '').trim() === 'active';
     execFile('cloudflared', ['--version'], { timeout: 4000 }, (e2, ver) => {
@@ -873,7 +876,10 @@ app.get('/api/tunnel-status', dashboardAuth, (req, res) => {
             if (parts.length >= 2) tunnels.push({ id: parts[0], name: parts[1] });
           }
         }
-        res.json({ installed, active, version, tunnels });
+        // Zero-Trust-Token-Tunnel: Service läuft, aber kein lokaler Tunnel-Config
+        // → als zeroTrust kennzeichnen damit das Dashboard korrekt anzeigt
+        const zeroTrust = installed && active && tunnels.length === 0 && !!publicUrl;
+        res.json({ installed, active, version, tunnels, publicUrl, zeroTrust });
       });
     });
   });
