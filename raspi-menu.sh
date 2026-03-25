@@ -1631,15 +1631,27 @@ _cf_tunnel_token_method() {
   echo ""
   read -rp "  Enter drücken wenn Token bereit ist..."
 
+  # Wichtig: --inputbox statt --passwordbox verwenden!
+  # passwordbox schneidet lange JWTs (200+ Zeichen) ab → Token ungültig.
   local TUNNEL_TOKEN
-  TUNNEL_TOKEN=$(whiptail --title "Tunnel-Token einfügen" --passwordbox \
-    "Tunnel-Token aus dem Zero Trust Dashboard einfügen:" \
-    10 $W "" 3>&1 1>&2 2>&3) || return
+  TUNNEL_TOKEN=$(whiptail --title "Tunnel-Token einfügen" --inputbox \
+    "Tunnel-Token aus dem Zero Trust Dashboard einfügen:\n(sichtbar, damit du prüfen kannst ob er vollständig ist)" \
+    12 $W "" 3>&1 1>&2 2>&3) || return
 
   [[ -z "$TUNNEL_TOKEN" ]] && { err "Kein Token eingegeben"; pause; return; }
 
+  # Mindestlänge prüfen – Zero Trust Tokens sind JWTs (typisch > 100 Zeichen)
+  if [[ "${#TUNNEL_TOKEN}" -lt 100 ]]; then
+    err "Token scheint zu kurz (${#TUNNEL_TOKEN} Zeichen – erwartet > 100)"
+    echo -e "  ${YELLOW}  → Bitte den VOLLSTÄNDIGEN Token aus dem Cloudflare Dashboard kopieren.${NC}"
+    echo -e "  ${YELLOW}  → Der Token steht im Install-Befehl nach '--token '.${NC}"
+    echo -e "  ${YELLOW}  → Tipp: Token in eine Datei speichern und mit 'cat Datei' prüfen.${NC}"
+    pause; return
+  fi
+
   clear
   echo -e "${BOLD}${CYAN}━━ cloudflared Service installieren ━━${NC}\n"
+  echo -e "  ${DIM}Token-Länge: ${#TUNNEL_TOKEN} Zeichen${NC}\n"
 
   info "Installiere cloudflared als systemd-Service..."
   if sudo cloudflared service install "$TUNNEL_TOKEN" 2>&1 | tail -5; then
