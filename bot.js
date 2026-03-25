@@ -447,10 +447,19 @@ async function updateStatusMessage() {
   statusCheckCounter.inc();
 
   // ── Nachricht: Status-URL als Content posten → Discord unfurlt die Uptime-Kuma-Seite ──
+  // Für Discord-Unfurl MUSS die öffentliche HTTPS-URL (Cloudflare) verwendet werden.
+  // UPTIME_KUMA_URL ist die interne API-URL (http://localhost:3001) – Discord kann
+  // diese nicht erreichen und zeigt kein Rich-Preview.
+  const cloudflareUrl = config.get('cloudflare.publicUrl');
   const uptimeKumaUrl = config.get('uptimeKuma.url');
   const slug          = config.get('uptimeKuma.statusPageSlug');
 
-  const statusContent = `🌐 **LIVE SERVICE STATUS**\n${uptimeKumaUrl}/status/${slug}`;
+  // Öffentliche URL bevorzugen (HTTPS), Fallback auf interne URL
+  const publicStatusUrl = cloudflareUrl
+    ? `${cloudflareUrl}/status/${slug}`
+    : `${uptimeKumaUrl}/status/${slug}`;
+
+  const statusContent = `🌐 **LIVE SERVICE STATUS**\n${publicStatusUrl}`;
   const messagePayload = { content: statusContent, embeds: [] };
 
   try {
