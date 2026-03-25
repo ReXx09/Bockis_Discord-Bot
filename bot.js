@@ -265,89 +265,79 @@ function calculateUptime(heartbeats) {
 //           direkt im Channel gepostet (alle Dienste sichtbar, aber kein Uptime-Kuma-UI).
 
 function createServiceField(monitor) {
-  const status = !monitor.active     ? 'deactivated'
-               : monitor.status === 1 ? 'online'
-               : monitor.status === 0 ? 'offline'
-               : monitor.status === 2 ? 'pending'
-               : 'maintenance';
-  const theme     = STATUS_THEME[status];
-  const barLength = Math.floor((parseFloat(monitor.uptime) || 0) / 10);
-  const bar       = theme.bar.slice(0, barLength).padEnd(10, '\u25B1');
-  const unixTs    = Math.floor(new Date(monitor.time).getTime() / 1000);
+  const theme = monitor.status === 1 ? STATUS_THEME.online
+              : monitor.status === 0 ? STATUS_THEME.offline
+              : monitor.status === 2 ? STATUS_THEME.pending
+              : STATUS_THEME.deactivated;
+  const ping   = monitor.ping   != null ? `${monitor.ping}ms` : '–';
+  const uptime = monitor.uptime != null ? `${monitor.uptime}%` : '–';
   return {
     name:   `${theme.icon} ${monitor.name}`,
-    value:  [
-      `**${theme.title}**`,
-      `*${theme.description}*`,
-      `\`${bar}\``,
-      `\uD83D\uDCCA **Uptime:** ${monitor.uptime}%`,
-      `\u23F1 **Last Check:** <t:${unixTs}:R>`,
-      monitor.ping ? `\uD83D\uDCF6 **Latency:** ${monitor.ping}ms` : ''
-    ].filter(Boolean).join('\n'),
+    value:  `\`${theme.title}\`\n⏱ ${ping} · 📈 ${uptime}`,
     inline: true
   };
 }
 
 function buildStatusEmbeds(monitors, statusPageUrl = null) {
-  const now    = new Date();
-  const active = monitors.filter(m => m.active !== false);
-  const online = active.filter(m => m.status === 1).length;
-  const offline = active.filter(m => m.status === 0).length;
-  const color  = offline === 0 ? 0x43B581 : 0xF04747;
+  const now     = new Date();
+  const timeStr = now.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+  const dateStr = now.toLocaleDateString('de-DE');
 
-  // ANSI-Box: gleiche Optik wie alter Bot
+  const active  = monitors.filter(m => m.active !== false);
+  const online  = active.filter(m => m.status === 1).length;
+  const offline = active.filter(m => m.status === 0).length;
+  const total   = active.length;
+  const allOk   = offline === 0;
+  const color   = allOk ? 0x43B581 : 0xF04747;
+
+  // ANSI-Box-Header
+  const statusText = allOk
+    ? '\u001b[1;32m\u2714  ALL SYSTEMS OPERATIONAL\u001b[0m'
+    : `\u001b[1;31m\u2718  ${offline} SERVICE(S) OFFLINE\u001b[0m`;
   const ansiHeader = [
     '```ansi',
-    '\u001b[34m\u250F\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2513',
-    '\u001b[34m\u2503\u3000\u3000\u3000\u3000\u3000\u3000\u001b[37m\uD835\uDDAE\uD835\uDDC8\uD835\uDDCB\uD835\uDDBA\uD835\uDDBB\uD835\uDDB3 \uD835\uDDAE\uD835\uDDB3\uD835\uDDBA\uD835\uDDBB\uD835\uDDBF\uD835\uDDAC\uD835\uDDAE\u001b[34m\u3000\u3000\u3000\u3000\u3000\u3000\u2503',
-    '\u001b[34m\u2517\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u251B```'
+    '\u001b[1;36m\u2554\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2557\u001b[0m',
+    '\u001b[1;36m\u2551\u001b[0m  \u001b[1;37mSERVICE MONITOR\u001b[0m             \u001b[1;36m\u2551\u001b[0m',
+    `\u001b[1;36m\u2551\u001b[0m  ${statusText.padEnd(28)}\u001b[1;36m\u2551\u001b[0m`,
+    '\u001b[1;36m\u255a\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u255d\u001b[0m',
+    '```'
   ].join('\n');
 
-  // Gruppen sammeln (Reihenfolge beibehalten)
-  const groupMap = {};
+  // Klickbarer Link zur Status-Seite (nur wenn Cloudflare erreichbar)
+  const linkLine = statusPageUrl
+    ? `\n[\uD83C\uDF10 Zur Live-Status-Seite \u2192](${statusPageUrl})`
+    : '';
+
+  const footerText = `${online}/${total} online` +
+    (offline > 0 ? ` \u00b7 ${offline} offline` : '') +
+    ` \u00b7 ${dateStr} ${timeStr}` +
+    (statusPageUrl ? '' : ' \u00b7 \u26a0\ufe0f Cloudflare nicht verbunden');
+
+  // Monitore nach Gruppe sortieren
+  const groups = {};
   for (const m of active) {
     const g = m.group || 'General';
-    if (!groupMap[g]) groupMap[g] = [];
-    groupMap[g].push(m);
+    if (!groups[g]) groups[g] = [];
+    groups[g].push(m);
   }
 
   const embeds = [];
 
-  for (const [groupName, groupMonitors] of Object.entries(groupMap)) {
-    const fields = [];
+  embeds.push(
+    new EmbedBuilder()
+      .setColor(color)
+      .setDescription(ansiHeader + linkLine)
+      .setFooter({ text: footerText })
+      .setTimestamp(now)
+  );
 
-    // Gruppen-Trennbalken oben
-    fields.push({
-      name:   `\uD83D\uDCC1  ${groupName.toUpperCase()}  [${groupMonitors.length}]`,
-      value:  '\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC',
-      inline: false
-    });
-
-    groupMonitors.forEach((service, idx) => {
-      fields.push(createServiceField(service));
-      // Alle 3 Felder: Trennzeile für saubere Reihen
-      if ((idx + 1) % 3 === 0) {
-        fields.push({ name: '\u200B', value: '\u200B', inline: false });
-      }
-    });
-
-    // Gruppen-Trennbalken unten
-    fields.push({
-      name:   '\u200B',
-      value:  '\u2594\u2594\u2594\u2594\u2594\u2594\u2594\u2594\u2594\u2594\u2594\u2594\u2594\u2594\u2594\u2594\u2594\u2594\u2594\u2594\u2594\u2594\u2594\u2594',
-      inline: false
-    });
-
+  for (const [groupName, groupMonitors] of Object.entries(groups)) {
     embeds.push(
       new EmbedBuilder()
         .setColor(color)
-        .setTitle('\uD83D\uDDA5\uFE0F\u3000SERVICE\u3000MONITOR')
-        .setDescription(ansiHeader)
-        .addFields(fields.slice(0, 25))
-        .setFooter({ text: 'Uptime Kuma Status \u00b7 Automatisch generiert' })
-        .setTimestamp(now)
+        .setTitle(`\uD83D\uDCC1 ${groupName}`)
+        .addFields(groupMonitors.map(createServiceField))
     );
-
     if (embeds.length >= 10) break;
   }
 
@@ -456,28 +446,12 @@ async function updateStatusMessage() {
   uptimeGauge.set(uptimePercent);
   statusCheckCounter.inc();
 
-  // ── Embeds mit Live-Daten + optionalem Link zur Status-Seite ────────────────
-  // Discord cached Link-Previews – deshalb immer Embeds mit Live-Daten posten.
-  // Wenn Cloudflare erreichbar ist, wird ein klickbarer Link im Embed eingebettet.
-  const cloudflareUrl = config.get('cloudflare.publicUrl');
+  // ── Nachricht: Status-URL als Content posten → Discord unfurlt die Uptime-Kuma-Seite ──
+  const uptimeKumaUrl = config.get('uptimeKuma.url');
   const slug          = config.get('uptimeKuma.statusPageSlug');
 
-  let statusPageLink = null;
-  if (cloudflareUrl) {
-    const publicUrl = `${cloudflareUrl}/status/${slug}`;
-    const reachable = await isCloudflareReachable(publicUrl);
-    if (reachable) {
-      statusPageLink = publicUrl;
-      logger.info(`Discord: Embed-Modus mit Link → ${publicUrl}`);
-    } else {
-      logger.warn(`Cloudflare-URL nicht erreichbar (${publicUrl}) – Embed ohne Link`);
-    }
-  }
-
-  const statusContent = statusPageLink
-    ? `**\uD83C\uDF10 LIVE SERVICE STATUS** | [Statusseite \u00f6ffnen](${statusPageLink})`
-    : '**\uD83C\uDF10 LIVE SERVICE STATUS**';
-  const messagePayload = { content: statusContent, embeds: buildStatusEmbeds(monitors, statusPageLink) };
+  const statusContent = `🌐 **LIVE SERVICE STATUS**\n${uptimeKumaUrl}/status/${slug}`;
+  const messagePayload = { content: statusContent, embeds: [] };
 
   try {
     if (statusMessageId) {
