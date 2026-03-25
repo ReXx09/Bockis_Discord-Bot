@@ -460,7 +460,7 @@ async function updateStatusMessage() {
     : `${uptimeKumaUrl}/status/${slug}`;
 
   const statusContent = `🌐 **LIVE SERVICE STATUS**\n${publicStatusUrl}`;
-  const messagePayload = { content: statusContent, embeds: [] };
+  const messagePayload = { content: statusContent };
 
   try {
     if (statusMessageId) {
