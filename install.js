@@ -452,7 +452,41 @@ async function configOptional(rl) {
     hint: 'Pfad zur SQLite-Datenbankdatei – Standard ist empfohlen.',
   });
 
-  return { interval, port, dashPassword, dbPath };
+  nl();
+  print(`${SYM.info}  ${C.b}Cloudflare Tunnel (optional):${C.r}`);
+  print(`  ${C.dim}  Der Bot postet die Uptime Kuma Status-Seite als Discord Link-Preview.${C.r}`);
+  print(`  ${C.dim}  Damit Discord die Seite einbetten kann, muss sie öffentlich erreichbar${C.r}`);
+  print(`  ${C.dim}  sein → empfohlen über einen Cloudflare Tunnel.${C.r}`);
+  nl();
+  print(`  ${C.dim}  Einrichten: https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/${C.r}`);
+  print(`  ${C.dim}  Kurzfassung: cloudflared tunnel create bockis-bot${C.r}`);
+  print(`  ${C.dim}              cloudflared tunnel route dns bockis-bot status.deinedomain.de${C.r}`);
+  nl();
+
+  // Prüfen ob cloudflared bereits installiert ist
+  let cloudflaredInstalled = false;
+  try {
+    execSync('cloudflared --version', { stdio: 'ignore' });
+    cloudflaredInstalled = true;
+    print(`${SYM.ok}  cloudflared ist bereits installiert.`);
+  } catch {
+    print(`${SYM.warn}  cloudflared ist ${C.byel}nicht${C.r} installiert.`);
+    print(`  ${C.dim}  Raspi-Installation: curl -L https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-arm64 -o /usr/local/bin/cloudflared && chmod +x /usr/local/bin/cloudflared${C.r}`);
+  }
+  nl();
+
+  const cloudflareUrl = await ask(rl, 'Cloudflare Tunnel URL  (optional – Enter zum Überspringen)', '', {
+    hint: 'Öffentliche URL deines Tunnels, z.B. https://status.deinedomain.de\n'
+        + 'Leer lassen = kein Discord Link-Preview (Bot postet interne URL).',
+    required: false,
+    validate: v => {
+      if (!v) return null;
+      try { const u = new URL(v); return u.protocol === 'https:' ? null : 'Muss mit https:// beginnen (Cloudflare liefert immer HTTPS).'; }
+      catch { return 'Keine gültige URL – mit https:// beginnen.'; }
+    },
+  });
+
+  return { interval, port, dashPassword, dbPath, cloudflareUrl };
 }
 
 // ── SCHRITT 6: ABSCHLUSS ──────────────────────────────────────────────────────
@@ -484,6 +518,11 @@ async function finalize(rl, discord, kuma, optional) {
     '# ── Datenbank ────────────────────────────────────────────────────────────────',
     'DB_DIALECT=sqlite',
     `DB_STORAGE=${optional.dbPath}`,
+    '',
+    '# ── Cloudflare Tunnel ────────────────────────────────────────────────────────',
+    '# Öffentliche URL des Cloudflare Tunnels (z.B. https://status.deinedomain.de)',
+    '# Leer lassen wenn kein Tunnel verwendet wird.',
+    `CLOUDFLARE_PUBLIC_URL=${optional.cloudflareUrl || ''}`,
   ].join('\n');
 
   try {
@@ -526,6 +565,7 @@ async function finalize(rl, discord, kuma, optional) {
   print(`  ${C.dim}Update-Intervall:${C.r}    ${Math.round(parseInt(optional.interval) / 1000)}s`);
   print(`  ${C.dim}Dashboard-Port:${C.r}      ${optional.port}`);
   print(`  ${C.dim}Dashboard-Passwort:${C.r}  ${optional.dashPassword ? `${SYM.ok} gesetzt` : `${SYM.warn} nicht gesetzt`}`);
+  print(`  ${C.dim}Cloudflare URL:${C.r}      ${optional.cloudflareUrl || `${SYM.warn} nicht konfiguriert (kein Link-Preview)`}`);
   nl();
   console.log(`  ${hr('─', 58)}`);
   nl();
