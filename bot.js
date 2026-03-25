@@ -383,7 +383,39 @@ async function updateStatusMessage() {
   uptimeGauge.set(uptimePercent);
   statusCheckCounter.inc();
 
+// ✅ NEU – ein einziger kompakter Embed für alle Gruppen
 
+const fields = [];
+const groups = [...new Set(monitors.map(m => m.group))].sort();
+
+groups.forEach(group => {
+  const services = monitors.filter(m => m.group === group);
+
+  fields.push({
+    name: '\u200B',
+    value: `**${group.toUpperCase()}  [${services.length}]**\n${'─'.repeat(32)}`,
+    inline: false
+  });
+
+  services.forEach(service => {
+    fields.push(createServiceField(service));
+  });
+});
+
+const nowDate = new Date();                                    // ← geändert
+const dateStr = nowDate.toLocaleDateString('de-DE');           // ← geändert
+const timeStr = nowDate.toLocaleTimeString('de-DE', {          // ← geändert
+  hour: '2-digit', minute: '2-digit', second: '2-digit'
+});
+
+const embeds = [{
+  color: 0x2F3136,
+  fields: fields.slice(0, 25),
+  footer: { text: 'Uptime Kuma Status · Automatisch generiert' },
+  timestamp: new Date().toISOString()
+}];
+
+const statusContent = `**🌐 LIVE SERVICE STATUS** | Stand: ${dateStr}, ${timeStr}`;
 
   try {
     if (statusMessageId) {
