@@ -1356,23 +1356,21 @@ menu_network() {
     CHOICE=$(whiptail --title "🌐 Netzwerk & Cloudflare Tunnel" --menu \
       "CG-NAT-Erkennung, Cloudflare Tunnel, DNS-Prüfung:" $H $W 8 \
       "1" "🔍  Netzwerk & CG-NAT analysieren" \
-      "2" "🔑  Cloudflare Token prüfen  (API-Validierung)" \
-      "3" "🚇  Cloudflare Tunnel einrichten  (cloudflared)" \
-      "4" "▶   Tunnel-Service starten / stoppen" \
-      "5" "📋  Tunnel-Service Status & Logs" \
-      "6" "🌍  Domain / DNS prüfen" \
-      "7" "🗑   Tunnel deinstallieren" \
+      "2" "�  Cloudflare Tunnel einrichten  (Tunnel-Token)" \
+      "3" "▶   Tunnel-Service starten / stoppen" \
+      "4" "📋  Tunnel-Service Status & Logs" \
+      "5" "🌍  Domain / DNS prüfen" \
+      "6" "🗑   Tunnel deinstallieren" \
       "←" "Zurück zum Hauptmenü" \
       3>&1 1>&2 2>&3) || return
 
     case "$CHOICE" in
       "1") net_cgnat_check ;;
-      "2") net_cf_token_check ;;
-      "3") net_cf_tunnel_setup ;;
-      "4") net_tunnel_startstop ;;
-      "5") net_tunnel_status ;;
-      "6") net_dns_check ;;
-      "7") net_tunnel_uninstall ;;
+      "2") net_cf_tunnel_setup ;;
+      "3") net_tunnel_startstop ;;
+      "4") net_tunnel_status ;;
+      "5") net_dns_check ;;
+      "6") net_tunnel_uninstall ;;
       "←") return ;;
     esac
   done
