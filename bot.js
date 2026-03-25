@@ -695,6 +695,44 @@ app.post('/api/refresh', dashboardAuth, async (req, res) => {
   }
 });
 
+// ── Service-Control (start / stop / restart via systemctl) ────────────────
+const ALLOWED_SERVICES = ['bockis-bot', 'uptime-kuma', 'cloudflared'];
+const ALLOWED_ACTIONS  = ['start', 'stop', 'restart', 'status'];
+
+app.post('/api/service-control', dashboardAuth, (req, res) => {
+  const { execFile } = require('child_process');
+  const { service, action } = req.body || {};
+
+  if (!ALLOWED_SERVICES.includes(service)) {
+    return res.status(400).json({ ok: false, error: 'Unerlaubter Service-Name' });
+  }
+  if (!ALLOWED_ACTIONS.includes(action)) {
+    return res.status(400).json({ ok: false, error: 'Unerlaubte Aktion' });
+  }
+
+  logger.info(`Service-Control: ${action} ${service}`);
+  execFile('sudo', ['systemctl', action, service], { timeout: 15_000 }, (err, stdout, stderr) => {
+    const output = (stdout + stderr).trim();
+    if (err && action !== 'status') {
+      logger.warn(`Service-Control Fehler (${action} ${service}): ${err.message}`);
+      return res.json({ ok: false, error: output || err.message });
+    }
+    res.json({ ok: true, output });
+  });
+});
+
+app.get('/api/service-status', dashboardAuth, (req, res) => {
+  const { execFile } = require('child_process');
+  const results = {};
+  let pending = ALLOWED_SERVICES.length;
+  ALLOWED_SERVICES.forEach(svc => {
+    execFile('systemctl', ['is-active', svc], { timeout: 4000 }, (err, stdout) => {
+      results[svc] = (stdout || '').trim();
+      if (--pending === 0) res.json({ ok: true, services: results });
+    });
+  });
+});
+
 app.get('/api/update-check', dashboardAuth, (req, res) => {
   const { execSync } = require('child_process');
   try {

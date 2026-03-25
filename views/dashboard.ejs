@@ -176,6 +176,44 @@
       margin-top: 6px;
     }
 
+    /* SERVICE CONTROL */
+    .svc-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+      gap: 12px;
+    }
+    .svc-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 14px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .svc-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .svc-name { font-size: 13px; font-weight: 600; }
+    .svc-actions { display: flex; gap: 6px; }
+    .btn-svc {
+      padding: 4px 10px;
+      font-size: 11px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--surface2);
+      color: var(--text);
+      cursor: pointer;
+      transition: background .15s;
+    }
+    .btn-svc:hover { background: var(--border); }
+    .btn-svc.start  { color: var(--green); border-color: rgba(63,185,80,.4); }
+    .btn-svc.stop   { color: var(--red);   border-color: rgba(248,81,73,.4); }
+    .btn-svc.restart{ color: var(--yellow);border-color: rgba(210,153,34,.4); }
+    .btn-svc:disabled { opacity: .45; cursor: not-allowed; }
+
     /* SECTION */
     .section-hdr {
       display: flex;
@@ -451,7 +489,47 @@
   <span class="count" id="monCount">–</span>
 </div>
 <div class="grid-monitors" id="monGrid"></div>
-
+<!-- ── ROW 2b: SERVICE CONTROL ────────────────── -->
+<div class="section-hdr" style="margin-top:28px">
+  <span class="title">⚙️ Dienste verwalten</span>
+  <span class="muted" style="font-size:12px">start / stop / restart via systemctl</span>
+</div>
+<div class="svc-grid" id="svcGrid">
+  <div class="svc-card" id="svc-bockis-bot">
+    <div class="svc-header">
+      <span class="svc-name">🤖 Bockis Bot</span>
+      <span class="badge b-gray" id="svcBadge-bockis-bot">...</span>
+    </div>
+    <div class="svc-actions">
+      <button class="btn-svc start"  onclick="svcAction('bockis-bot','start')">&#9654; Start</button>
+      <button class="btn-svc stop"   onclick="svcAction('bockis-bot','stop')">&#9632; Stop</button>
+      <button class="btn-svc restart" onclick="svcAction('bockis-bot','restart')">&#8635; Restart</button>
+    </div>
+    <div class="muted" style="font-size:11px">Stop beendet auch das Dashboard kurzzeitig</div>
+  </div>
+  <div class="svc-card" id="svc-uptime-kuma">
+    <div class="svc-header">
+      <span class="svc-name">📊 Uptime Kuma</span>
+      <span class="badge b-gray" id="svcBadge-uptime-kuma">...</span>
+    </div>
+    <div class="svc-actions">
+      <button class="btn-svc start"  onclick="svcAction('uptime-kuma','start')">&#9654; Start</button>
+      <button class="btn-svc stop"   onclick="svcAction('uptime-kuma','stop')">&#9632; Stop</button>
+      <button class="btn-svc restart" onclick="svcAction('uptime-kuma','restart')">&#8635; Restart</button>
+    </div>
+  </div>
+  <div class="svc-card" id="svc-cloudflared">
+    <div class="svc-header">
+      <span class="svc-name">🌐 Cloudflare Tunnel</span>
+      <span class="badge b-gray" id="svcBadge-cloudflared">...</span>
+    </div>
+    <div class="svc-actions">
+      <button class="btn-svc start"  onclick="svcAction('cloudflared','start')">&#9654; Start</button>
+      <button class="btn-svc stop"   onclick="svcAction('cloudflared','stop')">&#9632; Stop</button>
+      <button class="btn-svc restart" onclick="svcAction('cloudflared','restart')">&#8635; Restart</button>
+    </div>
+  </div>
+</div>
 <!-- ── ROW 3: LOGS ────────────────────────────────────── -->
 <div class="section-hdr" style="margin-top:28px">
   <span class="title">Bot-Logs</span>
@@ -617,8 +695,55 @@
     try {
       const t = await fetch('/api/tunnel-status').then(r => r.json());
       renderTunnel(t);
-    } catch { /* cloudflared nicht zwingend installiert */ }
+    } catch { /* cloudflared nicht zwingend installiert */ }    // Service-Status laden
+    fetchServiceStatus();
   }
+
+  // ── Service Control ────────────────────────────────
+  const SVC_LABELS = {
+    'active':   ['b-green',  'AKTIV'],
+    'inactive': ['b-gray',   'GESTOPPT'],
+    'failed':   ['b-red',    'FEHLER'],
+    'unknown':  ['b-yellow', 'UNBEKANNT']
+  };
+
+  async function fetchServiceStatus() {
+    try {
+      const d = await fetch('/api/service-status').then(r => r.json());
+      if (!d.ok) return;
+      for (const [svc, state] of Object.entries(d.services)) {
+        const badge = document.getElementById('svcBadge-' + svc);
+        if (!badge) continue;
+        const [cls, label] = SVC_LABELS[state] || ['b-gray', state];
+        badge.className = 'badge ' + cls;
+        badge.textContent = label;
+      }
+    } catch { /* service-status ist optional */ }
+  }
+
+  async function svcAction(service, action) {
+    const btns = document.querySelectorAll(`#svc-${service} .btn-svc`);
+    btns.forEach(b => b.disabled = true);
+    toast(`⏳ ${action} ${service}…`);
+    try {
+      const r = await fetch('/api/service-control', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ service, action })
+      }).then(r => r.json());
+      if (r.ok) {
+        toast(`✓ ${service}: ${action} ausgeführt`);
+      } else {
+        toast(`Fehler: ${r.error}`, 'err');
+      }
+    } catch (e) {
+      toast('Netzwerkfehler: ' + e.message, 'err');
+    } finally {
+      setTimeout(() => {
+        btns.forEach(b => b.disabled = false);
+        fetchServiceStatus();
+      }, 2500);
+    }  }
 
   // ── Tunnel Status ────────────────────────────────────
   function renderTunnel(d) {
