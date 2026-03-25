@@ -654,15 +654,8 @@ client.login(config.get('discord.token')).catch(err => {
 });
 
 async function initializeDatabase() {
-  // sync({ alter: true }) kann bei SQLite mit ENUM-Spalten und vorhandenen Daten
-  // einen Validation error werfen. Daher erst sanft versuchen, bei Fehler auf
-  // plain sync() (create-if-not-exists) zurückfallen.
-  try {
-    await sequelize.sync({ alter: true });
-  } catch (alterErr) {
-    logger.warn(`DB sync(alter) fehlgeschlagen (${alterErr.message}) – fallback auf sync()`);
-    await sequelize.sync();
-  }
+  // sync() = create-if-not-exists, kein ALTER — SQLite unterstützt kein ALTER COLUMN
+  await sequelize.sync();
   logger.info('Datenbank initialisiert');
 }
 
@@ -687,7 +680,7 @@ function startWebServer() {
 if (process.env.NODE_ENV === 'test') {
   const testSuite = {
     async initialize() {
-      try { await sequelize.sync({ alter: true }); } catch { await sequelize.sync(); }
+      await sequelize.sync();
     },
     async checkDatabase() {
       try {
