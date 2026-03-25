@@ -281,19 +281,15 @@ function createServiceField(monitor) {
     monitor.status === 2 ? 'pending' : 'maintenance';
 
   const theme = STATUS_THEME[status];
-  const barLength = Math.floor(monitor.uptime / 10);
+  const barFilled = Math.round(monitor.uptime / 10);
+  const bar = '▰'.repeat(barFilled) + '▱'.repeat(10 - barFilled);
+  const timeStr = new Date(monitor.time)
+    .toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
   return {
-    name: `${theme.icon} ${monitor.name}`,
-    value: [
-      `**${theme.title}**`,
-      `*${theme.description}*`,
-      `\`${theme.bar.slice(0, barLength).padEnd(10, '▱')}\``,
-      `📊 **Uptime:** ${monitor.uptime}%`,
-      `⏱ **Last Check:** <t:${Math.floor(new Date(monitor.time).getTime() / 1000)}:R>`,
-      monitor.ping ? `📶 **Latency:** ${monitor.ping}ms` : ''
-    ].join('\n'),
-    inline: true
+    name: `${theme.icon}  ${monitor.name}`,
+    value: `**${theme.title}** \`${bar}\` **${monitor.uptime}%** · \`${timeStr}\``,
+    inline: false   // ← kein 3-Spalten-Raster mehr
   };
 }
 
@@ -387,44 +383,7 @@ async function updateStatusMessage() {
   uptimeGauge.set(uptimePercent);
   statusCheckCounter.inc();
 
-  const embeds = [];
-  const groups = [...new Set(monitors.map(m => m.group))].sort();
 
-  groups.forEach(group => {
-    const services = monitors.filter(m => m.group === group);
-    const fields = [];
-
-    fields.push({
-      name: `📁  ${group.toUpperCase()}  [${services.length}]`,
-      value: '▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬',
-      inline: false
-    });
-
-    services.forEach((service, index) => {
-      fields.push(createServiceField(service));
-      if ((index + 1) % 3 === 0) fields.push({ name: '\u200B', value: '\u200B', inline: false });
-    });
-
-    fields.push({ name: '\u200B', value: '▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔', inline: false });
-
-    embeds.push({
-      color: 0x2F3136,
-      title: '🖥️\u3000SERVICE\u3000MONITOR',
-      description: [
-        '```ansi',
-        '\u001b[34m┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓',
-        '\u001b[34m┃      \u001b[37mSYSTEM STATUS\u001b[34m      ┃',
-        '\u001b[34m┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛```'
-      ].join('\n'),
-      fields: fields.slice(0, 25),
-      footer: { text: 'Last refresh' },
-      timestamp: new Date().toISOString()
-    });
-  });
-
-  const uptimeKumaUrl = config.get('uptimeKuma.url');
-  const slug = config.get('uptimeKuma.statusPageSlug');
-  const statusContent = `**🌐 LIVE SERVICE STATUS**\n🔗 [---------->>>>>  Full Status Page  <<<<<----------](${uptimeKumaUrl}/status/${slug})`;
 
   try {
     if (statusMessageId) {
