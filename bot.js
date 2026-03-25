@@ -9,7 +9,7 @@
  */
 
 require('dotenv').config();
-const { Client, GatewayIntentBits, ActivityType, REST, Routes, SlashCommandBuilder } = require('discord.js');
+const { Client, GatewayIntentBits, ActivityType, REST, Routes, SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const axios = require('axios');
 const winston = require('winston');
 require('winston-daily-rotate-file');
@@ -274,9 +274,81 @@ function calculateUptime(heartbeats) {
 }
 
 // ── 16. EMBED-GENERIERUNG ─────────────────────────────────────────────────────
-// Discord zeigt die Uptime Kuma Status-Seite als natives Link-Preview an.
-// Für das Link-Unfurling muss CLOUDFLARE_PUBLIC_URL auf die öffentliche
-// Tunnel-URL gesetzt sein (z.B. https://status.example.com).
+// Primär: Discord unfurlt die öffentliche Cloudflare-Tunnel-URL als Link-Preview.
+// Fallback: Wenn CLOUDFLARE_PUBLIC_URL nicht gesetzt ist, werden ANSI-Embed-Karten
+//           direkt im Channel gepostet (alle Dienste sichtbar, aber kein Uptime-Kuma-UI).
+
+function createServiceField(monitor) {
+  const theme = monitor.status === 1 ? STATUS_THEME.online
+              : monitor.status === 0 ? STATUS_THEME.offline
+              : monitor.status === 2 ? STATUS_THEME.pending
+              : STATUS_THEME.deactivated;
+  const ping   = monitor.ping   != null ? `${monitor.ping}ms` : '–';
+  const uptime = monitor.uptime != null ? `${monitor.uptime}%` : '–';
+  return {
+    name:   `${theme.icon} ${monitor.name}`,
+    value:  `\`${theme.title}\`\n⏱ ${ping} · 📈 ${uptime}`,
+    inline: true
+  };
+}
+
+function buildFallbackEmbeds(monitors) {
+  const now     = new Date();
+  const timeStr = now.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+  const dateStr = now.toLocaleDateString('de-DE');
+
+  const active  = monitors.filter(m => m.active !== false);
+  const online  = active.filter(m => m.status === 1).length;
+  const offline = active.filter(m => m.status === 0).length;
+  const total   = active.length;
+  const allOk   = offline === 0;
+  const color   = allOk ? 0x43B581 : 0xF04747;
+
+  // ANSI-Box-Header (wird in Discord als farbiger Codeblock gerendert)
+  const statusText = allOk
+    ? '\u001b[1;32m✔  ALL SYSTEMS OPERATIONAL\u001b[0m'
+    : `\u001b[1;31m✘  ${offline} SERVICE(S) OFFLINE\u001b[0m`;
+  const ansiHeader = [
+    '```ansi',
+    '\u001b[1;36m╔══════════════════════════════╗\u001b[0m',
+    '\u001b[1;36m║\u001b[0m  \u001b[1;37mSERVICE MONITOR\u001b[0m             \u001b[1;36m║\u001b[0m',
+    `\u001b[1;36m║\u001b[0m  ${statusText.padEnd(28)}\u001b[1;36m║\u001b[0m`,
+    '\u001b[1;36m╚══════════════════════════════╝\u001b[0m',
+    '```'
+  ].join('\n');
+
+  // Monitore nach Gruppe sortieren
+  const groups = {};
+  for (const m of active) {
+    const g = m.group || 'General';
+    if (!groups[g]) groups[g] = [];
+    groups[g].push(m);
+  }
+
+  const embeds = [];
+
+  // Header-Embed mit ANSI-Box und Fallback-Hinweis im Footer
+  embeds.push(
+    new EmbedBuilder()
+      .setColor(color)
+      .setDescription(ansiHeader)
+      .setFooter({ text: `⚠️ Cloudflare nicht verbunden – Fallback-Ansicht  ·  ${online}/${total} online  ·  ${dateStr} ${timeStr}` })
+      .setTimestamp(now)
+  );
+
+  // Pro-Gruppe ein Embed mit Inline-Karten (3 pro Zeile)
+  for (const [groupName, groupMonitors] of Object.entries(groups)) {
+    embeds.push(
+      new EmbedBuilder()
+        .setColor(color)
+        .setTitle(`📁 ${groupName}`)
+        .addFields(groupMonitors.map(createServiceField))
+    );
+    if (embeds.length >= 10) break; // Discord-Limit: max 10 Embeds pro Nachricht
+  }
+
+  return embeds;
+}
 
 // ── 17a. CHANNEL-INDIKATOR (Name + Topic) ────────────────────────────────────
 function _overallStatus(monitors) {
@@ -368,33 +440,35 @@ async function updateStatusMessage() {
   uptimeGauge.set(uptimePercent);
   statusCheckCounter.inc();
 
-  // ── URL aufbauen: Cloudflare-Tunnel-URL bevorzugen, sonst interne URL ────────
-  const uptimeKumaUrl    = config.get('uptimeKuma.url');
-  const cloudflareUrl    = config.get('cloudflare.publicUrl');
-  const slug             = config.get('uptimeKuma.statusPageSlug');
-  const publicUrl        = cloudflareUrl
-    ? `${cloudflareUrl}/status/${slug}`
-    : `${uptimeKumaUrl}/status/${slug}`;
+  // ── Nachricht zusammenstellen: Cloudflare-URL (Link-Preview) oder ANSI-Embed-Fallback ──
+  const uptimeKumaUrl = config.get('uptimeKuma.url');
+  const cloudflareUrl = config.get('cloudflare.publicUrl');
+  const slug          = config.get('uptimeKuma.statusPageSlug');
 
-  if (!cloudflareUrl) {
-    logger.warn('CLOUDFLARE_PUBLIC_URL nicht konfiguriert – Discord postet interne URL (kein Link-Preview)');
+  let messagePayload;
+  if (cloudflareUrl) {
+    // Primär: Discord unfurlt die öffentliche URL als natives Uptime-Kuma-Link-Preview
+    const publicUrl = `${cloudflareUrl}/status/${slug}`;
+    messagePayload  = { content: publicUrl, embeds: [] };
+    logger.info(`Discord: URL-Modus → ${publicUrl}`);
+  } else {
+    // Fallback: Cloudflare nicht konfiguriert → ANSI-Embed-Karten direkt im Channel
+    logger.warn('CLOUDFLARE_PUBLIC_URL nicht gesetzt – Fallback auf ANSI-Embed-Karten');
+    messagePayload = { content: '', embeds: buildFallbackEmbeds(monitors) };
   }
-
-  // Discord unfurlt die URL automatisch als natives Uptime-Kuma-Embed
-  const statusContent = publicUrl;
 
   try {
     if (statusMessageId) {
       try {
         const existingMessage = await channel.messages.fetch(statusMessageId);
-        await existingMessage.edit({ content: statusContent });
+        await existingMessage.edit(messagePayload);
       } catch {
-        const newMessage = await channel.send({ content: statusContent });
+        const newMessage = await channel.send(messagePayload);
         statusMessageId = newMessage.id;
         saveState({ statusMessageId, lastChannelStatus, lastChannelNameMs });
       }
     } else {
-      const newMessage = await channel.send({ content: statusContent });
+      const newMessage = await channel.send(messagePayload);
       statusMessageId = newMessage.id;
       saveState({ statusMessageId, lastChannelStatus, lastChannelNameMs });
     }
