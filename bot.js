@@ -278,7 +278,7 @@ function createServiceField(monitor) {
   };
 }
 
-function buildFallbackEmbeds(monitors) {
+function buildStatusEmbeds(monitors, statusPageUrl = null) {
   const now     = new Date();
   const timeStr = now.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
   const dateStr = now.toLocaleDateString('de-DE');
@@ -290,18 +290,28 @@ function buildFallbackEmbeds(monitors) {
   const allOk   = offline === 0;
   const color   = allOk ? 0x43B581 : 0xF04747;
 
-  // ANSI-Box-Header (wird in Discord als farbiger Codeblock gerendert)
+  // ANSI-Box-Header
   const statusText = allOk
-    ? '\u001b[1;32m✔  ALL SYSTEMS OPERATIONAL\u001b[0m'
-    : `\u001b[1;31m✘  ${offline} SERVICE(S) OFFLINE\u001b[0m`;
+    ? '\u001b[1;32m\u2714  ALL SYSTEMS OPERATIONAL\u001b[0m'
+    : `\u001b[1;31m\u2718  ${offline} SERVICE(S) OFFLINE\u001b[0m`;
   const ansiHeader = [
     '```ansi',
-    '\u001b[1;36m╔══════════════════════════════╗\u001b[0m',
-    '\u001b[1;36m║\u001b[0m  \u001b[1;37mSERVICE MONITOR\u001b[0m             \u001b[1;36m║\u001b[0m',
-    `\u001b[1;36m║\u001b[0m  ${statusText.padEnd(28)}\u001b[1;36m║\u001b[0m`,
-    '\u001b[1;36m╚══════════════════════════════╝\u001b[0m',
+    '\u001b[1;36m\u2554\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2557\u001b[0m',
+    '\u001b[1;36m\u2551\u001b[0m  \u001b[1;37mSERVICE MONITOR\u001b[0m             \u001b[1;36m\u2551\u001b[0m',
+    `\u001b[1;36m\u2551\u001b[0m  ${statusText.padEnd(28)}\u001b[1;36m\u2551\u001b[0m`,
+    '\u001b[1;36m\u255a\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u255d\u001b[0m',
     '```'
   ].join('\n');
+
+  // Klickbarer Link zur Status-Seite (nur wenn Cloudflare erreichbar)
+  const linkLine = statusPageUrl
+    ? `\n[\uD83C\uDF10 Zur Live-Status-Seite \u2192](${statusPageUrl})`
+    : '';
+
+  const footerText = `${online}/${total} online` +
+    (offline > 0 ? ` \u00b7 ${offline} offline` : '') +
+    ` \u00b7 ${dateStr} ${timeStr}` +
+    (statusPageUrl ? '' : ' \u00b7 \u26a0\ufe0f Cloudflare nicht verbunden');
 
   // Monitore nach Gruppe sortieren
   const groups = {};
@@ -313,24 +323,22 @@ function buildFallbackEmbeds(monitors) {
 
   const embeds = [];
 
-  // Header-Embed mit ANSI-Box und Fallback-Hinweis im Footer
   embeds.push(
     new EmbedBuilder()
       .setColor(color)
-      .setDescription(ansiHeader)
-      .setFooter({ text: `⚠️ Cloudflare nicht verbunden – Fallback-Ansicht  ·  ${online}/${total} online  ·  ${dateStr} ${timeStr}` })
+      .setDescription(ansiHeader + linkLine)
+      .setFooter({ text: footerText })
       .setTimestamp(now)
   );
 
-  // Pro-Gruppe ein Embed mit Inline-Karten (3 pro Zeile)
   for (const [groupName, groupMonitors] of Object.entries(groups)) {
     embeds.push(
       new EmbedBuilder()
         .setColor(color)
-        .setTitle(`📁 ${groupName}`)
+        .setTitle(`\uD83D\uDCC1 ${groupName}`)
         .addFields(groupMonitors.map(createServiceField))
     );
-    if (embeds.length >= 10) break; // Discord-Limit: max 10 Embeds pro Nachricht
+    if (embeds.length >= 10) break;
   }
 
   return embeds;
@@ -438,29 +446,25 @@ async function updateStatusMessage() {
   uptimeGauge.set(uptimePercent);
   statusCheckCounter.inc();
 
-  // ── Nachricht zusammenstellen: Cloudflare-URL (Link-Preview) oder ANSI-Embed-Fallback ──
-  const uptimeKumaUrl = config.get('uptimeKuma.url');
+  // ── Embeds mit Live-Daten + optionalem Link zur Status-Seite ────────────────
+  // Discord cached Link-Previews – deshalb immer Embeds mit Live-Daten posten.
+  // Wenn Cloudflare erreichbar ist, wird ein klickbarer Link im Embed eingebettet.
   const cloudflareUrl = config.get('cloudflare.publicUrl');
   const slug          = config.get('uptimeKuma.statusPageSlug');
 
-  let messagePayload;
+  let statusPageLink = null;
   if (cloudflareUrl) {
-    const publicUrl   = `${cloudflareUrl}/status/${slug}`;
-    const reachable   = await isCloudflareReachable(publicUrl);
+    const publicUrl = `${cloudflareUrl}/status/${slug}`;
+    const reachable = await isCloudflareReachable(publicUrl);
     if (reachable) {
-      // Primär: Discord unfurlt die öffentliche URL als natives Uptime-Kuma-Link-Preview
-      messagePayload = { content: publicUrl, embeds: [] };
-      logger.info(`Discord: URL-Modus → ${publicUrl}`);
+      statusPageLink = publicUrl;
+      logger.info(`Discord: Embed-Modus mit Link → ${publicUrl}`);
     } else {
-      // Cloudflare-URL gesetzt aber nicht erreichbar → Fallback
-      logger.warn(`Cloudflare-URL nicht erreichbar (${publicUrl}) – Fallback auf ANSI-Embed-Karten`);
-      messagePayload = { content: '', embeds: buildFallbackEmbeds(monitors) };
+      logger.warn(`Cloudflare-URL nicht erreichbar (${publicUrl}) – Embed ohne Link`);
     }
-  } else {
-    // Fallback: CLOUDFLARE_PUBLIC_URL nicht konfiguriert
-    logger.warn('CLOUDFLARE_PUBLIC_URL nicht gesetzt – Fallback auf ANSI-Embed-Karten');
-    messagePayload = { content: '', embeds: buildFallbackEmbeds(monitors) };
   }
+
+  const messagePayload = { content: '', embeds: buildStatusEmbeds(monitors, statusPageLink) };
 
   try {
     if (statusMessageId) {
