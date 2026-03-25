@@ -350,6 +350,16 @@ function buildFallbackEmbeds(monitors) {
   return embeds;
 }
 
+// ── 16b. CLOUDFLARE-ERREICHBARKEITSCHECK ────────────────────────────────────
+async function isCloudflareReachable(url) {
+  try {
+    const resp = await axios.head(url, { timeout: 5_000, maxRedirects: 3 });
+    return resp.status >= 200 && resp.status < 500; // 404 ist noch erreichbar
+  } catch {
+    return false;
+  }
+}
+
 // ── 17a. CHANNEL-INDIKATOR (Name + Topic) ────────────────────────────────────
 function _overallStatus(monitors) {
   const active = monitors.filter(m => m.active !== false);
@@ -447,12 +457,19 @@ async function updateStatusMessage() {
 
   let messagePayload;
   if (cloudflareUrl) {
-    // Primär: Discord unfurlt die öffentliche URL als natives Uptime-Kuma-Link-Preview
-    const publicUrl = `${cloudflareUrl}/status/${slug}`;
-    messagePayload  = { content: publicUrl, embeds: [] };
-    logger.info(`Discord: URL-Modus → ${publicUrl}`);
+    const publicUrl   = `${cloudflareUrl}/status/${slug}`;
+    const reachable   = await isCloudflareReachable(publicUrl);
+    if (reachable) {
+      // Primär: Discord unfurlt die öffentliche URL als natives Uptime-Kuma-Link-Preview
+      messagePayload = { content: publicUrl, embeds: [] };
+      logger.info(`Discord: URL-Modus → ${publicUrl}`);
+    } else {
+      // Cloudflare-URL gesetzt aber nicht erreichbar → Fallback
+      logger.warn(`Cloudflare-URL nicht erreichbar (${publicUrl}) – Fallback auf ANSI-Embed-Karten`);
+      messagePayload = { content: '', embeds: buildFallbackEmbeds(monitors) };
+    }
   } else {
-    // Fallback: Cloudflare nicht konfiguriert → ANSI-Embed-Karten direkt im Channel
+    // Fallback: CLOUDFLARE_PUBLIC_URL nicht konfiguriert
     logger.warn('CLOUDFLARE_PUBLIC_URL nicht gesetzt – Fallback auf ANSI-Embed-Karten');
     messagePayload = { content: '', embeds: buildFallbackEmbeds(monitors) };
   }
