@@ -1653,20 +1653,41 @@ _cf_tunnel_token_method() {
   echo -e "${BOLD}${CYAN}━━ cloudflared Service installieren ━━${NC}\n"
   echo -e "  ${DIM}Token-Länge: ${#TUNNEL_TOKEN} Zeichen${NC}\n"
 
+  # Bereits installierten Service erkennen und vorher deinstallieren
+  if [[ -f /etc/systemd/system/cloudflared.service ]]; then
+    info "Bereits ein cloudflared-Service gefunden — wird zuerst deinstalliert..."
+    sudo systemctl stop cloudflared 2>/dev/null
+    sudo cloudflared service uninstall 2>/dev/null
+    sudo systemctl daemon-reload 2>/dev/null
+    sleep 1
+    ok "Alter Service entfernt"
+    echo ""
+  fi
+
   info "Installiere cloudflared als systemd-Service..."
-  if sudo cloudflared service install "$TUNNEL_TOKEN" 2>&1 | tail -5; then
-    sudo systemctl enable cloudflared 2>/dev/null
-    sudo systemctl start cloudflared 2>/dev/null
-    sleep 2
-    if systemctl is-active --quiet cloudflared; then
-      ok "Cloudflare Tunnel läuft als systemd-Service!"
-      ok "Public Hostnames sind jetzt erreichbar."
-    else
-      err "Service gestartet, aber Status prüfen:"
-      sudo systemctl status cloudflared --no-pager -l | tail -10
-    fi
+  local INSTALL_OUT
+  INSTALL_OUT=$(sudo cloudflared service install "$TUNNEL_TOKEN" 2>&1)
+  echo "$INSTALL_OUT" | tail -5
+
+  # Prüfen ob Installation wirklich erfolgreich war (ERR-Zeile darf nicht mehr auftreten)
+  if echo "$INSTALL_OUT" | grep -q "ERR"; then
+    err "Installation fehlgeschlagen — Fehlermeldung:"
+    echo "$INSTALL_OUT" | grep "ERR" | head -3
+    echo ""
+    echo -e "  ${YELLOW}  → Manuell beheben: sudo cloudflared service uninstall${NC}"
+    echo -e "  ${YELLOW}  → Dann diesen Schritt erneut ausführen${NC}"
+    pause; return
+  fi
+
+  sudo systemctl enable cloudflared 2>/dev/null
+  sudo systemctl start cloudflared 2>/dev/null
+  sleep 2
+  if systemctl is-active --quiet cloudflared; then
+    ok "Cloudflare Tunnel läuft als systemd-Service!"
+    ok "Public Hostnames sind jetzt erreichbar."
   else
-    err "Installation fehlgeschlagen — Token korrekt?"
+    err "Service gestartet, aber nicht aktiv — Status:"
+    sudo systemctl status cloudflared --no-pager -l | tail -10
   fi
   pause
 }
