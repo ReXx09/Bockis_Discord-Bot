@@ -274,18 +274,55 @@ function calculateUptime(heartbeats) {
 }
 
 // ── 16. EMBED-GENERIERUNG ─────────────────────────────────────────────────────
-function createServiceLine(monitor) {
-  const status = !monitor.active ? 'deactivated' :
-    monitor.status === 1 ? 'online' :
-    monitor.status === 0 ? 'offline' :
-    monitor.status === 2 ? 'pending' : 'maintenance';
+function buildCompactEmbed(monitors, operationalCount) {
+  const groups = [...new Set(monitors.map(m => m.group))].sort();
+  const fields = [];
 
-  const theme = STATUS_THEME[status];
-  const filledLen = Math.round(monitor.uptime / 5);
-  const bar = '\u25B0'.repeat(filledLen).padEnd(20, '\u25B1');
-  const timeTs = Math.floor(new Date(monitor.time).getTime() / 1000);
+  groups.forEach(group => {
+    const services = monitors.filter(m => m.group === group);
+    const allUp    = services.every(m => m.status === 1);
+    const anyDown  = services.some(m => m.status === 0);
+    const groupDot = allUp ? '🟢' : anyDown ? '🔴' : '🟡';
 
-  return `${theme.icon} **${monitor.name}**\u2003${theme.title}\u2003\`${bar}\`\u2003**${monitor.uptime}%**\u2003<t:${timeTs}:t>`;
+    const lines = services.map(monitor => {
+      const isUp      = monitor.status === 1;
+      const isPending = monitor.status === 2;
+      const dot       = isUp ? '🟢' : isPending ? '🟡' : '🔴';
+      const statusLbl = isUp ? '`OPERATIONAL`' : isPending ? '`PENDING   `' : '`OUTAGE    `';
+      const uptime    = parseFloat(monitor.uptime ?? 0);
+      const filled    = Math.round(uptime / 100 * 10);
+      const bar       = '`' + '█'.repeat(filled) + '░'.repeat(10 - filled) + '`';
+      const pct       = `**${uptime.toFixed(1)}%**`;
+      const ts        = monitor.time
+        ? new Date(monitor.time).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })
+        : '--:--';
+
+      return `${dot} **${monitor.name}**  ${statusLbl}  ${bar}  ${pct}  ${ts}`;
+    });
+
+    fields.push({
+      name:   `${groupDot}  ${group.toUpperCase()}  [${services.length}]`,
+      value:  lines.join('\n'),
+      inline: false
+    });
+  });
+
+  const allUp   = monitors.every(m => m.status === 1);
+  const anyDown = monitors.some(m => m.status === 0);
+  const color   = allUp ? 0x43B581 : anyDown ? 0xF04747 : 0xFAA61A;
+  const timeStr = new Date().toLocaleString('de-DE', {
+    day: '2-digit', month: '2-digit', year: 'numeric',
+    hour: '2-digit', minute: '2-digit'
+  });
+
+  return {
+    color,
+    title: '📊  DIENSTE STATUS-ÜBERSICHT',
+    description: `Stand: ${timeStr}`,
+    fields,
+    footer: { text: `${operationalCount}/${monitors.length} Dienste online  •  Uptime Kuma Status – Automatisch generiert` },
+    timestamp: new Date().toISOString()
+  };
 }
 
 // ── 17a. CHANNEL-INDIKATOR (Name + Topic) ────────────────────────────────────
@@ -378,47 +415,24 @@ async function updateStatusMessage() {
   uptimeGauge.set(uptimePercent);
   statusCheckCounter.inc();
 
+  const embed = buildCompactEmbed(monitors, operationalCount);
   const uptimeKumaUrl = config.get('uptimeKuma.url');
   const slug = config.get('uptimeKuma.statusPageSlug');
-  const groups = [...new Set(monitors.map(m => m.group))].sort();
-  const embedFields = [];
+  const statusContent = `**🌐 LIVE SERVICE STATUS** | [🔗 Statusseite öffnen](<${uptimeKumaUrl}/status/${slug}>)`;
+  const msgOptions = { content: statusContent, embeds: [embed], flags: [4096] };
 
-  groups.forEach(group => {
-    const services = monitors.filter(m => m.group === group);
-    const lines = services.map(createServiceLine).join('\n');
-    embedFields.push({
-      name: `\uD83D\uDCC1  ${group.toUpperCase()}  [${services.length}]`,
-      value: lines,
-      inline: false
-    });
-  });
-
-  const activeMonitors = monitors.filter(m => m.active !== false);
-  const allOnline  = activeMonitors.every(m => m.status === 1);
-  const anyDown    = activeMonitors.some(m => m.status === 0);
-  const embedColor = allOnline ? 0x43B581 : anyDown ? 0xF04747 : 0xFAA61A;
-
-  const mainEmbed = {
-    color: embedColor,
-    title: '\uD83D\uDCCA\u2003DIENSTE STATUS-\u00dcBERSICHT',
-    fields: embedFields.slice(0, 25),
-    footer: { text: 'Uptime Kuma Status \u00B7 Automatisch generiert' },
-    timestamp: new Date().toISOString()
-  };
-
-  const statusContent = `**\uD83C\uDF10 LIVE SERVICE STATUS** | [Statusseite \u00f6ffnen](${uptimeKumaUrl}/status/${slug})`;
   try {
     if (statusMessageId) {
       try {
         const existingMessage = await channel.messages.fetch(statusMessageId);
-        await existingMessage.edit({ content: statusContent, embeds: [mainEmbed] });
+        await existingMessage.edit(msgOptions);
       } catch {
-        const newMessage = await channel.send({ content: statusContent, embeds: [mainEmbed] });
+        const newMessage = await channel.send(msgOptions);
         statusMessageId = newMessage.id;
         saveState({ statusMessageId, lastChannelStatus, lastChannelNameMs });
       }
     } else {
-      const newMessage = await channel.send({ content: statusContent, embeds: [mainEmbed] });
+      const newMessage = await channel.send(msgOptions);
       statusMessageId = newMessage.id;
       saveState({ statusMessageId, lastChannelStatus, lastChannelNameMs });
     }
