@@ -275,58 +275,52 @@ function calculateUptime(heartbeats) {
 
 // ── 16. EMBED-GENERIERUNG ─────────────────────────────────────────────────────
 function buildCompactEmbed(monitors, operationalCount) {
-  // ANSI-Farben (Discord unterstützt diese in ```ansi Blöcken)
-  const R   = '\u001b[0m';   // reset
-  const G   = '\u001b[32m'; // grün
-  const RE  = '\u001b[31m'; // rot
-  const Y   = '\u001b[33m'; // gelb
-  const DIM = '\u001b[2m';  // gedimmt
+  const groups = [...new Set(monitors.map(m => m.group))].sort();
+  const fields = [];
 
-  const groups     = [...new Set(monitors.map(m => m.group))].sort();
-  const maxNameLen = Math.max(...monitors.map(m => m.name.length), 10);
-  const lines      = [];
-
-  groups.forEach((group, gi) => {
-    if (gi > 0) lines.push('');
+  groups.forEach(group => {
     const services = monitors.filter(m => m.group === group);
-    lines.push(`${DIM}${group.toUpperCase()}  [${services.length}]${R}`);
+    const allUp    = services.every(m => m.status === 1);
+    const anyDown  = services.some(m => m.status === 0);
+    const groupDot = allUp ? '🟢' : anyDown ? '🔴' : '🟡';
 
-    services.forEach(monitor => {
+    const lines = services.map(monitor => {
       const isUp      = monitor.status === 1;
       const isPending = monitor.status === 2;
-      const C         = isUp ? G : isPending ? Y : RE;
-      const statusLbl = isUp ? 'OPERATIONAL' : isPending ? 'PENDING' : 'OUTAGE';
+      const dot       = isUp ? '🟢' : isPending ? '🟡' : '🔴';
+      const statusLbl = isUp ? '`OPERATIONAL`' : isPending ? '`PENDING   `' : '`OUTAGE    `';
       const uptime    = parseFloat(monitor.uptime ?? 0);
-      const barLen    = 20;
-      const filled    = Math.round(uptime / 100 * barLen);
-      const bar       = '\u2588'.repeat(filled) + '\u2591'.repeat(barLen - filled);
-      const pct       = `${uptime.toFixed(1)}%`.padStart(6);
+      const filled    = Math.round(uptime / 100 * 10);
+      const bar       = '`' + '█'.repeat(filled) + '░'.repeat(10 - filled) + '`';
+      const pct       = `**${uptime.toFixed(1)}%**`;
       const ts        = monitor.time
         ? new Date(monitor.time).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })
         : '--:--';
-      const name      = monitor.name.padEnd(maxNameLen);
 
-      // Zeile 1: ● name  STATUS  (~35 Zeichen → passt in Discord-ANSI-Block)
-      lines.push(`${C}\u25CF${R} ${name}  ${C}${statusLbl}${R}`);
-      // Zeile 2: eingerückt  bar  pct  time  (~37 Zeichen → passt)
-      lines.push(`  ${C}${bar}${R}  ${pct}  ${ts}`);
+      return `${dot} **${monitor.name}**  ${statusLbl}  ${bar}  ${pct}  ${ts}`;
+    });
+
+    fields.push({
+      name:   `${groupDot}  ${group.toUpperCase()}  [${services.length}]`,
+      value:  lines.join('\n'),
+      inline: false
     });
   });
 
-  const ansiBlock = '```ansi\n' + lines.join('\n') + '\n```';
-  const allUp     = monitors.every(m => m.status === 1);
-  const anyDown   = monitors.some(m => m.status === 0);
-  const color     = allUp ? 0x43B581 : anyDown ? 0xF04747 : 0xFAA61A;
-  const timeStr   = new Date().toLocaleString('de-DE', {
+  const allUp   = monitors.every(m => m.status === 1);
+  const anyDown = monitors.some(m => m.status === 0);
+  const color   = allUp ? 0x43B581 : anyDown ? 0xF04747 : 0xFAA61A;
+  const timeStr = new Date().toLocaleString('de-DE', {
     day: '2-digit', month: '2-digit', year: 'numeric',
     hour: '2-digit', minute: '2-digit'
   });
 
   return {
     color,
-    title: '\uD83D\uDCCA  DIENSTE STATUS-\u00dcBERSICHT',
-    description: `Stand: ${timeStr}\n\n${ansiBlock}`,
-    footer: { text: `${operationalCount}/${monitors.length} Dienste online  \u2022  Uptime Kuma Status \u2013 Automatisch generiert` },
+    title: '📊  DIENSTE STATUS-ÜBERSICHT',
+    description: `Stand: ${timeStr}`,
+    fields,
+    footer: { text: `${operationalCount}/${monitors.length} Dienste online  •  Uptime Kuma Status – Automatisch generiert` },
     timestamp: new Date().toISOString()
   };
 }
