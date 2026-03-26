@@ -379,6 +379,91 @@ function getPublicStatusUrl() {
 }
 // #endregion
 
+// #region 15d. STATUS-EMBED (Discord-Karte mit ANSI-Block)
+function buildStatusEmbed(monitors, statusPageUrl = null) {
+  const now     = new Date();
+  const dateStr = now.toLocaleDateString('de-DE');
+  const timeStr = now.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+  const active = monitors.filter(m => m.active !== false);
+
+  const groups = {};
+  for (const m of active) {
+    const g = m.group || 'General';
+    if (!groups[g]) groups[g] = [];
+    groups[g].push(m);
+  }
+
+  const anyDown    = active.some(m => m.status === 0);
+  const anyPending = active.some(m => m.status === 2);
+  const embedColor = anyDown ? 0xF04747 : anyPending ? 0xFAA61A : 0x43B581;
+
+  const G = '\u001b[1;32m';
+  const R = '\u001b[1;31m';
+  const Y = '\u001b[1;33m';
+  const W = '\u001b[1;37m';
+  const C = '\u001b[1;36m';
+  const X = '\u001b[0m';
+
+  const lines = [];
+  lines.push(`${C}⊞ DIENSTE STATUS-ÜBERSICHT${X}    Stand: ${dateStr}, ${timeStr}`);
+  lines.push('');
+
+  for (const [groupName, groupMonitors] of Object.entries(groups)) {
+    lines.push(`${W}${groupName} [${groupMonitors.length}]${X}`);
+
+    for (const m of groupMonitors) {
+      const isUp      = m.status === 1;
+      const isPending = m.status === 2;
+      const col       = isUp ? G : isPending ? Y : R;
+      const dot       = isUp ? '🟢' : isPending ? '🟡' : '🔴';
+
+      const barWidth = 16;
+      const pct      = parseFloat(m.uptime) || 0;
+      const filled   = Math.round((pct / 100) * barWidth);
+      const bar      = '█'.repeat(filled) + '░'.repeat(barWidth - filled);
+
+      const statusLabel = (isUp ? 'OPERATIONAL' : isPending ? 'PENDING    ' : 'OUTAGE     ');
+
+      const lastTime = m.time
+        ? new Date(m.time).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+        : '--:--:--';
+
+      const name   = m.name.slice(0, 22).padEnd(22);
+      const uptime = `${pct.toFixed(1)}%`.padStart(6);
+
+      lines.push(`${dot} ${name}  ${col}${statusLabel}${X}  ${col}${bar}${X}  ${uptime}  ${lastTime}`);
+    }
+    lines.push('');
+  }
+
+  if (lines[lines.length - 1] === '') lines.pop();
+
+  const ansiBlock = '```ansi\n' + lines.join('\n') + '\n```';
+
+  const title = statusPageUrl
+    ? '🌐 LIVE SERVICE STATUS | Statusseite öffnen'
+    : '🌐 LIVE SERVICE STATUS';
+
+  const embed = new EmbedBuilder()
+    .setColor(embedColor)
+    .setTitle(title)
+    .setFooter({ text: 'Uptime Kuma Status · Automatisch generiert' })
+    .setTimestamp();
+
+  if (statusPageUrl) embed.setURL(statusPageUrl);
+
+  if (ansiBlock.length > 4000) {
+    logger.warn(`Status-Embed: Inhalt zu lang (${ansiBlock.length} Zeichen) – wird gekürzt`);
+    embed.setDescription('```ansi\n\u001b[1;31m⚠ Zu viele Dienste für eine Nachricht\u001b[0m\n```');
+  } else {
+    embed.setDescription(ansiBlock);
+  }
+
+  return embed;
+}
+// #endregion
+
 // #region 16. CHANNEL-INDIKATOR (Name + Topic)
 function _overallStatus(monitors) {
   const active = monitors.filter(m => m.active !== false);
@@ -470,11 +555,11 @@ async function updateStatusMessage() {
   uptimeGauge.set(uptimePercent);
   statusCheckCounter.inc();
 
-  // ── Nachricht: ANSI-Code-Block mit Live-Daten (Uptime-Kuma-Style) ─────────
+  // ── Nachricht: Discord-Embed mit ANSI-Block (Uptime-Kuma-Style) ───────────
   const publicStatusUrl = getPublicStatusUrl();
 
-  const statusContent  = buildAnsiStatusMessage(monitors, publicStatusUrl);
-  const messagePayload = { content: statusContent, embeds: [] };
+  const statusEmbed    = buildStatusEmbed(monitors, publicStatusUrl);
+  const messagePayload = { content: null, embeds: [statusEmbed] };
 
   try {
     if (statusMessageId) {
