@@ -406,27 +406,29 @@ function buildStatusEmbed(monitors, statusPageUrl = null) {
   const X = '\u001b[0m';
 
   const lines = [];
-  lines.push(`${C}Stand: ${dateStr}, ${timeStr}${X}`);
+  lines.push(`${C}⊞ DIENSTE STATUS-ÜBERSICHT${X}    Stand: ${dateStr}, ${timeStr}`);
   lines.push('');
 
   for (const [groupName, groupMonitors] of Object.entries(groups)) {
-    lines.push(`${W}${groupName} [${groupMonitors.length}]${X}`);
+    lines.push(`${W}⊞ ${groupName.toUpperCase()} [${groupMonitors.length}]${X}`);
 
     for (const m of groupMonitors) {
       const isUp      = m.status === 1;
       const isPending = m.status === 2;
       const col       = isUp ? G : isPending ? Y : R;
 
-      // Sichtbare Zeichen: ●(1) + SP(1) + name(18) + SP(2) + status(11) + SP(2) + bar(8) + SP(2) + uptime(6) = 51
-      const barWidth    = 8;
+      const barWidth    = 16;
       const pct         = parseFloat(m.uptime) || 0;
       const filled      = Math.round((pct / 100) * barWidth);
       const bar         = '█'.repeat(filled) + '░'.repeat(barWidth - filled);
       const statusLabel = isUp ? 'OPERATIONAL' : isPending ? 'PENDING    ' : 'OUTAGE     ';
-      const name        = m.name.slice(0, 18).padEnd(18);
+      const name        = m.name.slice(0, 22).padEnd(22);
       const uptime      = `${pct.toFixed(1)}%`.padStart(6);
+      const lastTime    = m.time
+        ? new Date(m.time).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+        : '--:--:--';
 
-      lines.push(`${col}●${X} ${name}  ${col}${statusLabel}${X}  ${col}${bar}${X}  ${uptime}`);
+      lines.push(`${col}●${X} ${name}  ${col}${statusLabel}${X}  ${col}${bar}${X}  ${uptime}  ${lastTime}`);
     }
     lines.push('');
   }
