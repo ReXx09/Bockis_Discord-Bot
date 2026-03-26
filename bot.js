@@ -405,8 +405,12 @@ function buildStatusEmbed(monitors, statusPageUrl = null) {
   const C = '\u001b[1;36m';
   const X = '\u001b[0m';
 
+  // Discord-Embed-Beschreibungen umbrechen ANSI-Codeblöcke bei ~56 Zeichen.
+  // Zeilenbudget: ●(1)+sp(1)+name(20)+sp(2)+STATUS(11)+sp(2)+bar(11)+sp(2)+%(6) = 56 Zeichen
   const lines = [];
-  lines.push(`${C}⊞ DIENSTE STATUS-ÜBERSICHT${X}    Stand: ${dateStr}, ${timeStr}`);
+  // Header auf 2 Zeilen aufteilen – sonst würde er selbst umbrechen
+  lines.push(`${C}⊞ DIENSTE STATUS-ÜBERSICHT${X}`);
+  lines.push(`${W}Stand: ${dateStr}, ${timeStr}${X}`);
   lines.push('');
 
   for (const [groupName, groupMonitors] of Object.entries(groups)) {
@@ -417,18 +421,16 @@ function buildStatusEmbed(monitors, statusPageUrl = null) {
       const isPending = m.status === 2;
       const col       = isUp ? G : isPending ? Y : R;
 
-      const barWidth    = 16;
+      const barWidth    = 11;  // 16 → 11: passt in 56-Zeichen-Limit
       const pct         = parseFloat(m.uptime) || 0;
       const filled      = Math.round((pct / 100) * barWidth);
       const bar         = '█'.repeat(filled) + '░'.repeat(barWidth - filled);
       const statusLabel = isUp ? 'OPERATIONAL' : isPending ? 'PENDING    ' : 'OUTAGE     ';
-      const name        = m.name.slice(0, 22).padEnd(22);
+      const name        = m.name.slice(0, 20).padEnd(20);  // 22 → 20, Ausrichtung beibehalten
       const uptime      = `${pct.toFixed(1)}%`.padStart(6);
-      const lastTime    = m.time
-        ? new Date(m.time).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-        : '--:--:--';
 
-      lines.push(`${col}●${X} ${name}  ${col}${statusLabel}${X}  ${col}${bar}${X}  ${uptime}  ${lastTime}`);
+      // Timestamp weggelassen – würde Zeile auf 73 Zeichen verlängern und umbrechen
+      lines.push(`${col}●${X} ${name}  ${col}${statusLabel}${X}  ${col}${bar}${X}  ${uptime}`);
     }
     lines.push('');
   }
