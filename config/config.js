@@ -79,6 +79,24 @@ const config = convict({
       format: Boolean,
       default: true,
       env: 'CHANNEL_STATUS_INDICATOR'
+    },
+    guildId: {
+      doc: 'Guild-ID des Discord-Servers (erforderlich für den Service-Kanal-Manager)',
+      format: String,
+      default: '',
+      env: 'GUILD_ID'
+    },
+    serviceCategoryName: {
+      doc: 'Name der Kategorie, die für Service-Status-Kanäle erstellt wird',
+      format: String,
+      default: '📊 Service Status',
+      env: 'SERVICE_CATEGORY_NAME'
+    },
+    monitoredServices: {
+      doc: 'Kommagetrennte Liste der Dienste, die als eigene Kanäle angezeigt werden (leer = alle aktiven)',
+      format: String,
+      default: '',
+      env: 'MONITORED_SERVICES'
     }
   },
   cloudflare: {

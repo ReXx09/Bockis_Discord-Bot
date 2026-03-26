@@ -9,24 +9,24 @@
  */
 
 require('dotenv').config();
-const { Client, GatewayIntentBits, ActivityType, REST, Routes, SlashCommandBuilder, EmbedBuilder } = require('discord.js');
+const { Client, GatewayIntentBits, ActivityType, REST, Routes, SlashCommandBuilder, EmbedBuilder, ChannelType, PermissionFlagsBits } = require('discord.js');
 const axios = require('axios');
 const winston = require('winston');
 require('winston-daily-rotate-file');
-const express = require('express');
 const prom = require('prom-client');
 const { Sequelize, DataTypes, Op } = require('sequelize');
 const fs = require('fs');
 
-// ── 1. ENV-VALIDIERUNG ────────────────────────────────────────────────────────
+// #region 1. ENV-VALIDIERUNG
 const REQUIRED_ENV = ['DISCORD_TOKEN', 'STATUS_CHANNEL_ID', 'UPTIME_KUMA_URL'];
 const missingEnv = REQUIRED_ENV.filter(k => !process.env[k]);
 if (missingEnv.length) {
   console.error(`[FATAL] Fehlende Umgebungsvariablen: ${missingEnv.join(', ')}\nBitte .env prüfen.`);
   process.exit(1);
 }
+// #endregion
 
-// ── 2. LOGGER MIT LOG-ROTATION ────────────────────────────────────────────────
+// #region 2. LOGGER MIT LOG-ROTATION
 const logger = winston.createLogger({
   level: 'info',
   format: winston.format.combine(
@@ -46,15 +46,18 @@ const logger = winston.createLogger({
     })
   ]
 });
+// #endregion
 
-// ── 3. KONFIGURATION ──────────────────────────────────────────────────────────
+// #region 3. KONFIGURATION
 const config = require('./config/config');
+// #endregion
 
-// ── 4. DATENBANK-INITIALISIERUNG ──────────────────────────────────────────────
+// #region 4. DATENBANK-INITIALISIERUNG
 const sequelize = new Sequelize(config.get('database'));
 const MonitorStatus = require('./models/MonitorStatus')(sequelize, DataTypes);
+// #endregion
 
-// ── 5. PROMETHEUS METRIKEN ────────────────────────────────────────────────────
+// #region 5. PROMETHEUS METRIKEN
 const collectDefaultMetrics = prom.collectDefaultMetrics;
 collectDefaultMetrics({ timeout: 5000 });
 
@@ -67,19 +70,15 @@ const uptimeGauge = new prom.Gauge({
   name: 'service_uptime_percent',
   help: 'Current uptime percentage'
 });
+// #endregion
 
-// ── 6. EXPRESS DASHBOARD ──────────────────────────────────────────────────────
-const app = express();
-app.set('view engine', 'ejs');
-app.use(express.json());
-app.use(express.static('public'));
+// #region 6. WEB-SERVER
+// Express-App-Erstellung, Middleware, Routen und HTTP-Listen sind vollständig
+// in web/routes.js ausgelagert. startWebServer() wird in Region 24 aufgerufen.
+const startWebServer = require('./web/routes');
+// #endregion
 
-// ── 7. MIDDLEWARE + WEB-ROUTES ───────────────────────────────────────────────
-// Alle Express-Routen und Middleware sind in web/routes.js ausgelagert.
-// Die Factory-Funktion wird weiter unten (Sektion 22) aufgerufen.
-const registerRoutes = require('./web/routes');
-
-// ── 8. SERVICE-STATUS THEME ───────────────────────────────────────────────────
+// #region 7. SERVICE-STATUS THEME
 const STATUS_THEME = {
   online: {
     color: 0x43B581,
@@ -117,8 +116,9 @@ const STATUS_THEME = {
     description: 'Service disabled'
   }
 };
+// #endregion
 
-// ── 9. NOTIFICATION MANAGER ───────────────────────────────────────────────────
+// #region 8. NOTIFICATION MANAGER
 class NotificationManager {
   constructor() {
     this.lastStatus = new Map();
@@ -144,8 +144,9 @@ class NotificationManager {
     }
   }
 }
+// #endregion
 
-// ── 10. DISCORD CLIENT ────────────────────────────────────────────────────────
+// #region 9. DISCORD CLIENT
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -153,8 +154,9 @@ const client = new Client({
   ]
 });
 const notificationManager = new NotificationManager();
+// #endregion
 
-// ── 11. STATE PERSISTENZ ──────────────────────────────────────────────────────
+// #region 10. STATE PERSISTENZ
 const STATE_FILE = './data/state.json';
 
 function loadState() {
@@ -179,15 +181,19 @@ const _initState           = loadState();
 let statusMessageId        = _initState.statusMessageId    ?? null;
 let lastChannelStatus      = _initState.lastChannelStatus  ?? null;
 let lastChannelNameMs      = _initState.lastChannelNameMs  ?? 0;
+let serviceCategoryId      = _initState.serviceCategoryId  ?? null;
+let serviceChannels        = _initState.serviceChannels     ?? {};  // { monitorName: channelId }
+const _svcRenameMs         = {};  // Rate-Limit pro Kanal (in-memory, wird nicht persistiert)
+// #endregion
 
-// ── 12. RATE-LIMIT SCHUTZ ─────────────────────────────────────────────────────
+// #region 11. RATE-LIMIT SCHUTZ
 let lastEditTimestamp = 0;
-const MIN_EDIT_INTERVAL_MS        = 5_000;
-const MIN_CHANNEL_RENAME_MS       = 6 * 60 * 1000;  // 6 min sicherer Puffer (Discord: max 2/10min)
-const CHANNEL_INDICATOR_ENABLED   = process.env.CHANNEL_STATUS_INDICATOR !== 'false';
+const MIN_EDIT_INTERVAL_MS  = 5_000;
+const MIN_CHANNEL_RENAME_MS = 6 * 60 * 1000;  // 6 min sicherer Puffer (Discord: max 2/10min)
 const STATUS_DOT = { green: '🟢', yellow: '🟡', red: '🔴' };
+// #endregion
 
-// ── 13. RETRY-LOGIK ───────────────────────────────────────────────────────────
+// #region 12. RETRY-LOGIK
 async function withRetry(fn, retries = 3, baseDelayMs = 1000) {
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
@@ -200,8 +206,9 @@ async function withRetry(fn, retries = 3, baseDelayMs = 1000) {
     }
   }
 }
+// #endregion
 
-// ── 14. UPTIME KUMA API HELPER ────────────────────────────────────────────────
+// #region 13. UPTIME KUMA API HELPER
 async function fetchUptimeKumaData(endpoint) {
   return withRetry(async () => {
     const uptimeKumaUrl = config.get('uptimeKuma.url');
@@ -214,8 +221,9 @@ async function fetchUptimeKumaData(endpoint) {
     return null;
   });
 }
+// #endregion
 
-// ── 15. MONITOR-DATEN ABRUFEN ─────────────────────────────────────────────────
+// #region 14. MONITOR-DATEN ABRUFEN
 async function getMonitorData() {
   const slug = config.get('uptimeKuma.statusPageSlug');
   const [heartbeats, statusPage] = await Promise.all([
@@ -258,12 +266,9 @@ function calculateUptime(heartbeats) {
   const up = valid.filter(h => h.status === 1).length;
   return ((up / valid.length) * 100 || 0).toFixed(1);
 }
+// #endregion
 
-// ── 16. EMBED-GENERIERUNG ─────────────────────────────────────────────────────
-// Primär: Discord unfurlt die öffentliche Cloudflare-Tunnel-URL als Link-Preview.
-// Fallback: Wenn CLOUDFLARE_PUBLIC_URL nicht gesetzt ist, werden ANSI-Embed-Karten
-//           direkt im Channel gepostet (alle Dienste sichtbar, aber kein Uptime-Kuma-UI).
-
+// #region 15. EMBED-GENERIERUNG
 function createServiceField(monitor) {
   const theme = monitor.status === 1 ? STATUS_THEME.online
               : monitor.status === 0 ? STATUS_THEME.offline
@@ -277,74 +282,9 @@ function createServiceField(monitor) {
     inline: true
   };
 }
+// #endregion
 
-function buildStatusEmbeds(monitors, statusPageUrl = null) {
-  const now     = new Date();
-  const timeStr = now.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
-  const dateStr = now.toLocaleDateString('de-DE');
-
-  const active  = monitors.filter(m => m.active !== false);
-  const online  = active.filter(m => m.status === 1).length;
-  const offline = active.filter(m => m.status === 0).length;
-  const total   = active.length;
-  const allOk   = offline === 0;
-  const color   = allOk ? 0x43B581 : 0xF04747;
-
-  // ANSI-Box-Header
-  const statusText = allOk
-    ? '\u001b[1;32m\u2714  ALL SYSTEMS OPERATIONAL\u001b[0m'
-    : `\u001b[1;31m\u2718  ${offline} SERVICE(S) OFFLINE\u001b[0m`;
-  const ansiHeader = [
-    '```ansi',
-    '\u001b[1;36m\u2554\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2557\u001b[0m',
-    '\u001b[1;36m\u2551\u001b[0m  \u001b[1;37mSERVICE MONITOR\u001b[0m             \u001b[1;36m\u2551\u001b[0m',
-    `\u001b[1;36m\u2551\u001b[0m  ${statusText.padEnd(28)}\u001b[1;36m\u2551\u001b[0m`,
-    '\u001b[1;36m\u255a\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u255d\u001b[0m',
-    '```'
-  ].join('\n');
-
-  // Klickbarer Link zur Status-Seite (nur wenn Cloudflare erreichbar)
-  const linkLine = statusPageUrl
-    ? `\n[\uD83C\uDF10 Zur Live-Status-Seite \u2192](${statusPageUrl})`
-    : '';
-
-  const footerText = `${online}/${total} online` +
-    (offline > 0 ? ` \u00b7 ${offline} offline` : '') +
-    ` \u00b7 ${dateStr} ${timeStr}` +
-    (statusPageUrl ? '' : ' \u00b7 \u26a0\ufe0f Cloudflare nicht verbunden');
-
-  // Monitore nach Gruppe sortieren
-  const groups = {};
-  for (const m of active) {
-    const g = m.group || 'General';
-    if (!groups[g]) groups[g] = [];
-    groups[g].push(m);
-  }
-
-  const embeds = [];
-
-  embeds.push(
-    new EmbedBuilder()
-      .setColor(color)
-      .setDescription(ansiHeader + linkLine)
-      .setFooter({ text: footerText })
-      .setTimestamp(now)
-  );
-
-  for (const [groupName, groupMonitors] of Object.entries(groups)) {
-    embeds.push(
-      new EmbedBuilder()
-        .setColor(color)
-        .setTitle(`\uD83D\uDCC1 ${groupName}`)
-        .addFields(groupMonitors.map(createServiceField))
-    );
-    if (embeds.length >= 10) break;
-  }
-
-  return embeds;
-}
-
-// ── 16b. ANSI-STATUS-NACHRICHT (Uptime-Kuma-Style) ─────────────────────────
+// #region 15b. ANSI-STATUS-NACHRICHT (Uptime-Kuma-Style)
 function buildAnsiStatusMessage(monitors, statusPageUrl = null) {
   const now     = new Date();
   const dateStr = now.toLocaleDateString('de-DE');
@@ -429,20 +369,17 @@ function buildAnsiStatusMessage(monitors, statusPageUrl = null) {
 
   return fullMessage;
 }
+// #endregion
 
-// ── 16c. CLOUDFLARE-ERREICHBARKEITSCHECK ────────────────────────────────────
-async function isCloudflareReachable(url) {
-  try {
-    // Nur echte 2xx-Antworten gelten als erreichbar.
-    // 4xx/5xx = Cloudflare-Fehlerseite (Tunnel down, kein Hostname, etc.) → Fallback
-    const resp = await axios.head(url, { timeout: 5_000, maxRedirects: 5 });
-    return resp.status >= 200 && resp.status < 300;
-  } catch {
-    return false;
-  }
+// #region 15c. CLOUDFLARE-URL FÜR STATUS-SEITE
+function getPublicStatusUrl() {
+  const cloudflareUrl = config.get('cloudflare.publicUrl');
+  const slug          = config.get('uptimeKuma.statusPageSlug');
+  return cloudflareUrl ? `${cloudflareUrl}/status/${slug}` : null;
 }
+// #endregion
 
-// ── 17a. CHANNEL-INDIKATOR (Name + Topic) ────────────────────────────────────
+// #region 16. CHANNEL-INDIKATOR (Name + Topic)
 function _overallStatus(monitors) {
   const active = monitors.filter(m => m.active !== false);
   if (!active.length) return 'green';
@@ -454,7 +391,7 @@ function _overallStatus(monitors) {
 }
 
 async function updateChannelIndicator(channel, monitors) {
-  if (!CHANNEL_INDICATOR_ENABLED) return;
+  if (!config.get('discord.channelStatusIndicator')) return;
 
   const status = _overallStatus(monitors);
   if (status === lastChannelStatus) return;   // kein Wechsel → kein API-Call
@@ -484,14 +421,15 @@ async function updateChannelIndicator(channel, monitors) {
     await channel.edit({ name: newName, topic: newTopic });
     lastChannelStatus = status;
     lastChannelNameMs = now;
-    saveState({ statusMessageId, lastChannelStatus, lastChannelNameMs });
+    saveState({ statusMessageId, lastChannelStatus, lastChannelNameMs, serviceCategoryId, serviceChannels });
     logger.info(`Channel-Indikator: ${channel.name} → ${newName} | ${newTopic}`);
   } catch (err) {
     logger.error(`Channel-Indikator fehlgeschlagen: ${err.message}`);
   }
 }
+// #endregion
 
-// ── 17. DISCORD STATUS-NACHRICHT ──────────────────────────────────────────────
+// #region 16b. DISCORD STATUS-NACHRICHT
 async function updateStatusMessage() {
   const now = Date.now();
   if (now - lastEditTimestamp < MIN_EDIT_INTERVAL_MS) {
@@ -533,11 +471,7 @@ async function updateStatusMessage() {
   statusCheckCounter.inc();
 
   // ── Nachricht: ANSI-Code-Block mit Live-Daten (Uptime-Kuma-Style) ─────────
-  const cloudflareUrl = config.get('cloudflare.publicUrl');
-  const slug          = config.get('uptimeKuma.statusPageSlug');
-
-  // Öffentliche URL als Link im Header (optional)
-  const publicStatusUrl = cloudflareUrl ? `${cloudflareUrl}/status/${slug}` : null;
+  const publicStatusUrl = getPublicStatusUrl();
 
   const statusContent  = buildAnsiStatusMessage(monitors, publicStatusUrl);
   const messagePayload = { content: statusContent, embeds: [] };
@@ -550,25 +484,160 @@ async function updateStatusMessage() {
       } catch {
         const newMessage = await channel.send(messagePayload);
         statusMessageId = newMessage.id;
-        saveState({ statusMessageId, lastChannelStatus, lastChannelNameMs });
+        saveState({ statusMessageId, lastChannelStatus, lastChannelNameMs, serviceCategoryId, serviceChannels });
       }
     } else {
       const newMessage = await channel.send(messagePayload);
       statusMessageId = newMessage.id;
-      saveState({ statusMessageId, lastChannelStatus, lastChannelNameMs });
+      saveState({ statusMessageId, lastChannelStatus, lastChannelNameMs, serviceCategoryId, serviceChannels });
     }
     lastEditTimestamp = Date.now();
     logger.info(`Status aktualisiert: ${operationalCount}/${monitors.length} Dienste online`);
 
     // Channel-Name + Topic bei Statuswechsel aktualisieren
     await updateChannelIndicator(channel, monitors);
+    // Service-Kanäle in der Kanalleiste aktualisieren
+    await syncServiceChannels(monitors);
   } catch (error) {
     logger.error(`Discord-Nachrichtenfehler: ${error.message}`);
     statusMessageId = null;
   }
 }
+// #endregion
 
-// ── 18. DB-CLEANUP ────────────────────────────────────────────────────────────
+// #region 17. SERVICE-KANAL-MANAGER
+/**
+ * Erstellt automatisch eine Discord-Kategorie + je einen Textkanal pro
+ * überwachtem Dienst. Der Kanalname zeigt per Emoji den Live-Status:
+ *   🟢-nginx    → online
+ *   🔴-database → offline
+ *   🟡-api      → ausstehend
+ *
+ * Konfiguration via .env:
+ *   GUILD_ID              – Guild-ID des Servers (Pflicht für dieses Feature)
+ *   SERVICE_CATEGORY_NAME – Kategoriename (Standard: "📊 Service Status")
+ *   MONITORED_SERVICES    – kommagetrennte Whitelist, z.B. "nginx,database,api"
+ *                           (leer = alle aktiven Dienste)
+ *
+ * Discord Rate-Limit: max. 2 Umbenennungen pro Kanal / 10 Minuten.
+ * Der Cooldown von 6 Minuten (MIN_CHANNEL_RENAME_MS) wird auch hier eingehalten.
+ */
+function _serviceChannelName(monitorName, status) {
+  const dot  = status === 1 ? '🟢' : status === 0 ? '🔴' : '🟡';
+  const slug = monitorName
+    .toLowerCase()
+    .replace(/[äöüß]/g, c => ({ ä: 'ae', ö: 'oe', ü: 'ue', ß: 'ss' })[c] ?? c)
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 94);
+  return `${dot}-${slug}`;
+}
+
+async function syncServiceChannels(monitors) {
+  const guildId = config.get('discord.guildId');
+  if (!guildId) return;  // Feature nicht konfiguriert
+
+  const guild = client.guilds.cache.get(guildId);
+  if (!guild) {
+    logger.warn(`Service-Kanal-Manager: Guild "${guildId}" nicht im Cache – Bot auf dem Server?`);
+    return;
+  }
+
+  // Whitelist filtern (oder alle aktiven Dienste wenn leer)
+  const whitelist = (config.get('discord.monitoredServices') || '')
+    .split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+
+  if (!whitelist.length) {
+    logger.warn('Service-Kanal-Manager: MONITORED_SERVICES ist leer – Feature deaktiviert. Bitte konkrete Dienste in .env eintragen.');
+    return;
+  }
+
+  const targets = monitors.filter(m => whitelist.includes(m.name.toLowerCase()));
+
+  if (!targets.length) return;
+
+  // ── Kategorie sicherstellen ───────────────────────────────────────────────
+  let category = serviceCategoryId ? guild.channels.cache.get(serviceCategoryId) : null;
+  if (!category) {
+    const catName = config.get('discord.serviceCategoryName');
+    category = guild.channels.cache.find(
+      c => c.type === ChannelType.GuildCategory && c.name === catName
+    );
+    if (!category) {
+      try {
+        category = await guild.channels.create({
+          name: catName,
+          type: ChannelType.GuildCategory,
+          permissionOverwrites: [
+            { id: guild.roles.everyone, deny: [PermissionFlagsBits.SendMessages] }
+          ]
+        });
+        logger.info(`Service-Kanal-Manager: Kategorie "${catName}" erstellt (ID: ${category.id})`);
+      } catch (err) {
+        logger.error(`Service-Kanal-Manager: Kategorie erstellen fehlgeschlagen: ${err.message}`);
+        return;
+      }
+    }
+    serviceCategoryId = category.id;
+    saveState({ statusMessageId, lastChannelStatus, lastChannelNameMs, serviceCategoryId, serviceChannels });
+  }
+
+  // ── Kanäle erstellen / umbenennen ─────────────────────────────────────────
+  const now = Date.now();
+  let stateChanged = false;
+
+  for (const monitor of targets) {
+    const desiredName = _serviceChannelName(monitor.name, monitor.status);
+    const topic       = `📈 Uptime: ${monitor.uptime ?? '–'}%  ⏱ Ping: ${monitor.ping != null ? monitor.ping + 'ms' : '–'}`;
+    let channelId     = serviceChannels[monitor.name];
+    let channel       = channelId ? guild.channels.cache.get(channelId) : null;
+
+    // Kanal existiert nicht → erstellen
+    if (!channel) {
+      try {
+        channel = await guild.channels.create({
+          name:   desiredName,
+          type:   ChannelType.GuildText,
+          parent: category.id,
+          topic,
+          permissionOverwrites: [
+            { id: guild.roles.everyone, deny: [PermissionFlagsBits.SendMessages] }
+          ]
+        });
+        serviceChannels[monitor.name] = channel.id;
+        stateChanged = true;
+        logger.info(`Service-Kanal-Manager: Kanal "${desiredName}" erstellt`);
+      } catch (err) {
+        logger.error(`Service-Kanal-Manager: Kanal für "${monitor.name}" fehlgeschlagen: ${err.message}`);
+        continue;
+      }
+    }
+
+    // Kanal umbenennen wenn Status sich geändert hat
+    if (channel.name !== desiredName) {
+      const lastRename = _svcRenameMs[channel.id] ?? 0;
+      if (now - lastRename < MIN_CHANNEL_RENAME_MS) {
+        const cooldown = Math.ceil((MIN_CHANNEL_RENAME_MS - (now - lastRename)) / 1000);
+        logger.warn(`Service-Kanal-Manager: "${monitor.name}" wartet noch ${cooldown}s (Rate-Limit)`);
+        continue;
+      }
+      try {
+        await channel.edit({ name: desiredName, topic });
+        _svcRenameMs[channel.id] = now;
+        logger.info(`Service-Kanal-Manager: "${channel.name}" → "${desiredName}"`);
+      } catch (err) {
+        logger.error(`Service-Kanal-Manager: Umbenennen "${monitor.name}" fehlgeschlagen: ${err.message}`);
+      }
+    }
+  }
+
+  if (stateChanged) {
+    saveState({ statusMessageId, lastChannelStatus, lastChannelNameMs, serviceCategoryId, serviceChannels });
+  }
+}
+// #endregion
+
+// #region 18. DB-CLEANUP
 async function cleanupOldEntries() {
   try {
     const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
@@ -578,16 +647,18 @@ async function cleanupOldEntries() {
     logger.error(`DB-Cleanup fehlgeschlagen: ${err.message}`);
   }
 }
+// #endregion
 
-// ── 19. UPTIME-BERECHNUNG ─────────────────────────────────────────────────────
+// #region 19. UPTIME-BERECHNUNG
 async function calculateUptimeMetrics() {
   const total = await MonitorStatus.count();
   if (total === 0) return '0.00';
   const up = await MonitorStatus.count({ where: { status: 'up' } });
   return ((up / total) * 100).toFixed(2);
 }
+// #endregion
 
-// ── 20. SLASH-COMMANDS REGISTRIEREN ──────────────────────────────────────────
+// #region 20. SLASH-COMMANDS REGISTRIEREN
 async function registerSlashCommands() {
   const commands = [
     new SlashCommandBuilder()
@@ -612,8 +683,9 @@ async function registerSlashCommands() {
     logger.error(`Slash-Command-Registrierung fehlgeschlagen: ${err.message}`);
   }
 }
+// #endregion
 
-// ── 21. SLASH-COMMAND HANDLER ─────────────────────────────────────────────────
+// #region 21. SLASH-COMMAND HANDLER
 client.on('interactionCreate', async interaction => {
   if (!interaction.isChatInputCommand()) return;
 
@@ -673,30 +745,9 @@ client.on('interactionCreate', async interaction => {
     await interaction.editReply('\u2705 Status-Nachricht wurde aktualisiert.');
   }
 });
+// #endregion
 
-// ── 22. WEB ENDPOINTS (ausgelagert → web/routes.js) ─────────────────────────
-registerRoutes(app, {
-  config,
-  logger,
-  client,
-  sequelize,
-  prom,
-  getMonitorData,
-  updateStatusMessage,
-  rootDir: __dirname
-});
-
-
-
-
-
-
-
-
-
-
-
-// ─────────────────────────────────────────────────────────
+// #region 22. UPDATE-ZYKLUS
 function initializeUpdateCycle() {
   const interval = config.get('checkIntervalMs');
   logger.info(`Update-Zyklus gestartet (alle ${interval / 1000}s)`);
@@ -706,14 +757,16 @@ function initializeUpdateCycle() {
   cleanupOldEntries();
   setInterval(cleanupOldEntries, 24 * 60 * 60 * 1000);
 }
+// #endregion
 
-// ── 24. STARTUP ───────────────────────────────────────────────────────────────
-
+// #region 23. STARTUP
 // Webserver SOFORT starten — unabhängig vom Discord-Login
 // Damit ist das Dashboard auch erreichbar wenn der Token noch nicht stimmt
-initializeDatabase().then(() => startWebServer()).catch(err => {
+const _webDeps = { config, logger, client, sequelize, prom, getMonitorData, updateStatusMessage, rootDir: __dirname };
+let _httpServer = null;
+initializeDatabase().then(() => { _httpServer = startWebServer(_webDeps); }).catch(err => {
   logger.error(`DB/Webserver-Startfehler: ${err.message}`);
-  startWebServer(); // Webserver trotzdem starten (ohne DB)
+  _httpServer = startWebServer(_webDeps); // Webserver trotzdem starten (ohne DB)
 });
 
 client.once('ready', async () => {
@@ -738,25 +791,9 @@ async function initializeDatabase() {
   await sequelize.sync();
   logger.info('Datenbank initialisiert');
 }
+// #endregion
 
-function startWebServer() {
-  const port = config.get('webPort');
-  const os   = require('os');
-  const ifaces = os.networkInterfaces();
-  let localIp = 'localhost';
-  for (const name of Object.keys(ifaces)) {
-    for (const iface of ifaces[name]) {
-      if (iface.family === 'IPv4' && !iface.internal) { localIp = iface.address; break; }
-    }
-    if (localIp !== 'localhost') break;
-  }
-  app.listen(port, '0.0.0.0', () => {
-    logger.info(`Dashboard verfügbar unter http://${localIp}:${port}/dashboard`);
-    logger.info(`(Auch erreichbar als http://localhost:${port}/dashboard)`);
-  });
-}
-
-// ── 25. TEST-INTEGRATION ──────────────────────────────────────────────────────
+// #region 24. TEST-INTEGRATION
 if (process.env.NODE_ENV === 'test') {
   const testSuite = {
     async initialize() {
@@ -777,14 +814,17 @@ if (process.env.NODE_ENV === 'test') {
   };
   module.exports = { client, sequelize, testSuite };
 }
+// #endregion
 
-// ── 26. GRACEFUL SHUTDOWN ─────────────────────────────────────────────────────
+// #region 25. GRACEFUL SHUTDOWN
 process.on('SIGTERM', shutdown);
 process.on('SIGINT', shutdown);
 
 async function shutdown() {
   logger.info('Starte Shutdown...');
+  if (_httpServer) _httpServer.close(() => logger.info('HTTP-Server geschlossen'));
   await sequelize.close();
   client.destroy();
   process.exit(0);
 }
+// #endregion

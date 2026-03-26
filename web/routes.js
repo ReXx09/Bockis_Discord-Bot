@@ -15,6 +15,8 @@
 
 const path        = require('path');
 const fs          = require('fs');
+const os          = require('os');
+const express     = require('express');
 const { execFile, execSync, spawn } = require('child_process');
 
 // Erlaubte Werte für Service-Control (Whitelist gegen Command-Injection)
@@ -22,7 +24,7 @@ const ALLOWED_SERVICES = ['bockis-bot', 'uptime-kuma', 'cloudflared'];
 const ALLOWED_ACTIONS  = ['start', 'stop', 'restart', 'status'];
 
 // ── Factory-Funktion ──────────────────────────────────────────────────────────
-module.exports = function registerRoutes(app, {
+module.exports = function startWebServer({
   config,
   logger,
   client,
@@ -32,6 +34,12 @@ module.exports = function registerRoutes(app, {
   updateStatusMessage,
   rootDir           // = __dirname aus bot.js (Projektwurzel)
 }) {
+  // ── Express-App erstellen ───────────────────────────────────────────────────
+  const app = express();
+  app.set('view engine', 'ejs');
+  app.set('views', path.join(rootDir, 'views'));  // absoluter Pfad, CWD-unabhängig
+  app.use(express.json());
+  app.use(express.static(path.join(rootDir, 'public')));
 
   // ── Middleware ──────────────────────────────────────────────────────────────
 
@@ -344,4 +352,19 @@ module.exports = function registerRoutes(app, {
     });
   });
 
+  // ── HTTP-Server starten ─────────────────────────────────────────────────────
+  const port   = config.get('webPort');
+  const ifaces = os.networkInterfaces();
+  let localIp  = 'localhost';
+  for (const name of Object.keys(ifaces)) {
+    for (const iface of ifaces[name]) {
+      if (iface.family === 'IPv4' && !iface.internal) { localIp = iface.address; break; }
+    }
+    if (localIp !== 'localhost') break;
+  }
+  const server = app.listen(port, '0.0.0.0', () => {
+    logger.info(`Dashboard verfügbar unter http://${localIp}:${port}/dashboard`);
+    logger.info(`(Auch erreichbar als http://localhost:${port}/dashboard)`);
+  });
+  return server;
 };
