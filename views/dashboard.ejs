@@ -531,16 +531,14 @@
 </div>
 
 <!-- ── ROW 2: MONITORS ────────────────────────────────── -->
-<div class="section-hdr">
-  <span class="title">Services</span>
-  <span class="count" id="monCount">–</span>
+<div class="card" id="monitorsCard" style="margin-top:16px">
+  <div class="card-title">📡 Services <span class="count" id="monCount" style="margin-left:8px">–</span></div>
+  <div class="grid-monitors" id="monGrid"></div>
 </div>
-<div class="grid-monitors" id="monGrid"></div>
+
 <!-- ── ROW 2b: SERVICE CONTROL ────────────────── -->
-<div class="section-hdr" style="margin-top:28px">
-  <span class="title">⚙️ Dienste verwalten</span>
-  <span class="muted" style="font-size:12px">start / stop / restart via systemctl</span>
-</div>
+<div class="card" id="svcCard" style="margin-top:16px">
+  <div class="card-title">⚙️ Dienste verwalten <span class="muted" style="font-size:11px;font-weight:400;text-transform:none;letter-spacing:0;margin-left:8px">start / stop / restart via systemctl</span></div>
 <div class="svc-grid" id="svcGrid">
   <div class="svc-card" id="svc-bockis-bot">
     <div class="svc-header">
@@ -577,13 +575,14 @@
     </div>
   </div>
 </div>
-<!-- ── ROW 3: LOGS ────────────────────────────────────── -->
-<div class="section-hdr" style="margin-top:28px">
-  <span class="title">Bot-Logs</span>
-  <span class="muted" id="logFile">–</span>
 </div>
-<div class="log-viewer" id="logViewer">
-  <span class="muted">Lade Logs…</span>
+
+<!-- ── ROW 3: LOGS ────────────────────────────────────── -->
+<div class="card" id="logsCard" style="margin-top:16px">
+  <div class="card-title">📄 Bot-Logs <span class="muted" id="logFile" style="font-size:11px;font-weight:400;text-transform:none;letter-spacing:0;margin-left:8px">–</span></div>
+  <div class="log-viewer" id="logViewer">
+    <span class="muted">Lade Logs…</span>
+  </div>
 </div>
 
 <!-- ── TOAST ──────────────────────────────────────────── -->
