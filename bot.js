@@ -398,10 +398,7 @@ function getWebUrl() {
   // Liefert die öffentliche URL zum internen Web-Server (für API-Endpoints wie /api/status-unfurl)
   const cloudflareUrl = config.get('cloudflare.publicUrl');
   if (cloudflareUrl) return cloudflareUrl.replace(/\/+$/, '');
-
-  // Fallback: localhost (wenn kein Cloudflare konfiguriert)
-  const webPort = config.get('webPort') || 3000;
-  return `http://localhost:${webPort}`;
+  return null;
 }
 
 async function isStatusPageReachable(url) {
@@ -527,7 +524,7 @@ async function getStatusRenderMode() {
   if (configuredMode === 'graphical') {
     const reachable = await isStatusPageReachable(publicStatusUrl);
     if (reachable && webUrl) {
-      return { mode: 'graphical', statusUrl: publicStatusUrl, badgeUrl: `${webUrl}/api/badge/summary` };
+      return { mode: 'graphical', proxyUrl: `${webUrl}/api/status-unfurl?variant=graphical` };
     }
     logger.warn(`Status Render Mode: graphical erzwungen, aber nicht erreichbar - Fallback auf embed`);
     return { mode: 'custom_embed', publicStatusUrl };
@@ -555,8 +552,8 @@ async function getStatusRenderMode() {
     return { mode: 'direct', proxyUrl: `${webUrl}/api/status-unfurl` };
   }
 
-  // Fallback: graphical mode
-  return { mode: 'graphical', statusUrl: publicStatusUrl, badgeUrl: `${webUrl}/api/badge/summary` };
+  // Fallback ohne öffentliche Web-URL: klassisches Link-Preview direkt auf Statusseite
+  return { mode: 'link_preview', publicStatusUrl };
 }
 
 function buildStatusDirectMessage(proxyUrl) {
@@ -577,7 +574,7 @@ function buildStatusGraphicalMessage(statusUrl, badgeUrl) {
     const url = new URL(statusUrl);
     const cacheBucket = Math.floor(Date.now() / (5 * 60 * 1000));
     url.searchParams.set('discord_unfurl', String(cacheBucket));
-    url.searchParams.set('badge', badgeUrl);
+    if (badgeUrl) url.searchParams.set('badge', badgeUrl);
     return url.toString();
   } catch {
     return statusUrl;
@@ -820,7 +817,7 @@ async function updateStatusMessage() {
   if (renderDecision.mode === 'direct') {
     messagePayload = { content: buildStatusDirectMessage(renderDecision.proxyUrl), embeds: [] };
   } else if (renderDecision.mode === 'graphical') {
-    messagePayload = { content: buildStatusGraphicalMessage(renderDecision.statusUrl, renderDecision.badgeUrl), embeds: [] };
+    messagePayload = { content: buildStatusDirectMessage(renderDecision.proxyUrl), embeds: [] };
   } else if (renderDecision.mode === 'link_preview') {
     messagePayload = { content: buildStatusLinkPreviewMessage(renderDecision.publicStatusUrl), embeds: [] };
   }

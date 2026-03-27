@@ -373,6 +373,16 @@ module.exports = function startWebServer({
         return res.status(400).json({ ok: false, error: 'Status URL nicht konfiguriert' });
       }
 
+      const monitors = await getMonitorData();
+      const total = Array.isArray(monitors) ? monitors.length : 0;
+      const up = Array.isArray(monitors)
+        ? monitors.filter((m) => m && m.status === 1).length
+        : 0;
+      const down = Math.max(0, total - up);
+      const summary = total > 0
+        ? `${up}/${total} Dienste online${down > 0 ? ` · ${down} offline` : ''}`
+        : 'Keine Monitor-Daten verfügbar';
+
       // Lade Status-Seite
       const resp = await axios.get(statusUrl, {
         timeout: 5000,
@@ -386,14 +396,14 @@ module.exports = function startWebServer({
 
       // Injiziere OG-Tags ins <head>
       const head = `
-        <meta property="og:title" content="🔍 Dinste-Status">
-        <meta property="og:description" content="Live Status deiner Services - Aktualisiert alle 5 Minuten">
+        <meta property="og:title" content="Dienste-Status">
+        <meta property="og:description" content="${summary}">
         <meta property="og:image" content="${baseUrl}/api/badge/summary?style=flat-square">
         <meta property="og:url" content="${statusUrl}">
         <meta property="og:type" content="website">
         <meta name="twitter:card" content="summary_large_image">
-        <meta name="twitter:title" content="🔍 Dienste-Status">
-        <meta name="twitter:description" content="Live Status deiner Services">
+        <meta name="twitter:title" content="Dienste-Status">
+        <meta name="twitter:description" content="${summary}">
         <meta name="twitter:image" content="${baseUrl}/api/badge/summary?style=flat-square">
       `;
 
@@ -619,8 +629,8 @@ module.exports = function startWebServer({
       }
       if ((key === 'STATUS_CHANNEL_ID' || key === 'DISCORD_NOTIFICATION_CHANNEL') && !/^\d+$/.test(val))
         return res.json({ ok: false, error: `${key}: Nur Zahlen erlaubt (Discord ID)` });
-      if (key === 'DISCORD_STATUS_RENDER_MODE' && !['auto', 'link_preview', 'embed'].includes(val))
-        return res.json({ ok: false, error: 'DISCORD_STATUS_RENDER_MODE muss auto, link_preview oder embed sein' });
+      if (key === 'DISCORD_STATUS_RENDER_MODE' && !['auto', 'direct', 'graphical', 'link_preview', 'embed'].includes(val))
+        return res.json({ ok: false, error: 'DISCORD_STATUS_RENDER_MODE muss auto, direct, graphical, link_preview oder embed sein' });
       if (key === 'UPTIME_KUMA_URL' && !/^https?:\/\/.+/.test(val))
         return res.json({ ok: false, error: 'UPTIME_KUMA_URL muss mit http:// oder https:// beginnen' });
       if (key === 'CHANNEL_STATUS_INDICATOR' && !['true', 'false'].includes(val))
