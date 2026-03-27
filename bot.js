@@ -522,7 +522,19 @@ async function getStatusRenderMode() {
 }
 
 function buildStatusLinkPreviewMessage(statusPageUrl) {
-  return statusPageUrl;
+  if (!statusPageUrl) return '';
+
+  // Discord cached Link-Unfurls teilweise sehr aggressiv.
+  // Ein zeitbasierter Query-Parameter (5-Minuten-Bucket) erzwingt einen frischen Fetch,
+  // ohne bei jedem Poll eine komplett neue URL zu erzeugen.
+  try {
+    const url = new URL(statusPageUrl);
+    const cacheBucket = Math.floor(Date.now() / (5 * 60 * 1000));
+    url.searchParams.set('discord_unfurl', String(cacheBucket));
+    return url.toString();
+  } catch {
+    return statusPageUrl;
+  }
 }
 // #endregion
 
