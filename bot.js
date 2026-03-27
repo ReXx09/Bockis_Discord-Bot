@@ -402,40 +402,52 @@ function buildStatusEmbed(monitors, statusPageUrl = null) {
   const R = '\u001b[1;31m';
   const Y = '\u001b[1;33m';
   const W = '\u001b[1;37m';
-  const K = '\u001b[1;30m';
-  const BG_PANEL = '\u001b[100m'; // dunkles Grau (Panel)
-  const BG_HEADER = '\u001b[47m'; // helles Grau (Überschrift)
+  const S = '\u001b[0;90m';
+  const BG_CARD = '\u001b[40m';
+  const BG_SECTION = '\u001b[100m';
   const X = '\u001b[0m';
 
-  // Discord-Embed-Beschreibungen umbrechen ANSI-Codeblöcke bei ~56 Zeichen.
-  // Zeilenbudget: ●(1)+sp(1)+name(20)+sp(2)+STATUS(11)+sp(2)+bar(11)+sp(2)+%(6) = 56 Zeichen
+  const headerWidth = 58;
+  const nameWidth = 18;
+  const barWidth = 10;
+  const makeHeaderLine = (left, right = '') => {
+    const padding = Math.max(2, headerWidth - left.length - right.length);
+    return `${BG_CARD}${W} ${left}${' '.repeat(padding)}${right ? `${S}${right}` : ''}${X}`;
+  };
+  const makeSectionLine = (label) => {
+    const content = `≣ ${label}`;
+    const padding = Math.max(1, headerWidth - content.length);
+    return `${BG_SECTION}${W} ${content}${' '.repeat(padding)}${X}`;
+  };
+
   const lines = [];
-  // Header auf 2 Zeilen aufteilen – sonst würde er selbst umbrechen
-  lines.push(`${BG_HEADER}${K}  DIENSTE STATUS-ÜBERSICHT  ${X}`);
-  lines.push(`${BG_PANEL}${W} Stand: ${dateStr}, ${timeStr}${X}`);
+  lines.push(makeHeaderLine('▤ DIENSTE STATUS-ÜBERSICHT', `Stand: ${dateStr}, ${timeStr}`));
   lines.push('');
 
   for (const [groupName, groupMonitors] of Object.entries(groups)) {
-    lines.push(`${BG_HEADER}${K}  ${groupName.toUpperCase()} [${groupMonitors.length}]  ${X}`);
+    lines.push(makeSectionLine(`${groupName.toUpperCase()} [${groupMonitors.length}]`));
 
     for (const m of groupMonitors) {
       const isUp      = m.status === 1;
       const isPending = m.status === 2;
       const col       = isUp ? G : isPending ? Y : R;
 
-      const barWidth    = 11;  // 16 → 11: passt in 56-Zeichen-Limit
       const pct         = parseFloat(m.uptime) || 0;
       const filled      = Math.round((pct / 100) * barWidth);
-      const bar         = '▬'.repeat(filled) + '─'.repeat(barWidth - filled);
+      const bar         = `${col}${'█'.repeat(filled)}${S}${'█'.repeat(barWidth - filled)}${X}`;
       const statusLabel = isUp ? 'OPERATIONAL' : isPending ? 'PENDING    ' : 'OUTAGE     ';
-      const name        = m.name.slice(0, 20).padEnd(20);  // 22 → 20, Ausrichtung beibehalten
+      const name        = m.name.slice(0, nameWidth).padEnd(nameWidth);
       const uptime      = `${pct.toFixed(1)}%`.padStart(6);
+      const lastTime    = m.time
+        ? new Date(m.time).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+        : '--:--:--';
 
-      // Timestamp weggelassen – würde Zeile auf 73 Zeichen verlängern und umbrechen
-      lines.push(`${BG_PANEL}${col}●${W} ${name}  ${col}${statusLabel}${W}  ${col}${bar}${W}  ${uptime}${X}`);
+      lines.push(`${BG_CARD}${col}●${W} ${name}  ${col}${statusLabel}${W}  ${bar}  ${uptime} ${S}${lastTime}${X}`);
     }
     lines.push('');
   }
+
+  lines.push(`${BG_CARD}${S} Uptime Kuma Status - Automatisch generiert${X}`);
 
   if (lines[lines.length - 1] === '') lines.pop();
 
@@ -448,8 +460,7 @@ function buildStatusEmbed(monitors, statusPageUrl = null) {
   const embed = new EmbedBuilder()
     .setColor(embedColor)
     .setTitle(title)
-    .setFooter({ text: 'Uptime Kuma Status · Automatisch generiert' })
-    .setTimestamp();
+    .setFooter({ text: 'Uptime Kuma' });
 
   if (statusPageUrl) embed.setURL(statusPageUrl);
 
