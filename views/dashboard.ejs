@@ -1074,13 +1074,13 @@
     const statusCh= document.getElementById('cfgStatusCh').value.trim();
     const notifCh = document.getElementById('cfgNotifCh').value.trim();
     const kumaUrl = document.getElementById('cfgKumaUrl').value.trim();
-    const renderMode = document.getElementById('cfgRenderMode').value;
+    const renderMode = document.getElementById('cfgRenderMode')?.value || 'auto';
 
     if (token)    body.DISCORD_TOKEN                = token;
     if (statusCh) body.STATUS_CHANNEL_ID            = statusCh;
     if (notifCh)  body.DISCORD_NOTIFICATION_CHANNEL = notifCh;
     if (kumaUrl)  body.UPTIME_KUMA_URL              = kumaUrl;
-    if (renderMode) body.DISCORD_STATUS_RENDER_MODE = renderMode;
+    body.DISCORD_STATUS_RENDER_MODE = renderMode;  // IMMER senden (select hat immer einen Wert)
     body.CHANNEL_STATUS_INDICATOR = document.getElementById('cfgChannelIndicator').checked ? 'true' : 'false';
 
     try {
@@ -1104,13 +1104,15 @@
           // Polling: Versuche alle 500ms die config zu laden bis Bot antwortet
           let retries = 0;
           const maxRetries = 30; // max 15 Sekunden
+          let pollBotReady = null;
           
-          const pollBotReady = setInterval(async () => {
+          pollBotReady = setInterval(async () => {
             retries++;
             try {
               const testRes = await fetch('/api/config', { timeout: 2000 });
               if (testRes.ok) {
                 clearInterval(pollBotReady);
+                pollBotReady = null;
                 await new Promise(r => setTimeout(r, 500)); // Kurze Pause für Bot-Stabilisierung
                 loadConfig();
                 fetchAll();
@@ -1123,8 +1125,11 @@
             } catch (e) {
               if (retries >= maxRetries) {
                 clearInterval(pollBotReady);
+                pollBotReady = null;
                 st.textContent = `⚠ Bot braucht länger als erwartet. Seite in 5s neu laden…`;
                 st.className = 'warn';
+                btn.disabled = false;
+                btn.textContent = '💾 Speichern & Neu starten';
                 setTimeout(() => location.reload(), 5000);
               }
             }
@@ -1136,12 +1141,13 @@
         st.textContent = '✗ ' + (res.error || 'Unbekannter Fehler');
         st.className = 'err';
         toast('Fehler: ' + res.error, 'err');
+        btn.disabled = false;
+        btn.textContent = '💾 Speichern & Neu starten';
       }
     } catch (e) {
       st.textContent = 'Verbindungsfehler: ' + e.message;
       st.className = 'err';
       toast('Verbindungsfehler', 'err');
-    } finally {
       btn.disabled = false;
       btn.textContent = '💾 Speichern & Neu starten';
     }
