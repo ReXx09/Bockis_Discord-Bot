@@ -533,6 +533,16 @@ async function getStatusRenderMode() {
     return { mode: 'custom_embed', publicStatusUrl };
   }
 
+  // Legacy-Modus für bestehende .env-Dateien
+  if (configuredMode === 'link_preview') {
+    const reachable = await isStatusPageReachable(publicStatusUrl);
+    if (!reachable) {
+      logger.warn(`Status Render Mode: link_preview (legacy) - Statusseite nicht erreichbar, Fallback auf embed: ${publicStatusUrl}`);
+      return { mode: 'custom_embed', publicStatusUrl };
+    }
+    return { mode: 'link_preview', publicStatusUrl };
+  }
+
   // "auto" Mode: Beste Methode wählen (direct → graphical → embed)
   const reachable = await isStatusPageReachable(publicStatusUrl);
   if (!reachable) {
