@@ -516,6 +516,9 @@ async function getStatusRenderMode() {
     if (reachable && webUrl) {
       return { mode: 'direct', proxyUrl: `${webUrl}/api/status-unfurl` };
     }
+    if (!webUrl) {
+      logger.warn('Status Render Mode: direct erzwungen, aber WEB_PUBLIC_URL ist nicht gesetzt - Proxy-Link kann nicht gebaut werden');
+    }
     logger.warn(`Status Render Mode: direct erzwungen, aber nicht erreichbar - Fallback auf embed`);
     return { mode: 'custom_embed', publicStatusUrl };
   }
@@ -525,6 +528,9 @@ async function getStatusRenderMode() {
     const reachable = await isStatusPageReachable(publicStatusUrl);
     if (reachable && webUrl) {
       return { mode: 'graphical', proxyUrl: `${webUrl}/api/status-unfurl?variant=graphical` };
+    }
+    if (!webUrl) {
+      logger.warn('Status Render Mode: graphical erzwungen, aber WEB_PUBLIC_URL ist nicht gesetzt - Proxy-Link kann nicht gebaut werden');
     }
     logger.warn(`Status Render Mode: graphical erzwungen, aber nicht erreichbar - Fallback auf embed`);
     return { mode: 'custom_embed', publicStatusUrl };
@@ -558,6 +564,8 @@ async function getStatusRenderMode() {
   if (webUrl) {
     return { mode: 'direct', proxyUrl: `${webUrl}/api/status-unfurl` };
   }
+
+  logger.warn('Status Render Mode: auto - WEB_PUBLIC_URL fehlt, deshalb nur direkter Statusseiten-Link ohne OG-Proxy möglich');
 
   // Fallback ohne öffentliche Web-URL: klassisches Link-Preview direkt auf Statusseite
   return { mode: 'link_preview', publicStatusUrl };
@@ -783,9 +791,16 @@ async function updateStatusMessage() {
   }
 
   const channelId = config.get('discord.statusChannelId');
-  const channel = client.channels.cache.get(channelId);
+  let channel = client.channels.cache.get(channelId);
+  if (!channel && channelId) {
+    try {
+      channel = await client.channels.fetch(channelId);
+    } catch (err) {
+      logger.error(`discord.statusChannelId konnte nicht geladen werden (${channelId}): ${err.message}`);
+    }
+  }
   if (!channel) {
-    logger.error('Ung\u00fcltige discord.statusChannelId \u2013 Channel nicht gefunden');
+    logger.error(`Ung\u00fcltige discord.statusChannelId \u2013 Channel nicht gefunden (${channelId || 'leer'})`);
     return;
   }
 
