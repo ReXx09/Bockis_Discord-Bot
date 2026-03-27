@@ -612,13 +612,74 @@
       <label class="cfg-label" for="cfgRenderMode">Discord Status Renderer</label>
       <div style="display:flex;gap:8px;align-items:end;">
         <select class="cfg-input" id="cfgRenderMode" style="flex:1;">
-          <option value="link_preview">Link-Preview (bevorzugt)</option>
-          <option value="embed">Custom-Embed (fallback-fest)</option>
           <option value="auto">Auto (entscheidet automatisch)</option>
+          <option value="direct">Direct (OG-Proxy-URL)</option>
+          <option value="graphical">Graphical (Badge/Graphik-Link)</option>
+          <option value="webhook_ascii">Webhook ASCII (eigener Webhook)</option>
+          <option value="embed">Custom-Embed (fallback-fest)</option>
+          <option value="link_preview">Legacy Link-Preview</option>
         </select>
         <button class="btn btn-small" id="btnTestRender" onclick="testRendering()" style="padding:8px 12px;font-size:12px;white-space:nowrap;">🧪 Jetzt testen</button>
       </div>
-      <div class="cfg-hint">Hier kannst du direkt zwischen Discord Link-Preview und Custom-Embed umschalten. Mit "Jetzt testen" wird ein sofortiges Update gesendet.</div>
+      <div class="cfg-hint">Renderer wählen und mit "Jetzt testen" sofort einen Discord-Status-Update auslösen.</div>
+    </div>
+    <div class="cfg-field">
+      <label class="cfg-label" for="cfgSlug">Status-Page Slug</label>
+      <input class="cfg-input" id="cfgSlug" type="text" autocomplete="off"
+             placeholder="z. B. dienste">
+      <div class="cfg-hint">URL-Teil nach <code>/status/</code> in Uptime Kuma.</div>
+    </div>
+    <div class="cfg-field">
+      <label class="cfg-label" for="cfgCloudflareUrl">Cloudflare Public URL</label>
+      <input class="cfg-input" id="cfgCloudflareUrl" type="text" autocomplete="off"
+             placeholder="https://status.deinedomain.de">
+      <div class="cfg-hint">Optional. Wenn gesetzt, nutzt der Bot diese URL für Link-Preview.</div>
+    </div>
+    <div class="cfg-field">
+      <label class="cfg-label" for="cfgApiKey">Uptime Kuma API Key</label>
+      <input class="cfg-input" id="cfgApiKey" type="password" autocomplete="off"
+             placeholder="Neuen API Key eingeben (leer lassen = unverändert)">
+    </div>
+    <div class="cfg-field">
+      <label class="cfg-label" for="cfgWebhookUrl">Discord Status Webhook URL</label>
+      <input class="cfg-input" id="cfgWebhookUrl" type="password" autocomplete="off"
+             placeholder="Nur für webhook_ascii (leer lassen = unverändert)">
+    </div>
+    <div class="cfg-field">
+      <label class="cfg-label" for="cfgGuildId">Guild ID</label>
+      <input class="cfg-input" id="cfgGuildId" type="text" autocomplete="off"
+             placeholder="z. B. 123456789012345678">
+    </div>
+    <div class="cfg-field">
+      <label class="cfg-label" for="cfgServiceCategory">Service Kategorie-Name</label>
+      <input class="cfg-input" id="cfgServiceCategory" type="text" autocomplete="off"
+             placeholder="z. B. 📊 Service Status">
+    </div>
+    <div class="cfg-field">
+      <label class="cfg-label" for="cfgMonitoredServices">Monitored Services</label>
+      <input class="cfg-input" id="cfgMonitoredServices" type="text" autocomplete="off"
+             placeholder="Kommagetrennt, z. B. website,api,database">
+      <div class="cfg-hint">Leer = alle aktiven Monitore.</div>
+    </div>
+    <div class="cfg-field">
+      <label class="cfg-label" for="cfgUpdateInterval">Update Intervall (ms)</label>
+      <input class="cfg-input" id="cfgUpdateInterval" type="number" min="10000" step="1000"
+             placeholder="300000">
+    </div>
+    <div class="cfg-field">
+      <label class="cfg-label" for="cfgWebPort">Web Port</label>
+      <input class="cfg-input" id="cfgWebPort" type="number" min="1" max="65535"
+             placeholder="3000">
+    </div>
+    <div class="cfg-field">
+      <label class="cfg-label" for="cfgDashPassword">Dashboard Passwort</label>
+      <input class="cfg-input" id="cfgDashPassword" type="password" autocomplete="off"
+             placeholder="Neues Passwort eingeben (leer lassen = unverändert)">
+    </div>
+    <div class="cfg-field">
+      <label class="cfg-label" for="cfgDbStorage">DB Storage Pfad</label>
+      <input class="cfg-input" id="cfgDbStorage" type="text" autocomplete="off"
+             placeholder="./data/status.db">
     </div>
     <div class="cfg-field">
       <label class="cfg-label">Channel-Status-Indikator</label>
@@ -1220,23 +1281,71 @@
     }
   }
 
+  function setFieldValue(id, value) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const normalized = value ?? '';
+    el.value = normalized;
+    el.dataset.initialValue = normalized;
+  }
+
+  function maybeSetChanged(body, key, id, { allowEmpty = false } = {}) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const value = el.value.trim();
+    const initial = (el.dataset.initialValue || '').trim();
+    if (value === initial) return;
+    if (!allowEmpty && !value) return;
+    body[key] = value;
+  }
+
   // ── Config laden ─────────────────────────────────────
   async function loadConfig() {
     try {
       const d = await fetch('/api/config').then(r => r.json());
       if (!d.ok) { document.getElementById('cfgStatus').textContent = d.error; return; }
-      // Token-Feld leer lassen (Platzhalter zeigt Hinweis)
-      document.getElementById('cfgToken').value    = '';
-      document.getElementById('cfgStatusCh').value = d.STATUS_CHANNEL_ID || '';
-      document.getElementById('cfgNotifCh').value  = d.DISCORD_NOTIFICATION_CHANNEL || '';
-      document.getElementById('cfgKumaUrl').value  = d.UPTIME_KUMA_URL || '';
-      document.getElementById('cfgRenderMode').value = d.DISCORD_STATUS_RENDER_MODE || 'auto';
+
+      // Secret-Felder bleiben leer, Platzhalter zeigt maskierten Ist-Wert.
+      setFieldValue('cfgToken', '');
+      setFieldValue('cfgApiKey', '');
+      setFieldValue('cfgWebhookUrl', '');
+      setFieldValue('cfgDashPassword', '');
+
+      document.getElementById('cfgToken').dataset.initialValue = d.DISCORD_TOKEN ? '__MASKED__' : '';
+      document.getElementById('cfgApiKey').dataset.initialValue = d.UPTIME_KUMA_API_KEY ? '__MASKED__' : '';
+      document.getElementById('cfgWebhookUrl').dataset.initialValue = d.DISCORD_STATUS_WEBHOOK_URL ? '__MASKED__' : '';
+      document.getElementById('cfgDashPassword').dataset.initialValue = d.DASHBOARD_PASSWORD ? '__MASKED__' : '';
+
+      setFieldValue('cfgStatusCh', d.STATUS_CHANNEL_ID || '');
+      setFieldValue('cfgNotifCh', d.DISCORD_NOTIFICATION_CHANNEL || '');
+      setFieldValue('cfgKumaUrl', d.UPTIME_KUMA_URL || '');
+      setFieldValue('cfgRenderMode', d.DISCORD_STATUS_RENDER_MODE || 'auto');
+      setFieldValue('cfgSlug', d.STATUS_PAGE_SLUG || 'dienste');
+      setFieldValue('cfgCloudflareUrl', d.CLOUDFLARE_PUBLIC_URL || '');
+      setFieldValue('cfgGuildId', d.GUILD_ID || '');
+      setFieldValue('cfgServiceCategory', d.SERVICE_CATEGORY_NAME || '');
+      setFieldValue('cfgMonitoredServices', d.MONITORED_SERVICES || '');
+      setFieldValue('cfgUpdateInterval', d.UPDATE_INTERVAL || '300000');
+      setFieldValue('cfgWebPort', d.WEB_PORT || '3000');
+      setFieldValue('cfgDbStorage', d.DB_STORAGE || './data/status.db');
+
       document.getElementById('cfgStatus').textContent = '';
       document.getElementById('cfgToken').placeholder = d.DISCORD_TOKEN
         ? `Aktuell: ${d.DISCORD_TOKEN} — leer lassen = unverändert`
         : 'Neuen Token eingeben';
-      document.getElementById('cfgChannelIndicator').checked =
-        (d.CHANNEL_STATUS_INDICATOR || 'true') !== 'false';
+      document.getElementById('cfgApiKey').placeholder = d.UPTIME_KUMA_API_KEY
+        ? `Aktuell: ${d.UPTIME_KUMA_API_KEY} — leer lassen = unverändert`
+        : 'Neuen API Key eingeben';
+      document.getElementById('cfgWebhookUrl').placeholder = d.DISCORD_STATUS_WEBHOOK_URL
+        ? `Aktuell: ${d.DISCORD_STATUS_WEBHOOK_URL} — leer lassen = unverändert`
+        : 'Webhook URL (optional)';
+      document.getElementById('cfgDashPassword').placeholder = d.DASHBOARD_PASSWORD
+        ? `Aktuell: ${d.DASHBOARD_PASSWORD} — leer lassen = unverändert`
+        : 'Neues Passwort eingeben (optional)';
+
+      const indicatorEl = document.getElementById('cfgChannelIndicator');
+      indicatorEl.checked = (d.CHANNEL_STATUS_INDICATOR || 'true') !== 'false';
+      indicatorEl.dataset.initialValue = indicatorEl.checked ? 'true' : 'false';
     } catch (e) {
       document.getElementById('cfgStatus').textContent = 'Ladefehler: ' + e.message;
       document.getElementById('cfgStatus').className = 'err';
@@ -1253,18 +1362,37 @@
     st.className = '';
 
     const body = {};
-    const token   = document.getElementById('cfgToken').value.trim();
-    const statusCh= document.getElementById('cfgStatusCh').value.trim();
-    const notifCh = document.getElementById('cfgNotifCh').value.trim();
-    const kumaUrl = document.getElementById('cfgKumaUrl').value.trim();
-    const renderMode = document.getElementById('cfgRenderMode')?.value || 'auto';
+    maybeSetChanged(body, 'DISCORD_TOKEN', 'cfgToken');
+    maybeSetChanged(body, 'STATUS_CHANNEL_ID', 'cfgStatusCh');
+    maybeSetChanged(body, 'DISCORD_NOTIFICATION_CHANNEL', 'cfgNotifCh');
+    maybeSetChanged(body, 'UPTIME_KUMA_URL', 'cfgKumaUrl');
+    maybeSetChanged(body, 'DISCORD_STATUS_RENDER_MODE', 'cfgRenderMode');
+    maybeSetChanged(body, 'STATUS_PAGE_SLUG', 'cfgSlug');
+    maybeSetChanged(body, 'CLOUDFLARE_PUBLIC_URL', 'cfgCloudflareUrl', { allowEmpty: true });
+    maybeSetChanged(body, 'UPTIME_KUMA_API_KEY', 'cfgApiKey', { allowEmpty: true });
+    maybeSetChanged(body, 'DISCORD_STATUS_WEBHOOK_URL', 'cfgWebhookUrl', { allowEmpty: true });
+    maybeSetChanged(body, 'GUILD_ID', 'cfgGuildId');
+    maybeSetChanged(body, 'SERVICE_CATEGORY_NAME', 'cfgServiceCategory');
+    maybeSetChanged(body, 'MONITORED_SERVICES', 'cfgMonitoredServices', { allowEmpty: true });
+    maybeSetChanged(body, 'UPDATE_INTERVAL', 'cfgUpdateInterval');
+    maybeSetChanged(body, 'WEB_PORT', 'cfgWebPort');
+    maybeSetChanged(body, 'DASHBOARD_PASSWORD', 'cfgDashPassword', { allowEmpty: true });
+    maybeSetChanged(body, 'DB_STORAGE', 'cfgDbStorage');
 
-    if (token)    body.DISCORD_TOKEN                = token;
-    if (statusCh) body.STATUS_CHANNEL_ID            = statusCh;
-    if (notifCh)  body.DISCORD_NOTIFICATION_CHANNEL = notifCh;
-    if (kumaUrl)  body.UPTIME_KUMA_URL              = kumaUrl;
-    body.DISCORD_STATUS_RENDER_MODE = renderMode;  // IMMER senden (select hat immer einen Wert)
-    body.CHANNEL_STATUS_INDICATOR = document.getElementById('cfgChannelIndicator').checked ? 'true' : 'false';
+    const indicatorEl = document.getElementById('cfgChannelIndicator');
+    const currentIndicator = indicatorEl.checked ? 'true' : 'false';
+    const initialIndicator = indicatorEl.dataset.initialValue || 'true';
+    if (currentIndicator !== initialIndicator) {
+      body.CHANNEL_STATUS_INDICATOR = currentIndicator;
+    }
+
+    if (Object.keys(body).length === 0) {
+      st.textContent = 'Keine Änderungen erkannt';
+      st.className = 'warn';
+      btn.disabled = false;
+      btn.textContent = '💾 Speichern & Neu starten';
+      return;
+    }
 
     try {
       const res = await fetch('/api/config', {

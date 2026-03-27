@@ -476,18 +476,37 @@ module.exports = function startWebServer({
         const m = raw.match(new RegExp(`^${key}=(.*)$`, 'm'));
         return m ? m[1].trim().replace(/^["']|["']$/g, '') : '';
       };
-      const token  = get('DISCORD_TOKEN');
-      const masked = token.length > 12
-        ? `${token.slice(0, 6)}${'*'.repeat(token.length - 12)}${token.slice(-6)}`
-        : token ? '***' : '';
+      const maskSecret = (value) => {
+        if (!value) return '';
+        if (value.length > 12) return `${value.slice(0, 6)}${'*'.repeat(value.length - 12)}${value.slice(-6)}`;
+        return '***';
+      };
+
+      const token = get('DISCORD_TOKEN');
+      const apiKey = get('UPTIME_KUMA_API_KEY');
+      const webhookUrl = get('DISCORD_STATUS_WEBHOOK_URL');
+      const dashboardPassword = get('DASHBOARD_PASSWORD');
+
       res.json({
         ok: true,
-        DISCORD_TOKEN:                masked,
+        DISCORD_TOKEN:                maskSecret(token),
         STATUS_CHANNEL_ID:            get('STATUS_CHANNEL_ID'),
         DISCORD_NOTIFICATION_CHANNEL: get('DISCORD_NOTIFICATION_CHANNEL'),
         DISCORD_STATUS_RENDER_MODE:   get('DISCORD_STATUS_RENDER_MODE') || 'auto',
+        DISCORD_STATUS_WEBHOOK_URL:   maskSecret(webhookUrl),
         UPTIME_KUMA_URL:              get('UPTIME_KUMA_URL'),
+        UPTIME_KUMA_API_KEY:          maskSecret(apiKey),
+        STATUS_PAGE_SLUG:             get('STATUS_PAGE_SLUG') || 'dienste',
+        CLOUDFLARE_PUBLIC_URL:        get('CLOUDFLARE_PUBLIC_URL'),
         CHANNEL_STATUS_INDICATOR:     get('CHANNEL_STATUS_INDICATOR') || 'true',
+        GUILD_ID:                     get('GUILD_ID'),
+        SERVICE_CATEGORY_NAME:        get('SERVICE_CATEGORY_NAME'),
+        MONITORED_SERVICES:           get('MONITORED_SERVICES'),
+        UPDATE_INTERVAL:              get('UPDATE_INTERVAL') || '300000',
+        WEB_PORT:                     get('WEB_PORT') || '3000',
+        DASHBOARD_PASSWORD:           maskSecret(dashboardPassword),
+        DB_DIALECT:                   get('DB_DIALECT') || 'sqlite',
+        DB_STORAGE:                   get('DB_STORAGE') || './data/status.db',
       });
     } catch (err) {
       logger.error(`/api/config GET Fehler: ${err.message}`);
@@ -498,29 +517,82 @@ module.exports = function startWebServer({
   // ── API: Konfiguration schreiben + Bot neu starten ──────────────────────────
 
   app.post('/api/config', dashboardAuth, (req, res) => {
-    const ALLOWED_CFG = ['DISCORD_TOKEN', 'STATUS_CHANNEL_ID', 'DISCORD_NOTIFICATION_CHANNEL',
-                         'DISCORD_STATUS_RENDER_MODE',
-                         'UPTIME_KUMA_URL', 'CHANNEL_STATUS_INDICATOR'];
+    const ALLOWED_CFG = [
+      'DISCORD_TOKEN',
+      'STATUS_CHANNEL_ID',
+      'DISCORD_NOTIFICATION_CHANNEL',
+      'DISCORD_STATUS_RENDER_MODE',
+      'DISCORD_STATUS_WEBHOOK_URL',
+      'UPTIME_KUMA_URL',
+      'UPTIME_KUMA_API_KEY',
+      'STATUS_PAGE_SLUG',
+      'CLOUDFLARE_PUBLIC_URL',
+      'CHANNEL_STATUS_INDICATOR',
+      'GUILD_ID',
+      'SERVICE_CATEGORY_NAME',
+      'MONITORED_SERVICES',
+      'UPDATE_INTERVAL',
+      'WEB_PORT',
+      'DASHBOARD_PASSWORD',
+      'DB_DIALECT',
+      'DB_STORAGE'
+    ];
+    const CLEARABLE_CFG = new Set([
+      'DISCORD_STATUS_WEBHOOK_URL',
+      'UPTIME_KUMA_API_KEY',
+      'CLOUDFLARE_PUBLIC_URL',
+      'DASHBOARD_PASSWORD',
+      'MONITORED_SERVICES'
+    ]);
     const envPath = path.join(rootDir, '.env');
     if (!fs.existsSync(envPath)) return res.json({ ok: false, error: '.env nicht gefunden' });
 
     const updates = {};
     for (const key of ALLOWED_CFG) {
       const raw = req.body?.[key];
-      if (raw === undefined || raw === null || raw === '') continue;
+      if (raw === undefined || raw === null) continue;
+
+      if (raw === '' && CLEARABLE_CFG.has(key)) {
+        updates[key] = '';
+        continue;
+      }
+
+      if (raw === '') continue;
+
       const val = String(raw).trim();
-      if (key === 'DISCORD_TOKEN') {
+      if (key === 'DISCORD_TOKEN' || key === 'UPTIME_KUMA_API_KEY' || key === 'DISCORD_STATUS_WEBHOOK_URL' || key === 'DASHBOARD_PASSWORD') {
         if (val.includes('*')) continue;
         if (/[\n\r]/.test(val)) return res.json({ ok: false, error: 'Ungültiger Token (enthält Zeilenumbruch)' });
       }
       if ((key === 'STATUS_CHANNEL_ID' || key === 'DISCORD_NOTIFICATION_CHANNEL') && !/^\d+$/.test(val))
         return res.json({ ok: false, error: `${key}: Nur Zahlen erlaubt (Discord ID)` });
-      if (key === 'DISCORD_STATUS_RENDER_MODE' && !['auto', 'link_preview', 'embed'].includes(val))
-        return res.json({ ok: false, error: 'DISCORD_STATUS_RENDER_MODE muss auto, link_preview oder embed sein' });
+      if (key === 'DISCORD_STATUS_RENDER_MODE' && !['auto', 'direct', 'graphical', 'webhook_ascii', 'embed', 'link_preview'].includes(val))
+        return res.json({ ok: false, error: 'DISCORD_STATUS_RENDER_MODE muss auto, direct, graphical, webhook_ascii, embed oder link_preview sein' });
+      if ((key === 'DISCORD_STATUS_WEBHOOK_URL' || key === 'CLOUDFLARE_PUBLIC_URL') && val && !/^https?:\/\/.+/.test(val))
+        return res.json({ ok: false, error: `${key} muss mit http:// oder https:// beginnen` });
       if (key === 'UPTIME_KUMA_URL' && !/^https?:\/\/.+/.test(val))
         return res.json({ ok: false, error: 'UPTIME_KUMA_URL muss mit http:// oder https:// beginnen' });
+      if (key === 'STATUS_PAGE_SLUG' && !/^[a-z0-9-]+$/i.test(val))
+        return res.json({ ok: false, error: 'STATUS_PAGE_SLUG darf nur Buchstaben, Zahlen und Bindestriche enthalten' });
       if (key === 'CHANNEL_STATUS_INDICATOR' && !['true', 'false'].includes(val))
         return res.json({ ok: false, error: 'CHANNEL_STATUS_INDICATOR muss true oder false sein' });
+      if (key === 'GUILD_ID' && val && !/^\d+$/.test(val))
+        return res.json({ ok: false, error: 'GUILD_ID: Nur Zahlen erlaubt (Discord ID)' });
+      if (key === 'UPDATE_INTERVAL') {
+        const n = parseInt(val, 10);
+        if (!Number.isFinite(n) || n < 10000)
+          return res.json({ ok: false, error: 'UPDATE_INTERVAL muss eine Zahl >= 10000 sein' });
+      }
+      if (key === 'WEB_PORT') {
+        const n = parseInt(val, 10);
+        if (!Number.isFinite(n) || n < 1 || n > 65535)
+          return res.json({ ok: false, error: 'WEB_PORT muss zwischen 1 und 65535 liegen' });
+      }
+      if (key === 'DB_DIALECT' && val !== 'sqlite')
+        return res.json({ ok: false, error: 'DB_DIALECT darf aktuell nur sqlite sein' });
+      if (key === 'DB_STORAGE' && /[\n\r]/.test(val))
+        return res.json({ ok: false, error: 'DB_STORAGE darf keine Zeilenumbrüche enthalten' });
+
       updates[key] = val;
     }
 
