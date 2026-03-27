@@ -126,11 +126,14 @@ module.exports = function startWebServer({
       const twitterImage = readMetaTag(html, 'name', 'twitter:image');
       const metaDescription = readMetaTag(html, 'name', 'description');
 
-      // Discord braucht für RichPreview: Titel + (Beschreibung ODER Bild)
-      const hasDescription = ogDescription || metaDescription;
-      const hasImage = ogImage || twitterImage;
-      const richPreview = Boolean(ogTitle && (hasDescription || hasImage));
+      // Discord braucht für echten Rich Preview: Title + (Description ODER Image)
+      // Blog-Standard: og:title + og:description + og:image
+      const hasMinimalOg = !!(ogTitle && (ogDescription || ogImage));
+      const hasTwitter = !!(twitterCard && twitterImage);
+      const richPreview = hasMinimalOg || hasTwitter;
+      
       const challengeDetected = /cf-challenge|attention required|captcha|cloudflare/i.test(html);
+      const isCloudflareServer = /cloudflare/i.test(String(headers.server || ''));
 
       return {
         ok: true,
@@ -152,7 +155,10 @@ module.exports = function startWebServer({
           metaDescription,
         },
         richPreview,
+        hasMinimalOg,
+        hasTwitter,
         challengeDetected,
+        isCloudflareServer,
       };
     } catch (err) {
       return {
@@ -299,44 +305,51 @@ module.exports = function startWebServer({
 
       const hints = [];
       if (!/^https:\/\//i.test(targetUrl)) {
-        hints.push('Link-Preview benötigt in Discord in der Regel HTTPS.');
+        hints.push('🔴 Link-Preview benötigt HTTPS (nicht HTTP!).');
       }
 
       if (!discordProbe.ok) {
-        hints.push(`Discord-Probe fehlgeschlagen: ${discordProbe.error}`);
+        hints.push(`🔴 Discord-Probe FEHLER: ${discordProbe.error}`);
       } else {
         if (!(discordProbe.status >= 200 && discordProbe.status < 400)) {
-          hints.push(`Discord-Probe liefert HTTP ${discordProbe.status} statt 2xx/3xx.`);
+          hints.push(`🔴 Discord-Crawler erhält HTTP ${discordProbe.status} (erwartet: 200-399).`);
         }
         if (!/text\/html/i.test(discordProbe.contentType || '')) {
-          hints.push(`Content-Type ist nicht text/html (${discordProbe.contentType || 'unbekannt'}).`);
+          hints.push(`🔴 Content-Type ist nicht text/html (${discordProbe.contentType || 'unbekannt'}).`);
         }
-        
-        // Detaillierte Meta-Tag-Analyse
-        if (!discordProbe.richPreview) {
-          const ogTitle = discordProbe.meta?.ogTitle;
-          const hasDesc = discordProbe.meta?.ogDescription || discordProbe.meta?.metaDescription;
-          const hasImage = discordProbe.meta?.ogImage || discordProbe.meta?.twitterImage;
-          
-          if (ogTitle && !hasDesc && !hasImage) {
-            hints.push('⚠️ OG:Title vorhanden, aber OG:Description + OG:Image FEHLEN → Discord zeigt keine Rich Preview.');
-          } else if (!ogTitle) {
-            hints.push('❌ OG:Title FEHLT → Keine Rich Preview möglich.');
-          } else {
-            hints.push('⚠️ Unzureichend Meta-Tags für Discord Rich Preview (Beschreibung oder Bild erforderlich).');
-          }
+        if (!discordProbe.hasMinimalOg && !discordProbe.hasTwitter) {
+          const missing = [];
+          if (!discordProbe.meta.ogTitle) missing.push('og:title');
+          if (!discordProbe.meta.ogDescription && !discordProbe.meta.metaDescription) missing.push('og:description oder <meta name="description">');
+          if (!discordProbe.meta.ogImage) missing.push('og:image');
+          hints.push(`🔴 UNZUREICHENDE METADATEN: Fehlend: ${missing.join(', ')}. Discord braucht Title + Description/Image.`);
         }
-        
         if (discordProbe.challengeDetected) {
-          hints.push('Cloudflare/Challenge erkannt - Discord-Crawler kann blockiert sein.');
+          hints.push('🔴 Cloudflare-Challenge erkannt - Discord-Crawler wird möglicherweise blockiert!');
+        }
+        if (discordProbe.isCloudflareServer && !discordProbe.challengeDetected) {
+          hints.push('ℹ️ Server: Cloudflare (läuft über CDN). Browser und Discord sehen eventuell unterschiedliche Cache-Versionen.');
         }
       }
 
       if (defaultProbe.ok && discordProbe.ok && defaultProbe.status !== discordProbe.status) {
-        hints.push(`Unterschiedliche HTTP-Statuscodes (Browser=${defaultProbe.status}, Discord=${discordProbe.status}) deuten auf Crawler-Filter hin.`);
+        hints.push(`⚠️ unterschiedliche HTTP-Status: Browser=${defaultProbe.status}, Discord=${discordProbe.status} (Crawler-Filter aktiv?).`);
       }
 
-      return res.json({
+      // Konkrete Lösungsvorschläge
+      const solutions = [];
+      if (!discordProbe.richPreview && targetUrl.includes('uptime.rexxlab.uk')) {
+        solutions.push('💡 LÖSUNG: Uptime Kuma hat zu minimale OG-Tags. Optionen:');
+        solutions.push('  1️⃣ Im Uptime Kuma: Bearbeite die Status-Seite HTML-Template um og:description & og:image zu entfernen/setzen.');
+        solutions.push('  2️⃣ Nutze statt Link-Preview den EMBED-Modus (Einstellungen → DISCORD_STATUS_RENDER_MODE = "embed").');
+        solutions.push('  3️⃣ Schreibe eine eigene Status-Seite mit vollständigen OG-Tags.');
+      }
+      if (discordProbe.challengeDetected) {
+        solutions.push('⚠️ CLOUDFLARE-HERAUSFORDERUNG: Cloudflare blockiert Discord-Crawler!');
+        solutions.push('  → Lösung: In Cloudflare-Dashboard → IP-Whitelist oder Bot-Filter für Discordbot anpassen.');
+      }
+
+      res.json({
         ok: true,
         targetUrl,
         checkedAt: new Date().toISOString(),
@@ -345,6 +358,7 @@ module.exports = function startWebServer({
           browser: defaultProbe,
         },
         hints,
+        solutions,
       });
     } catch (err) {
       logger.error(`/api/diagnostics/link-preview Fehler: ${err.message}`);
@@ -361,124 +375,6 @@ module.exports = function startWebServer({
     } catch (err) {
       logger.error(`/api/refresh Fehler: ${err.message}`);
       res.json({ ok: false, error: err.message });
-    }
-  });
-
-  // ── API: Status-Unfurl-Proxy (Liefert Status-Seite mit injiziertem OG:Tags) ─
-
-  app.get('/api/status-unfurl', async (req, res) => {
-    try {
-      const statusUrl = getPublicStatusUrl();
-      if (!statusUrl) {
-        return res.status(400).json({ ok: false, error: 'Status URL nicht konfiguriert' });
-      }
-
-      // Lade Status-Seite
-      const resp = await axios.get(statusUrl, {
-        timeout: 5000,
-        headers: { 'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36' }
-      });
-
-      let html = String(resp.data || '');
-      const uptimeKumaUrl = config.get('uptimeKuma.url') || '';
-      const cloudflareUrl = config.get('cloudflare.publicUrl') || '';
-      const baseUrl = cloudflareUrl || uptimeKumaUrl;
-
-      // Injiziere OG-Tags ins <head>
-      const head = `
-        <meta property="og:title" content="🔍 Dinste-Status">
-        <meta property="og:description" content="Live Status deiner Services - Aktualisiert alle 5 Minuten">
-        <meta property="og:image" content="${baseUrl}/api/badge/summary?style=flat-square">
-        <meta property="og:url" content="${statusUrl}">
-        <meta property="og:type" content="website">
-        <meta name="twitter:card" content="summary_large_image">
-        <meta name="twitter:title" content="🔍 Dienste-Status">
-        <meta name="twitter:description" content="Live Status deiner Services">
-        <meta name="twitter:image" content="${baseUrl}/api/badge/summary?style=flat-square">
-      `;
-
-      html = html.replace('</head>', `${head}</head>`);
-      res.setHeader('Content-Type', 'text/html; charset=utf-8');
-      res.send(html);
-    } catch (err) {
-      logger.error(`/api/status-unfurl Fehler: ${err.message}`);
-      res.status(500).json({ ok: false, error: err.message });
-    }
-  });
-
-  // ── API: Status-Badge (Umleitung zu Uptime Kuma Badge API) ──────────────────
-
-  app.get('/api/status-badge/:monitorId', async (req, res) => {
-    try {
-      const { monitorId } = req.params;
-      const baseUrl = (config.get('uptimeKuma.url') || '').replace(/\/+$/, '');
-      if (!baseUrl) {
-        return res.status(400).json({ ok: false, error: 'Uptime Kuma URL nicht konfiguriert' });
-      }
-
-      // Leite zur Uptime Kuma Badge API weiter
-      const badgeUrl = `${baseUrl}/api/badge/${monitorId}/uptime?style=flat-square`;
-      const resp = await axios.get(badgeUrl, { timeout: 5000, responseType: 'stream' });
-      res.setHeader('Content-Type', resp.headers['content-type']);
-      res.setHeader('Cache-Control', 'max-age=300'); // 5 Minuten Cache
-      resp.data.pipe(res);
-    } catch (err) {
-      logger.error(`/api/status-badge Fehler: ${err.message}`);
-      res.status(500).json({ ok: false, error: err.message });
-    }
-  });
-
-  // ── API: Grafische Summary-Badges generieren ────────────────────────────────
-
-  app.get('/api/badge/summary', async (req, res) => {
-    try {
-      const { style = 'flat-square' } = req.query;
-      const monitorData = getMonitorData ? getMonitorData() : {};
-      const total = Object.keys(monitorData).length || 0;
-      const up = Object.values(monitorData).filter((m) => m.status === 'up').length || 0;
-      const down = total - up;
-
-      // Einfache SVG Badge generieren (für Link-Preview Image)
-      const badgeText = `${up}/${total} Online`;
-      const bgColor = down === 0 ? '31C16E' : down === total ? 'E74C3C' : 'F39C12'; // Grün/Rot/Orange
-      const svg = `
-        <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="160" height="28" role="img" aria-label="Status">
-          <title>Status: ${badgeText}</title>
-          <linearGradient id="s" x2="0" y2="100%">
-            <stop offset="0" stop-color="#bbb"/>
-            <stop offset="1" stop-color="#999"/>
-          </linearGradient>
-          <clipPath id="r">
-            <rect width="160" height="28" rx="4" fill="#fff"/>
-          </clipPath>
-          <g clip-path="url(#r)">
-            <rect width="107" height="28" fill="#555"/>
-            <rect x="107" width="53" height="28" fill="#${bgColor}"/>
-            <rect width="160" height="28" fill="url(#s)"/>
-          </g>
-          <g fill="#fff" text-anchor="middle" font-family="Verdana,Geneva,DejaVu Sans,sans-serif" text-rendering="geometricPrecision" font-size="100%">
-            <text x="545" y="175" fill="#010101" fill-opacity=".3" transform="scale(.1)" textLength="970">
-              Status
-            </text>
-            <text x="545" y="165" transform="scale(.1)" textLength="970">
-              Status
-            </text>
-            <text x="1325" y="175" fill="#010101" fill-opacity=".3" transform="scale(.1)" textLength="430">
-              ${badgeText}
-            </text>
-            <text x="1325" y="165" transform="scale(.1)" textLength="430">
-              ${badgeText}
-            </text>
-          </g>
-        </svg>
-      `;
-
-      res.setHeader('Content-Type', 'image/svg+xml; charset=utf-8');
-      res.setHeader('Cache-Control', 'max-age=300');
-      res.send(svg);
-    } catch (err) {
-      logger.error(`/api/badge/summary Fehler: ${err.message}`);
-      res.status(500).json({ ok: false, error: err.message });
     }
   });
 
@@ -581,20 +477,15 @@ module.exports = function startWebServer({
         return m ? m[1].trim().replace(/^["']|["']$/g, '') : '';
       };
       const token  = get('DISCORD_TOKEN');
-      const webhook = get('DISCORD_STATUS_WEBHOOK_URL');
       const masked = token.length > 12
         ? `${token.slice(0, 6)}${'*'.repeat(token.length - 12)}${token.slice(-6)}`
         : token ? '***' : '';
-      const maskedWebhook = webhook.length > 24
-        ? `${webhook.slice(0, 18)}${'*'.repeat(Math.max(0, webhook.length - 24))}${webhook.slice(-6)}`
-        : webhook ? '***' : '';
       res.json({
         ok: true,
         DISCORD_TOKEN:                masked,
         STATUS_CHANNEL_ID:            get('STATUS_CHANNEL_ID'),
         DISCORD_NOTIFICATION_CHANNEL: get('DISCORD_NOTIFICATION_CHANNEL'),
         DISCORD_STATUS_RENDER_MODE:   get('DISCORD_STATUS_RENDER_MODE') || 'auto',
-        DISCORD_STATUS_WEBHOOK_URL:   maskedWebhook,
         UPTIME_KUMA_URL:              get('UPTIME_KUMA_URL'),
         CHANNEL_STATUS_INDICATOR:     get('CHANNEL_STATUS_INDICATOR') || 'true',
       });
@@ -608,7 +499,7 @@ module.exports = function startWebServer({
 
   app.post('/api/config', dashboardAuth, (req, res) => {
     const ALLOWED_CFG = ['DISCORD_TOKEN', 'STATUS_CHANNEL_ID', 'DISCORD_NOTIFICATION_CHANNEL',
-               'DISCORD_STATUS_RENDER_MODE', 'DISCORD_STATUS_WEBHOOK_URL',
+                         'DISCORD_STATUS_RENDER_MODE',
                          'UPTIME_KUMA_URL', 'CHANNEL_STATUS_INDICATOR'];
     const envPath = path.join(rootDir, '.env');
     if (!fs.existsSync(envPath)) return res.json({ ok: false, error: '.env nicht gefunden' });
@@ -622,16 +513,10 @@ module.exports = function startWebServer({
         if (val.includes('*')) continue;
         if (/[\n\r]/.test(val)) return res.json({ ok: false, error: 'Ungültiger Token (enthält Zeilenumbruch)' });
       }
-      if (key === 'DISCORD_STATUS_WEBHOOK_URL') {
-        if (val.includes('*')) continue;
-        if (!/^https:\/\/(canary\.|ptb\.)?discord(?:app)?\.com\/api\/webhooks\/.+/.test(val)) {
-          return res.json({ ok: false, error: 'DISCORD_STATUS_WEBHOOK_URL muss eine gültige Discord Webhook URL sein' });
-        }
-      }
       if ((key === 'STATUS_CHANNEL_ID' || key === 'DISCORD_NOTIFICATION_CHANNEL') && !/^\d+$/.test(val))
         return res.json({ ok: false, error: `${key}: Nur Zahlen erlaubt (Discord ID)` });
-      if (key === 'DISCORD_STATUS_RENDER_MODE' && !['auto', 'direct', 'graphical', 'webhook_ascii', 'link_preview', 'embed'].includes(val))
-        return res.json({ ok: false, error: 'DISCORD_STATUS_RENDER_MODE muss auto, direct, graphical, webhook_ascii, link_preview oder embed sein' });
+      if (key === 'DISCORD_STATUS_RENDER_MODE' && !['auto', 'link_preview', 'embed'].includes(val))
+        return res.json({ ok: false, error: 'DISCORD_STATUS_RENDER_MODE muss auto, link_preview oder embed sein' });
       if (key === 'UPTIME_KUMA_URL' && !/^https?:\/\/.+/.test(val))
         return res.json({ ok: false, error: 'UPTIME_KUMA_URL muss mit http:// oder https:// beginnen' });
       if (key === 'CHANNEL_STATUS_INDICATOR' && !['true', 'false'].includes(val))
