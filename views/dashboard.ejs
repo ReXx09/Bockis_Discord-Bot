@@ -75,6 +75,36 @@
       gap: 12px;
     }
 
+    /* DASHBOARD GRID LAYOUT */
+    .dashboard-grid {
+      display: grid;
+      grid-template-columns: repeat(12, 1fr);
+      gap: 16px;
+    }
+    .dashboard-grid > .card {
+      grid-column: span 12;
+    }
+    .dashboard-grid > .card[data-span="6"]  { grid-column: span 6; }
+    .dashboard-grid > .card[data-span="4"]  { grid-column: span 4; }
+    .dashboard-grid > .card[data-span="3"]  { grid-column: span 3; }
+    .dashboard-grid > .card[data-span="12"] { grid-column: span 12; }
+    @media (max-width: 900px) { .dashboard-grid > .card { grid-column: span 12 !important; } }
+
+    /* CARD WIDTH BUTTONS */
+    .btn-width {
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 10px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      transition: color .15s, border-color .15s;
+      white-space: nowrap;
+    }
+    .btn-width:hover { color: var(--text); border-color: var(--blue); }
+    .btn-width.active { color: var(--blue); border-color: var(--blue); }
+
     /* CARD */
     .card {
       background: var(--surface);
@@ -458,28 +488,31 @@
   </div>
 </div>
 
-<!-- ── ROW 1: BOT + SYSTEM ────────────────────────────── -->
-<div class="grid-2">
-  <div class="card">
-    <div class="card-title">Bot Status</div>
-    <div id="botInfo">
-      <div class="sk"></div>
-      <div class="sk" style="width:70%"></div>
-      <div class="sk" style="width:50%"></div>
-    </div>
+<!-- ── DASHBOARD GRID ───────────────────────────────── -->
+<div class="dashboard-grid" id="dashboardGrid">
+
+<!-- ── BOT STATUS ─────────────────────────────────────── -->
+<div class="card" id="botCard" data-span="6">
+  <div class="card-title">Bot Status</div>
+  <div id="botInfo">
+    <div class="sk"></div>
+    <div class="sk" style="width:70%"></div>
+    <div class="sk" style="width:50%"></div>
   </div>
-  <div class="card">
-    <div class="card-title">System</div>
-    <div id="sysInfo">
-      <div class="sk"></div>
-      <div class="sk" style="width:70%"></div>
-      <div class="sk" style="width:50%"></div>
-    </div>
+</div>
+
+<!-- ── SYSTEM ─────────────────────────────────────────── -->
+<div class="card" id="sysCard" data-span="6">
+  <div class="card-title">System</div>
+  <div id="sysInfo">
+    <div class="sk"></div>
+    <div class="sk" style="width:70%"></div>
+    <div class="sk" style="width:50%"></div>
   </div>
 </div>
 
 <!-- ── ROW 1b: CLOUDFLARE TUNNEL ─────────────────────── -->
-<div class="card" id="tunnelCard" style="margin-top:16px">
+<div class="card" id="tunnelCard" data-span="12">
   <div class="card-title">🌐 Cloudflare Tunnel</div>
   <div id="tunnelInfo">
     <div class="sk"></div>
@@ -488,7 +521,7 @@
 </div>
 
 <!-- ── ROW 1c: DISCORD KONFIGURATION ───────────────────── -->
-<div class="card" id="cfgCard" style="margin-top:16px">
+<div class="card" id="cfgCard" data-span="12">
   <div class="card-title">⚙️ Discord-Konfiguration</div>
   <div class="cfg-form">
     <div class="cfg-field">
@@ -531,13 +564,13 @@
 </div>
 
 <!-- ── ROW 2: MONITORS ────────────────────────────────── -->
-<div class="card" id="monitorsCard" style="margin-top:16px">
+<div class="card" id="monitorsCard" data-span="12">
   <div class="card-title">📡 Services <span class="count" id="monCount" style="margin-left:8px">–</span></div>
   <div class="grid-monitors" id="monGrid"></div>
 </div>
 
 <!-- ── ROW 2b: SERVICE CONTROL ────────────────── -->
-<div class="card" id="svcCard" style="margin-top:16px">
+<div class="card" id="svcCard" data-span="12">
   <div class="card-title">⚙️ Dienste verwalten <span class="muted" style="font-size:11px;font-weight:400;text-transform:none;letter-spacing:0;margin-left:8px">start / stop / restart via systemctl</span></div>
 <div class="svc-grid" id="svcGrid">
   <div class="svc-card" id="svc-bockis-bot">
@@ -578,12 +611,14 @@
 </div>
 
 <!-- ── ROW 3: LOGS ────────────────────────────────────── -->
-<div class="card" id="logsCard" style="margin-top:16px">
+<div class="card" id="logsCard" data-span="12">
   <div class="card-title">📄 Bot-Logs <span class="muted" id="logFile" style="font-size:11px;font-weight:400;text-transform:none;letter-spacing:0;margin-left:8px">–</span></div>
   <div class="log-viewer" id="logViewer">
     <span class="muted">Lade Logs…</span>
   </div>
 </div>
+
+</div><!-- /.dashboard-grid -->
 
 <!-- ── TOAST ──────────────────────────────────────────── -->
 <div id="toast"></div>
@@ -1097,6 +1132,7 @@
 
     // Restore collapse states
     restoreCollapseStates();
+    restoreSpanStates();
   }
 
   function generateCardId() {
@@ -1158,15 +1194,44 @@
       const collapseBtn = document.createElement('button');
       collapseBtn.className = 'btn-collapse';
       collapseBtn.innerHTML = '−';
+      collapseBtn.title = 'Ein-/Ausklappen';
       collapseBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         toggleCardCollapse(card, collapseBtn);
       });
 
+      // Breiten-Buttons
+      const SPANS = [
+        { label: '½', span: '6',  title: 'Halbe Breite' },
+        { label: '¾', span: '9',  title: 'Dreiviertel Breite' },
+        { label: '↔', span: '12', title: 'Volle Breite' },
+      ];
+      const widthBtns = document.createElement('div');
+      widthBtns.style.cssText = 'display:flex;gap:3px;margin-right:6px';
+      const currentSpan = card.dataset.span || '12';
+      SPANS.forEach(({ label, span, title }) => {
+        const wb = document.createElement('button');
+        wb.className = 'btn-width' + (span === currentSpan ? ' active' : '');
+        wb.textContent = label;
+        wb.title = title;
+        wb.addEventListener('click', (e) => {
+          e.stopPropagation();
+          setCardSpan(card, span);
+          widthBtns.querySelectorAll('.btn-width').forEach(b => b.classList.remove('active'));
+          wb.classList.add('active');
+        });
+        widthBtns.appendChild(wb);
+      });
+
+      const controls = document.createElement('div');
+      controls.className = 'card-controls';
+      controls.appendChild(widthBtns);
+      controls.appendChild(collapseBtn);
+
       header.appendChild(document.createElement('div'));
       header.querySelector('div').appendChild(titleClone);
       header.querySelector('div').className = 'card-header-left';
-      header.appendChild(collapseBtn);
+      header.appendChild(controls);
 
       title?.remove();
       card.insertBefore(header, card.firstChild);
@@ -1202,6 +1267,35 @@
     const states = JSON.parse(localStorage.getItem(STORAGE_KEY_COLLAPSE) || '{}');
     states[cardId] = isCollapsed;
     localStorage.setItem(STORAGE_KEY_COLLAPSE, JSON.stringify(states));
+  }
+
+  function setCardSpan(card, span) {
+    card.dataset.span = span;
+    saveSpanState(card.dataset.cardId, span);
+  }
+
+  const STORAGE_KEY_SPAN = 'dashboard-card-span';
+
+  function saveSpanState(cardId, span) {
+    const spans = JSON.parse(localStorage.getItem(STORAGE_KEY_SPAN) || '{}');
+    spans[cardId] = span;
+    localStorage.setItem(STORAGE_KEY_SPAN, JSON.stringify(spans));
+  }
+
+  function restoreSpanStates() {
+    const spans = JSON.parse(localStorage.getItem(STORAGE_KEY_SPAN) || '{}');
+    document.querySelectorAll('.card[data-card-id]').forEach(card => {
+      const span = spans[card.dataset.cardId];
+      if (span) {
+        card.dataset.span = span;
+        // Buttons aktualisieren
+        card.querySelectorAll('.btn-width').forEach(btn => {
+          btn.classList.toggle('active', btn.title.includes(
+            span === '6' ? 'Halbe' : span === '9' ? 'Dreiviertel' : 'Volle'
+          ));
+        });
+      }
+    });
   }
 
   function restoreCollapseStates() {
