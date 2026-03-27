@@ -364,6 +364,124 @@ module.exports = function startWebServer({
     }
   });
 
+  // ── API: Status-Unfurl-Proxy (Liefert Status-Seite mit injiziertem OG:Tags) ─
+
+  app.get('/api/status-unfurl', async (req, res) => {
+    try {
+      const statusUrl = getPublicStatusUrl();
+      if (!statusUrl) {
+        return res.status(400).json({ ok: false, error: 'Status URL nicht konfiguriert' });
+      }
+
+      // Lade Status-Seite
+      const resp = await axios.get(statusUrl, {
+        timeout: 5000,
+        headers: { 'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36' }
+      });
+
+      let html = String(resp.data || '');
+      const uptimeKumaUrl = config.get('uptimeKuma.url') || '';
+      const cloudflareUrl = config.get('cloudflare.publicUrl') || '';
+      const baseUrl = cloudflareUrl || uptimeKumaUrl;
+
+      // Injiziere OG-Tags ins <head>
+      const head = `
+        <meta property="og:title" content="🔍 Dinste-Status">
+        <meta property="og:description" content="Live Status deiner Services - Aktualisiert alle 5 Minuten">
+        <meta property="og:image" content="${baseUrl}/api/badge/summary?style=flat-square">
+        <meta property="og:url" content="${statusUrl}">
+        <meta property="og:type" content="website">
+        <meta name="twitter:card" content="summary_large_image">
+        <meta name="twitter:title" content="🔍 Dienste-Status">
+        <meta name="twitter:description" content="Live Status deiner Services">
+        <meta name="twitter:image" content="${baseUrl}/api/badge/summary?style=flat-square">
+      `;
+
+      html = html.replace('</head>', `${head}</head>`);
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.send(html);
+    } catch (err) {
+      logger.error(`/api/status-unfurl Fehler: ${err.message}`);
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  // ── API: Status-Badge (Umleitung zu Uptime Kuma Badge API) ──────────────────
+
+  app.get('/api/status-badge/:monitorId', async (req, res) => {
+    try {
+      const { monitorId } = req.params;
+      const baseUrl = (config.get('uptimeKuma.url') || '').replace(/\/+$/, '');
+      if (!baseUrl) {
+        return res.status(400).json({ ok: false, error: 'Uptime Kuma URL nicht konfiguriert' });
+      }
+
+      // Leite zur Uptime Kuma Badge API weiter
+      const badgeUrl = `${baseUrl}/api/badge/${monitorId}/uptime?style=flat-square`;
+      const resp = await axios.get(badgeUrl, { timeout: 5000, responseType: 'stream' });
+      res.setHeader('Content-Type', resp.headers['content-type']);
+      res.setHeader('Cache-Control', 'max-age=300'); // 5 Minuten Cache
+      resp.data.pipe(res);
+    } catch (err) {
+      logger.error(`/api/status-badge Fehler: ${err.message}`);
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  // ── API: Grafische Summary-Badges generieren ────────────────────────────────
+
+  app.get('/api/badge/summary', async (req, res) => {
+    try {
+      const { style = 'flat-square' } = req.query;
+      const monitorData = getMonitorData ? getMonitorData() : {};
+      const total = Object.keys(monitorData).length || 0;
+      const up = Object.values(monitorData).filter((m) => m.status === 'up').length || 0;
+      const down = total - up;
+
+      // Einfache SVG Badge generieren (für Link-Preview Image)
+      const badgeText = `${up}/${total} Online`;
+      const bgColor = down === 0 ? '31C16E' : down === total ? 'E74C3C' : 'F39C12'; // Grün/Rot/Orange
+      const svg = `
+        <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="160" height="28" role="img" aria-label="Status">
+          <title>Status: ${badgeText}</title>
+          <linearGradient id="s" x2="0" y2="100%">
+            <stop offset="0" stop-color="#bbb"/>
+            <stop offset="1" stop-color="#999"/>
+          </linearGradient>
+          <clipPath id="r">
+            <rect width="160" height="28" rx="4" fill="#fff"/>
+          </clipPath>
+          <g clip-path="url(#r)">
+            <rect width="107" height="28" fill="#555"/>
+            <rect x="107" width="53" height="28" fill="#${bgColor}"/>
+            <rect width="160" height="28" fill="url(#s)"/>
+          </g>
+          <g fill="#fff" text-anchor="middle" font-family="Verdana,Geneva,DejaVu Sans,sans-serif" text-rendering="geometricPrecision" font-size="100%">
+            <text x="545" y="175" fill="#010101" fill-opacity=".3" transform="scale(.1)" textLength="970">
+              Status
+            </text>
+            <text x="545" y="165" transform="scale(.1)" textLength="970">
+              Status
+            </text>
+            <text x="1325" y="175" fill="#010101" fill-opacity=".3" transform="scale(.1)" textLength="430">
+              ${badgeText}
+            </text>
+            <text x="1325" y="165" transform="scale(.1)" textLength="430">
+              ${badgeText}
+            </text>
+          </g>
+        </svg>
+      `;
+
+      res.setHeader('Content-Type', 'image/svg+xml; charset=utf-8');
+      res.setHeader('Cache-Control', 'max-age=300');
+      res.send(svg);
+    } catch (err) {
+      logger.error(`/api/badge/summary Fehler: ${err.message}`);
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
   // ── API: Service-Control (start / stop / restart via systemctl) ─────────────
 
   app.post('/api/service-control', dashboardAuth, (req, res) => {

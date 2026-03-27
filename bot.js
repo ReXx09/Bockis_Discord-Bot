@@ -394,6 +394,16 @@ function getPublicStatusUrl() {
   return `${cloudflareUrl.replace(/\/+$/, '')}/status/${slug}`;
 }
 
+function getWebUrl() {
+  // Liefert die öffentliche URL zum internen Web-Server (für API-Endpoints wie /api/status-unfurl)
+  const cloudflareUrl = config.get('cloudflare.publicUrl');
+  if (cloudflareUrl) return cloudflareUrl.replace(/\/+$/, '');
+
+  // Fallback: localhost (wenn kein Cloudflare konfiguriert)
+  const webPort = config.get('webPort') || 3000;
+  return `http://localhost:${webPort}`;
+}
+
 async function isStatusPageReachable(url) {
   if (!url) return false;
 
@@ -493,6 +503,7 @@ async function inspectStatusPagePreview(url) {
 async function getStatusRenderMode() {
   const configuredMode = config.get('discord.statusRenderMode');
   const publicStatusUrl = getPublicStatusUrl();
+  const webUrl = getWebUrl ? getWebUrl() : null;
 
   if (configuredMode === 'embed') {
     return { mode: 'custom_embed', publicStatusUrl };
@@ -502,23 +513,65 @@ async function getStatusRenderMode() {
     return { mode: 'custom_embed', publicStatusUrl: null };
   }
 
-  if (configuredMode === 'link_preview') {
+  // "direct" Mode: Proxy mit injiziertem OG-Tags
+  if (configuredMode === 'direct') {
     const reachable = await isStatusPageReachable(publicStatusUrl);
-    if (!reachable) {
-      logger.warn(`Status Render Mode: Link-Preview erzwungen, aber Statusseite nicht erreichbar: ${publicStatusUrl}`);
-      return { mode: 'custom_embed', publicStatusUrl };
+    if (reachable && webUrl) {
+      return { mode: 'direct', proxyUrl: `${webUrl}/api/status-unfurl` };
     }
-    return { mode: 'link_preview', publicStatusUrl };
-  }
-
-  // Auto-Modus: Versuche Link-Preview wenn Seite erreichbar, sonst Embed
-  const reachable = await isStatusPageReachable(publicStatusUrl);
-  if (!reachable) {
-    logger.warn(`Status Render Mode: Auto - Statusseite nicht erreichbar, Fallback auf Embed: ${publicStatusUrl}`);
+    logger.warn(`Status Render Mode: direct erzwungen, aber nicht erreichbar - Fallback auf embed`);
     return { mode: 'custom_embed', publicStatusUrl };
   }
 
-  return { mode: 'link_preview', publicStatusUrl };
+  // "graphical" Mode: Link mit Badge-Bild
+  if (configuredMode === 'graphical') {
+    const reachable = await isStatusPageReachable(publicStatusUrl);
+    if (reachable && webUrl) {
+      return { mode: 'graphical', statusUrl: publicStatusUrl, badgeUrl: `${webUrl}/api/badge/summary` };
+    }
+    logger.warn(`Status Render Mode: graphical erzwungen, aber nicht erreichbar - Fallback auf embed`);
+    return { mode: 'custom_embed', publicStatusUrl };
+  }
+
+  // "auto" Mode: Beste Methode wählen (direct → graphical → embed)
+  const reachable = await isStatusPageReachable(publicStatusUrl);
+  if (!reachable) {
+    logger.warn(`Status Render Mode: auto - Statusseite nicht erreichbar, Fallback auf embed: ${publicStatusUrl}`);
+    return { mode: 'custom_embed', publicStatusUrl };
+  }
+
+  // Versuche direct mode wenn web-server verfügbar
+  if (webUrl) {
+    return { mode: 'direct', proxyUrl: `${webUrl}/api/status-unfurl` };
+  }
+
+  // Fallback: graphical mode
+  return { mode: 'graphical', statusUrl: publicStatusUrl, badgeUrl: `${webUrl}/api/badge/summary` };
+}
+
+function buildStatusDirectMessage(proxyUrl) {
+  if (!proxyUrl) return '';
+  try {
+    const url = new URL(proxyUrl);
+    const cacheBucket = Math.floor(Date.now() / (5 * 60 * 1000));
+    url.searchParams.set('discord_unfurl', String(cacheBucket));
+    return url.toString();
+  } catch {
+    return proxyUrl;
+  }
+}
+
+function buildStatusGraphicalMessage(statusUrl, badgeUrl) {
+  if (!statusUrl) return '';
+  try {
+    const url = new URL(statusUrl);
+    const cacheBucket = Math.floor(Date.now() / (5 * 60 * 1000));
+    url.searchParams.set('discord_unfurl', String(cacheBucket));
+    url.searchParams.set('badge', badgeUrl);
+    return url.toString();
+  } catch {
+    return statusUrl;
+  }
 }
 
 function buildStatusLinkPreviewMessage(statusPageUrl) {
@@ -748,19 +801,26 @@ async function updateStatusMessage() {
   uptimeGauge.set(uptimePercent);
   statusCheckCounter.inc();
 
-  // ── Nachricht: Link-Preview bevorzugen, Uptime-Kuma-Embed als Fallback ────
+  // ── Nachricht: Multi-Mode Support (direct / graphical / link_preview / embed) ────
   const renderDecision = await getStatusRenderMode();
   const statusEmbed = buildStatusEmbed(monitors, renderDecision.publicStatusUrl);
-  const messagePayload = renderDecision.mode === 'link_preview'
-    ? { content: buildStatusLinkPreviewMessage(renderDecision.publicStatusUrl), embeds: [] }
-    : { content: null, embeds: [statusEmbed] };
+  
+  let messagePayload = { content: null, embeds: [statusEmbed] };
+  
+  if (renderDecision.mode === 'direct') {
+    messagePayload = { content: buildStatusDirectMessage(renderDecision.proxyUrl), embeds: [] };
+  } else if (renderDecision.mode === 'graphical') {
+    messagePayload = { content: buildStatusGraphicalMessage(renderDecision.statusUrl, renderDecision.badgeUrl), embeds: [] };
+  } else if (renderDecision.mode === 'link_preview') {
+    messagePayload = { content: buildStatusLinkPreviewMessage(renderDecision.publicStatusUrl), embeds: [] };
+  }
 
   try {
     if (statusMessageId) {
       try {
         const existingMessage = await channel.messages.fetch(statusMessageId);
-        // Für Link-Preview: Lösche alte Message und sende neu (Discord unfurlt nur neue Messages)
-        if (renderDecision.mode === 'link_preview') {
+        // Für Link-Preview Modi: Lösche alte Message und sende neu (Discord unfurlt nur neue Messages)
+        if (['direct', 'graphical', 'link_preview'].includes(renderDecision.mode)) {
           await existingMessage.delete();
           const newMessage = await channel.send(messagePayload);
           statusMessageId = newMessage.id;
@@ -781,7 +841,7 @@ async function updateStatusMessage() {
     }
     lastEditTimestamp = Date.now();
     logger.info(`Status aktualisiert: ${operationalCount}/${monitors.length} Dienste online`);
-    logger.info(`Status Render Mode: ${renderDecision.mode}${renderDecision.publicStatusUrl ? ` | ${renderDecision.publicStatusUrl}` : ''}`);
+    logger.info(`Status Render Mode: ${renderDecision.mode}${renderDecision.publicStatusUrl ? ` | ${renderDecision.publicStatusUrl}` : renderDecision.proxyUrl ? ` | proxy` : ``}`);
 
     // Channel-Name + Topic bei Statuswechsel aktualisieren
     await updateChannelIndicator(channel, monitors);

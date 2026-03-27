@@ -612,13 +612,20 @@
       <label class="cfg-label" for="cfgRenderMode">Discord Status Renderer</label>
       <div style="display:flex;gap:8px;align-items:end;">
         <select class="cfg-input" id="cfgRenderMode" style="flex:1;">
-          <option value="link_preview">Link-Preview (bevorzugt)</option>
-          <option value="embed">Custom-Embed (fallback-fest)</option>
-          <option value="auto">Auto (entscheidet automatisch)</option>
+          <option value="auto">🤖 Auto (beste Methode wählen)</option>
+          <option value="direct">🔗 Direct (Link + OG-Tags Proxy)</option>
+          <option value="graphical">📊 Graphical (Link + Uptime-Badge)</option>
+          <option value="embed">📋 Embed (Discord Rich Card)</option>
         </select>
         <button class="btn btn-small" id="btnTestRender" onclick="testRendering()" style="padding:8px 12px;font-size:12px;white-space:nowrap;">🧪 Jetzt testen</button>
       </div>
-      <div class="cfg-hint">Hier kannst du direkt zwischen Discord Link-Preview und Custom-Embed umschalten. Mit "Jetzt testen" wird ein sofortiges Update gesendet.</div>
+      <div class="cfg-hint">
+        <strong>Render-Modi:</strong><br/>
+        🤖 <strong>Auto</strong> = Beste Methode automatisch wählen<br/>
+        🔗 <strong>Direct</strong> = Link mit Bot-Proxy (OG-Tags injiziert)<br/>
+        📊 <strong>Graphical</strong> = Link mit Uptime-Badge-SVG als Bild<br/>
+        📋 <strong>Embed</strong> = Traditioneller Discord Embed (keine Link-Preview)
+      </div>
     </div>
     <div class="cfg-field">
       <label class="cfg-label">Channel-Status-Indikator</label>

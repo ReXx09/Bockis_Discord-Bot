@@ -75,8 +75,8 @@ const config = convict({
       env: 'DISCORD_NOTIFICATION_CHANNEL'
     },
     statusRenderMode: {
-      doc: 'Render-Modus fÃ¼r die Status-Nachricht: auto bevorzugt Link-Preview, link_preview erzwingt URL-Preview, embed erzwingt das Fallback-Embed',
-      format: ['auto', 'link_preview', 'embed'],
+      doc: 'Render-Modus für die Status-Nachricht: auto (beste Methode wählen) | direct (Link mit injiziertem OG) | graphical (Link mit Uptime-Badge-Bild) | embed (Discord Embed)',
+      format: ['auto', 'direct', 'graphical', 'embed'],
       default: 'auto',
       env: 'DISCORD_STATUS_RENDER_MODE'
     },
