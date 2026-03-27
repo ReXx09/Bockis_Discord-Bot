@@ -18,10 +18,19 @@ const { Sequelize, DataTypes, Op } = require('sequelize');
 const fs = require('fs');
 
 // #region 1. ENV-VALIDIERUNG
+const envPath = require('path').join(__dirname, '.env');
+const dotenvExists = require('fs').existsSync(envPath);
 const REQUIRED_ENV = ['DISCORD_TOKEN', 'STATUS_CHANNEL_ID', 'UPTIME_KUMA_URL'];
 const missingEnv = REQUIRED_ENV.filter(k => !process.env[k]);
 if (missingEnv.length) {
-  console.error(`[FATAL] Fehlende Umgebungsvariablen: ${missingEnv.join(', ')}\nBitte .env prüfen.`);
+  const mode = dotenvExists ? 'local (.env existiert)' : 'Docker/Host-Env';
+  console.error(`[FATAL] Konfigurationsfehler im Modus "${mode}"`);
+  console.error(`Fehlende Umgebungsvariablen: ${missingEnv.join(', ')}`);
+  if (dotenvExists) {
+    console.error('→ .env existiert. Prüfe ob die Werte korrekt gesetzt sind.');
+  } else {
+    console.error('→ Kein .env gefunden. Nutze docker-compose.yml mit env_file oder Docker-Umgebungsvariablen.');
+  }
   process.exit(1);
 }
 // #endregion
