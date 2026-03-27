@@ -60,6 +60,7 @@
     .btn-green { background: #238636; border-color: #2ea043; color: #fff; }
     .btn-green:hover { background: #2ea043; }
     .btn-green:disabled { opacity: .6; cursor: not-allowed; }
+    .btn-small { padding: 4px 8px; font-size: 11px; }
 
     /* GRID */
     .grid-2 {
@@ -459,6 +460,7 @@
     #cfgStatus { font-size: 12px; }
     #cfgStatus.ok  { color: var(--green); }
     #cfgStatus.err { color: var(--red); }
+    #cfgStatus.warn { color: var(--yellow, #d4b60d); }
   </style>
 </head>
 <body>
@@ -560,12 +562,15 @@
     </div>
     <div class="cfg-field">
       <label class="cfg-label" for="cfgRenderMode">Discord Status Renderer</label>
-      <select class="cfg-input" id="cfgRenderMode">
-        <option value="link_preview">Link-Preview (bevorzugt)</option>
-        <option value="embed">Custom-Embed (fallback-fest)</option>
-        <option value="auto">Auto (entscheidet automatisch)</option>
-      </select>
-      <div class="cfg-hint">Hier kannst du direkt zwischen Discord Link-Preview und Custom-Embed umschalten.</div>
+      <div style="display:flex;gap:8px;align-items:end;">
+        <select class="cfg-input" id="cfgRenderMode" style="flex:1;">
+          <option value="link_preview">Link-Preview (bevorzugt)</option>
+          <option value="embed">Custom-Embed (fallback-fest)</option>
+          <option value="auto">Auto (entscheidet automatisch)</option>
+        </select>
+        <button class="btn btn-small" id="btnTestRender" onclick="testRendering()" style="padding:8px 12px;font-size:12px;white-space:nowrap;">🧪 Jetzt testen</button>
+      </div>
+      <div class="cfg-hint">Hier kannst du direkt zwischen Discord Link-Preview und Custom-Embed umschalten. Mit "Jetzt testen" wird ein sofortiges Update gesendet.</div>
     </div>
     <div class="cfg-field">
       <label class="cfg-label">Channel-Status-Indikator</label>
@@ -1055,7 +1060,7 @@
     }
   }
 
-  // ── Config speichern ──────────────────────────────────
+  // ── Config speichern mit Polling nach Restart ──────
   async function saveConfig() {
     const btn = document.getElementById('btnCfgSave');
     const st  = document.getElementById('cfgStatus');
@@ -1078,7 +1083,6 @@
     if (renderMode) body.DISCORD_STATUS_RENDER_MODE = renderMode;
     body.CHANNEL_STATUS_INDICATOR = document.getElementById('cfgChannelIndicator').checked ? 'true' : 'false';
 
-    // immer mindestens CHANNEL_STATUS_INDICATOR → body nie leer
     try {
       const res = await fetch('/api/config', {
         method:  'POST',
@@ -1087,14 +1091,49 @@
       }).then(r => r.json());
 
       if (res.ok) {
-        st.textContent = `✓ Gespeichert: ${res.updated.join(', ')}${res.restarted ? ' · Bot wird neu gestartet…' : ''}`;
+        st.textContent = `✓ Gespeichert: ${res.updated.join(', ')}${res.restarted ? ' · Bot startet neu…' : ''}`;
         st.className = 'ok';
         toast('✓ Konfiguration gespeichert', 'ok');
-        // Nach 4s neu laden (Bot braucht Zeit zum Neustart)
-        if (res.restarted) setTimeout(() => { loadConfig(); fetchAll(); }, 4000);
-        else loadConfig();
+        
+        // Bot-Polling nach Restart vornehmen
+        if (res.restarted) {
+          st.textContent += ' ⏳ Warte auf Bot-Neustart…';
+          btn.textContent = '⏳ Bot startet neu…';
+          btn.disabled = true;
+          
+          // Polling: Versuche alle 500ms die config zu laden bis Bot antwortet
+          let retries = 0;
+          const maxRetries = 30; // max 15 Sekunden
+          
+          const pollBotReady = setInterval(async () => {
+            retries++;
+            try {
+              const testRes = await fetch('/api/config', { timeout: 2000 });
+              if (testRes.ok) {
+                clearInterval(pollBotReady);
+                await new Promise(r => setTimeout(r, 500)); // Kurze Pause für Bot-Stabilisierung
+                loadConfig();
+                fetchAll();
+                await fetch('/api/refresh', { method: 'POST' }); // Sofortiger Discord-Update
+                st.textContent = `✓ Bot neu gestartet. Status aktualisiert.`;
+                st.className = 'ok';
+                btn.textContent = '💾 Speichern & Neu starten';
+                btn.disabled = false;
+              }
+            } catch (e) {
+              if (retries >= maxRetries) {
+                clearInterval(pollBotReady);
+                st.textContent = `⚠ Bot braucht länger als erwartet. Seite in 5s neu laden…`;
+                st.className = 'warn';
+                setTimeout(() => location.reload(), 5000);
+              }
+            }
+          }, 500);
+        } else {
+          loadConfig();
+        }
       } else {
-        st.textContent = '✗ ' + res.error;
+        st.textContent = '✗ ' + (res.error || 'Unbekannter Fehler');
         st.className = 'err';
         toast('Fehler: ' + res.error, 'err');
       }
@@ -1105,6 +1144,32 @@
     } finally {
       btn.disabled = false;
       btn.textContent = '💾 Speichern & Neu starten';
+    }
+  }
+
+  // ── Test-Rendering: Sofortiger Discord-Update ────────
+  async function testRendering() {
+    const btn = document.getElementById('btnTestRender');
+    const st = document.getElementById('cfgStatus');
+    btn.disabled = true;
+    btn.textContent = '⏳…';
+    
+    try {
+      const res = await fetch('/api/refresh', { method: 'POST' }).then(r => r.json());
+      if (res.ok) {
+        st.textContent = '✓ Rendering-Update zu Discord gesendet.';
+        st.className = 'ok';
+        toast('✓ Discord Status aktualisiert', 'ok');
+      } else {
+        st.textContent = '✗ Rendering-Update fehlgeschlagen: ' + (res.error || 'unknown');
+        st.className = 'err';
+      }
+    } catch (e) {
+      st.textContent = '✗ Fehler: ' + e.message;
+      st.className = 'err';
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '🧪 Jetzt testen';
     }
   }
 

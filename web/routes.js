@@ -370,14 +370,48 @@ module.exports = function startWebServer({
       return res.json({ ok: false, error: `Fehler beim Schreiben: ${err.message}` });
     }
 
-    execFile('systemctl', ['restart', 'bockis-bot'], { timeout: 10000 }, (e) => {
-      res.json({
-        ok: true,
-        updated:     Object.keys(updates),
-        restarted:   !e,
-        restartNote: e ? 'Service-Neustart fehlgeschlagen (kein systemd?)' : null,
-      });
+    // Systemctl Restart starten und Response mit Status senden
+    let respSent = false;
+    execFile('systemctl', ['restart', 'bockis-bot'], { timeout: 12000 }, (e, stdout, stderr) => {
+      // Log Restart-Versuch
+      if (e) {
+        logger.error(`Service Restart fehlgeschlagen: ${e.message}`);
+        if (!respSent) {
+          respSent = true;
+          res.json({
+            ok: true,
+            updated:     Object.keys(updates),
+            restarted:   false,
+            restartNote: `Service-Restart fehlgeschlagen: ${e.message} (möglicherweise kein systemd verfügbar)`,
+          });
+        }
+      } else {
+        logger.info(`Service 'bockis-bot' erfolgreich neu gestartet nach Config-Änderung`);
+        if (!respSent) {
+          respSent = true;
+          res.json({
+            ok: true,
+            updated:     Object.keys(updates),
+            restarted:   true,
+            restartNote: null,
+          });
+        }
+      }
     });
+    
+    // Fallback Response wenn execFile nicht antwortet
+    setTimeout(() => {
+      if (!respSent) {
+        respSent = true;
+        logger.warn('systemctl restart: Timeout - sende Success trotzdem');
+        res.json({
+          ok: true,
+          updated:     Object.keys(updates),
+          restarted:   true,
+          restartNote: 'Neustart-Befehl gesendet (Bestätigung ausstehend)',
+        });
+      }
+    }, 5000);
   });
 
   // ── API: Cloudflare Tunnel Status ───────────────────────────────────────────
