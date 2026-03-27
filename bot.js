@@ -194,11 +194,23 @@ function saveState(state) {
 
 const _initState           = loadState();
 let statusMessageId        = _initState.statusMessageId    ?? null;
+let webhookStatusMessageId = _initState.webhookStatusMessageId ?? null;
 let lastChannelStatus      = _initState.lastChannelStatus  ?? null;
 let lastChannelNameMs      = _initState.lastChannelNameMs  ?? 0;
 let serviceCategoryId      = _initState.serviceCategoryId  ?? null;
 let serviceChannels        = _initState.serviceChannels     ?? {};  // { monitorName: channelId }
 const _svcRenameMs         = {};  // Rate-Limit pro Kanal (in-memory, wird nicht persistiert)
+
+function persistState() {
+  saveState({
+    statusMessageId,
+    webhookStatusMessageId,
+    lastChannelStatus,
+    lastChannelNameMs,
+    serviceCategoryId,
+    serviceChannels
+  });
+}
 // #endregion
 
 // #region 11. RATE-LIMIT SCHUTZ
@@ -395,10 +407,13 @@ function getPublicStatusUrl() {
 }
 
 function getWebUrl() {
-  // Liefert die öffentliche URL zum Bot-Webserver (für API-Endpoints wie /api/status-unfurl)
-  const webPublicUrl = config.get('webPublicUrl');
-  if (webPublicUrl) return webPublicUrl.replace(/\/+$/, '');
-  return null;
+  // Liefert die öffentliche URL zum internen Web-Server (für API-Endpoints wie /api/status-unfurl)
+  const cloudflareUrl = config.get('cloudflare.publicUrl');
+  if (cloudflareUrl) return cloudflareUrl.replace(/\/+$/, '');
+
+  // Fallback: localhost (wenn kein Cloudflare konfiguriert)
+  const webPort = config.get('webPort') || 3000;
+  return `http://localhost:${webPort}`;
 }
 
 async function isStatusPageReachable(url) {
@@ -437,13 +452,82 @@ async function isStatusPageReachable(url) {
   }
 }
 
+function readMetaTag(html, attribute, name) {
+  const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const pattern = new RegExp(
+    `<meta[^>]+${attribute}=["']${escapedName}["'][^>]+content=["']([^"']*)["'][^>]*>|<meta[^>]+content=["']([^"']*)["'][^>]+${attribute}=["']${escapedName}["'][^>]*>`,
+    'i'
+  );
+  const match = html.match(pattern);
+  return (match?.[1] || match?.[2] || '').trim();
+}
+
+async function inspectStatusPagePreview(url) {
+  if (!url) {
+    return { reachable: false, richPreview: false };
+  }
+
+  try {
+    const resp = await axios.get(url, {
+      timeout: 8_000,
+      maxRedirects: 5,
+      validateStatus: () => true,
+      responseType: 'text'
+    });
+
+    if (resp.status < 200 || resp.status >= 400 || typeof resp.data !== 'string') {
+      return { reachable: false, richPreview: false };
+    }
+
+    const html = resp.data;
+    const ogTitle = readMetaTag(html, 'property', 'og:title');
+    const ogDescription = readMetaTag(html, 'property', 'og:description');
+    const ogImage = readMetaTag(html, 'property', 'og:image');
+    const twitterCard = readMetaTag(html, 'name', 'twitter:card');
+    const twitterImage = readMetaTag(html, 'name', 'twitter:image');
+    const metaDescription = readMetaTag(html, 'name', 'description');
+
+    const richPreview = Boolean(
+      ogImage ||
+      twitterImage ||
+      (twitterCard && twitterCard !== 'summary') ||
+      ogDescription ||
+      metaDescription
+    );
+
+    return {
+      reachable: true,
+      richPreview,
+      meta: {
+        ogTitle,
+        ogDescription,
+        ogImage,
+        twitterCard,
+        twitterImage,
+        metaDescription
+      }
+    };
+  } catch {
+    return { reachable: false, richPreview: false };
+  }
+}
+
 async function getStatusRenderMode() {
   const configuredMode = config.get('discord.statusRenderMode');
   const publicStatusUrl = getPublicStatusUrl();
   const webUrl = getWebUrl ? getWebUrl() : null;
+  const webhookUrl = (config.get('discord.statusWebhookUrl') || '').trim();
 
   if (configuredMode === 'embed') {
     return { mode: 'custom_embed', publicStatusUrl };
+  }
+
+  if (configuredMode === 'webhook_ascii') {
+    if (!webhookUrl) {
+      logger.warn('Status Render Mode: webhook_ascii erzwungen, aber DISCORD_STATUS_WEBHOOK_URL fehlt - Fallback auf embed');
+      return { mode: 'custom_embed', publicStatusUrl };
+    }
+    return { mode: 'webhook_ascii', publicStatusUrl };
   }
 
   if (!publicStatusUrl) {
@@ -456,9 +540,6 @@ async function getStatusRenderMode() {
     if (reachable && webUrl) {
       return { mode: 'direct', proxyUrl: `${webUrl}/api/status-unfurl` };
     }
-    if (!webUrl) {
-      logger.warn('Status Render Mode: direct erzwungen, aber WEB_PUBLIC_URL ist nicht gesetzt - Proxy-Link kann nicht gebaut werden');
-    }
     logger.warn(`Status Render Mode: direct erzwungen, aber nicht erreichbar - Fallback auf embed`);
     return { mode: 'custom_embed', publicStatusUrl };
   }
@@ -467,10 +548,7 @@ async function getStatusRenderMode() {
   if (configuredMode === 'graphical') {
     const reachable = await isStatusPageReachable(publicStatusUrl);
     if (reachable && webUrl) {
-      return { mode: 'graphical', proxyUrl: `${webUrl}/api/status-unfurl?variant=graphical` };
-    }
-    if (!webUrl) {
-      logger.warn('Status Render Mode: graphical erzwungen, aber WEB_PUBLIC_URL ist nicht gesetzt - Proxy-Link kann nicht gebaut werden');
+      return { mode: 'graphical', statusUrl: publicStatusUrl, badgeUrl: `${webUrl}/api/badge/summary` };
     }
     logger.warn(`Status Render Mode: graphical erzwungen, aber nicht erreichbar - Fallback auf embed`);
     return { mode: 'custom_embed', publicStatusUrl };
@@ -483,14 +561,12 @@ async function getStatusRenderMode() {
       logger.warn(`Status Render Mode: link_preview (legacy) - Statusseite nicht erreichbar, Fallback auf embed: ${publicStatusUrl}`);
       return { mode: 'custom_embed', publicStatusUrl };
     }
-
-    // Wichtig: Legacy-Wert link_preview wird auf den neuen Unfurl-Proxy gemappt,
-    // damit OG:description und OG:image zuverlässig gesetzt sind.
-    if (webUrl) {
-      return { mode: 'direct', proxyUrl: `${webUrl}/api/status-unfurl?legacy=1`, publicStatusUrl };
-    }
-
     return { mode: 'link_preview', publicStatusUrl };
+  }
+
+  // "auto" Mode: Beste Methode wählen (direct → graphical → embed)
+  if (webhookUrl) {
+    return { mode: 'webhook_ascii', publicStatusUrl };
   }
 
   // "auto" Mode: Beste Methode wählen (direct → graphical → embed)
@@ -505,10 +581,8 @@ async function getStatusRenderMode() {
     return { mode: 'direct', proxyUrl: `${webUrl}/api/status-unfurl` };
   }
 
-  logger.warn('Status Render Mode: auto - WEB_PUBLIC_URL fehlt, deshalb nur direkter Statusseiten-Link ohne OG-Proxy möglich');
-
-  // Fallback ohne öffentliche Web-URL: klassisches Link-Preview direkt auf Statusseite
-  return { mode: 'link_preview', publicStatusUrl };
+  // Fallback: graphical mode
+  return { mode: 'graphical', statusUrl: publicStatusUrl, badgeUrl: `${webUrl}/api/badge/summary` };
 }
 
 function buildStatusDirectMessage(proxyUrl) {
@@ -520,6 +594,19 @@ function buildStatusDirectMessage(proxyUrl) {
     return url.toString();
   } catch {
     return proxyUrl;
+  }
+}
+
+function buildStatusGraphicalMessage(statusUrl, badgeUrl) {
+  if (!statusUrl) return '';
+  try {
+    const url = new URL(statusUrl);
+    const cacheBucket = Math.floor(Date.now() / (5 * 60 * 1000));
+    url.searchParams.set('discord_unfurl', String(cacheBucket));
+    url.searchParams.set('badge', badgeUrl);
+    return url.toString();
+  } catch {
+    return statusUrl;
   }
 }
 
@@ -537,6 +624,94 @@ function buildStatusLinkPreviewMessage(statusPageUrl) {
   } catch {
     return statusPageUrl;
   }
+}
+
+function parseDiscordWebhookUrl(webhookUrl) {
+  const match = String(webhookUrl || '').match(/^https:\/\/(?:canary\.|ptb\.)?discord(?:app)?\.com\/api\/webhooks\/([^/]+)\/([^/?#]+)/i);
+  if (!match) return null;
+  return { id: match[1], token: match[2] };
+}
+
+function buildAsciiUptimeBar(percent, width = 18) {
+  const p = Number.isFinite(percent) ? Math.max(0, Math.min(100, percent)) : 0;
+  const filled = Math.round((p / 100) * width);
+  return '█'.repeat(Math.max(0, filled)) + '░'.repeat(Math.max(0, width - filled));
+}
+
+function buildWebhookAsciiPayload(monitors, statusPageUrl = null) {
+  const active = (monitors || []).filter(m => m.active !== false);
+  const up = active.filter(m => m.status === 1).length;
+  const total = active.length;
+  const now = new Date().toLocaleString('de-DE', { hour12: false });
+
+  const rows = active
+    .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'de'))
+    .map((m) => {
+      const pct = Number.parseFloat(m.uptime) || 0;
+      const icon = m.status === 1 ? '🟢' : m.status === 2 ? '🟡' : '🔴';
+      const name = String(m.name || 'unknown').padEnd(18).slice(0, 18);
+      const bar = buildAsciiUptimeBar(pct);
+      const pctText = `${pct.toFixed(1)}%`.padStart(6);
+      return `${icon} ${name} [${bar}] ${pctText}`;
+    });
+
+  const header = `📊 Dienste online: ${up}/${total}${statusPageUrl ? `\n🔗 ${statusPageUrl}` : ''}\n🕒 ${now}`;
+  let block = '```\n' + rows.join('\n') + '\n```';
+
+  // Webhook content limit = 2000 chars
+  let content = `${header}\n${block}`;
+  if (content.length > 1990) {
+    const maxRows = Math.max(1, Math.floor((1900 - header.length) / 35));
+    block = '```\n' + rows.slice(0, maxRows).join('\n') + '\n…\n```';
+    content = `${header}\n${block}`;
+  }
+
+  return {
+    username: 'Uptime Bot',
+    content,
+    allowed_mentions: { parse: [] }
+  };
+}
+
+async function sendOrEditWebhookStatus(monitors, statusPageUrl = null) {
+  const webhookUrl = (config.get('discord.statusWebhookUrl') || '').trim();
+  if (!webhookUrl) {
+    throw new Error('DISCORD_STATUS_WEBHOOK_URL ist leer');
+  }
+
+  const payload = buildWebhookAsciiPayload(monitors, statusPageUrl);
+  const webhookMeta = parseDiscordWebhookUrl(webhookUrl);
+  if (!webhookMeta) {
+    throw new Error('DISCORD_STATUS_WEBHOOK_URL ist ungültig');
+  }
+
+  const baseApi = `https://discord.com/api/webhooks/${webhookMeta.id}/${webhookMeta.token}`;
+
+  // Versuche bestehende Webhook-Nachricht zu editieren (ruhigere Historie)
+  if (webhookStatusMessageId) {
+    try {
+      const editResp = await axios.patch(`${baseApi}/messages/${webhookStatusMessageId}`, payload, {
+        timeout: 10_000,
+        validateStatus: () => true
+      });
+      if (editResp.status >= 200 && editResp.status < 300) {
+        return;
+      }
+      webhookStatusMessageId = null;
+    } catch {
+      webhookStatusMessageId = null;
+    }
+  }
+
+  const resp = await axios.post(`${baseApi}?wait=true`, payload, {
+    timeout: 10_000,
+    validateStatus: () => true
+  });
+  if (!(resp.status >= 200 && resp.status < 300)) {
+    throw new Error(`Webhook POST fehlgeschlagen (HTTP ${resp.status})`);
+  }
+  webhookStatusMessageId = resp.data?.id || null;
+  persistState();
 }
 // #endregion
 
@@ -701,7 +876,7 @@ async function updateChannelIndicator(channel, monitors) {
     await channel.edit({ name: newName, topic: newTopic });
     lastChannelStatus = status;
     lastChannelNameMs = now;
-    saveState({ statusMessageId, lastChannelStatus, lastChannelNameMs, serviceCategoryId, serviceChannels });
+    persistState();
     logger.info(`Channel-Indikator: ${channel.name} → ${newName} | ${newTopic}`);
   } catch (err) {
     logger.error(`Channel-Indikator fehlgeschlagen: ${err.message}`);
@@ -714,20 +889,6 @@ async function updateStatusMessage() {
   const now = Date.now();
   if (now - lastEditTimestamp < MIN_EDIT_INTERVAL_MS) {
     logger.warn('Rate-Limit-Schutz: Update übersprungen (zu schnell aufgerufen)');
-    return;
-  }
-
-  const channelId = config.get('discord.statusChannelId');
-  let channel = client.channels.cache.get(channelId);
-  if (!channel && channelId) {
-    try {
-      channel = await client.channels.fetch(channelId);
-    } catch (err) {
-      logger.error(`discord.statusChannelId konnte nicht geladen werden (${channelId}): ${err.message}`);
-    }
-  }
-  if (!channel) {
-    logger.error(`Ung\u00fcltige discord.statusChannelId \u2013 Channel nicht gefunden (${channelId || 'leer'})`);
     return;
   }
 
@@ -757,8 +918,30 @@ async function updateStatusMessage() {
   uptimeGauge.set(uptimePercent);
   statusCheckCounter.inc();
 
-  // ── Nachricht: Multi-Mode Support (direct / graphical / link_preview / embed) ────
+  // ── Nachricht: Multi-Mode Support (direct / graphical / link_preview / webhook_ascii / embed) ────
   const renderDecision = await getStatusRenderMode();
+
+  // Webhook-Mode hat einen eigenen Versandpfad ohne Discord Channel Message.
+  if (renderDecision.mode === 'webhook_ascii') {
+    try {
+      await sendOrEditWebhookStatus(monitors, renderDecision.publicStatusUrl || getPublicStatusUrl());
+      lastEditTimestamp = Date.now();
+      logger.info(`Status aktualisiert via Webhook ASCII: ${operationalCount}/${monitors.length} Dienste online`);
+      await syncServiceChannels(monitors);
+      return;
+    } catch (error) {
+      logger.error(`Webhook-Statusfehler: ${error.message}`);
+      // Fallback auf Standard-Embed im Status-Channel
+    }
+  }
+
+  const channelId = config.get('discord.statusChannelId');
+  const channel = client.channels.cache.get(channelId);
+  if (!channel) {
+    logger.error('Ung\u00fcltige discord.statusChannelId \u2013 Channel nicht gefunden');
+    return;
+  }
+
   const statusEmbed = buildStatusEmbed(monitors, renderDecision.publicStatusUrl);
   
   let messagePayload = { content: null, embeds: [statusEmbed] };
@@ -766,7 +949,7 @@ async function updateStatusMessage() {
   if (renderDecision.mode === 'direct') {
     messagePayload = { content: buildStatusDirectMessage(renderDecision.proxyUrl), embeds: [] };
   } else if (renderDecision.mode === 'graphical') {
-    messagePayload = { content: buildStatusDirectMessage(renderDecision.proxyUrl), embeds: [] };
+    messagePayload = { content: buildStatusGraphicalMessage(renderDecision.statusUrl, renderDecision.badgeUrl), embeds: [] };
   } else if (renderDecision.mode === 'link_preview') {
     messagePayload = { content: buildStatusLinkPreviewMessage(renderDecision.publicStatusUrl), embeds: [] };
   }
@@ -780,7 +963,7 @@ async function updateStatusMessage() {
           await existingMessage.delete();
           const newMessage = await channel.send(messagePayload);
           statusMessageId = newMessage.id;
-          saveState({ statusMessageId, lastChannelStatus, lastChannelNameMs, serviceCategoryId, serviceChannels });
+          persistState();
         } else {
           // Für Embeds: Normal editieren
           await existingMessage.edit(messagePayload);
@@ -788,19 +971,16 @@ async function updateStatusMessage() {
       } catch {
         const newMessage = await channel.send(messagePayload);
         statusMessageId = newMessage.id;
-        saveState({ statusMessageId, lastChannelStatus, lastChannelNameMs, serviceCategoryId, serviceChannels });
+        persistState();
       }
     } else {
       const newMessage = await channel.send(messagePayload);
       statusMessageId = newMessage.id;
-      saveState({ statusMessageId, lastChannelStatus, lastChannelNameMs, serviceCategoryId, serviceChannels });
+      persistState();
     }
     lastEditTimestamp = Date.now();
     logger.info(`Status aktualisiert: ${operationalCount}/${monitors.length} Dienste online`);
     logger.info(`Status Render Mode: ${renderDecision.mode}${renderDecision.publicStatusUrl ? ` | ${renderDecision.publicStatusUrl}` : renderDecision.proxyUrl ? ` | proxy` : ``}`);
-    if (messagePayload?.content) {
-      logger.info(`Status Link gesendet: ${messagePayload.content}`);
-    }
 
     // Channel-Name + Topic bei Statuswechsel aktualisieren
     await updateChannelIndicator(channel, monitors);
@@ -887,7 +1067,7 @@ async function syncServiceChannels(monitors) {
       }
     }
     serviceCategoryId = category.id;
-    saveState({ statusMessageId, lastChannelStatus, lastChannelNameMs, serviceCategoryId, serviceChannels });
+    persistState();
   }
 
   // ── Kanäle erstellen / umbenennen ─────────────────────────────────────────
@@ -940,7 +1120,7 @@ async function syncServiceChannels(monitors) {
   }
 
   if (stateChanged) {
-    saveState({ statusMessageId, lastChannelStatus, lastChannelNameMs, serviceCategoryId, serviceChannels });
+    persistState();
   }
 }
 // #endregion

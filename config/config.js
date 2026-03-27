@@ -13,12 +13,6 @@ const config = convict({
     default: 3000,
     env: 'WEB_PORT'
   },
-  webPublicUrl: {
-    doc: 'Öffentliche Basis-URL des Bot-Webservers für Proxy-Endpunkte (z.B. https://bot.example.com)',
-    format: String,
-    default: '',
-    env: 'WEB_PUBLIC_URL'
-  },
   checkIntervalMs: {
     doc: 'Intervall in ms zwischen Status-Updates',
     format: 'int',
@@ -81,10 +75,17 @@ const config = convict({
       env: 'DISCORD_NOTIFICATION_CHANNEL'
     },
     statusRenderMode: {
-      doc: 'Render-Modus für die Status-Nachricht: auto (beste Methode wählen) | direct (Link mit injiziertem OG) | graphical (Link mit Uptime-Badge-Bild) | embed (Discord Embed) | link_preview (Legacy)',
-      format: ['auto', 'direct', 'graphical', 'embed', 'link_preview'],
+      doc: 'Render-Modus für die Status-Nachricht: auto (beste Methode wählen) | direct (Link mit injiziertem OG) | graphical (Link mit Uptime-Badge-Bild) | webhook_ascii (Webhook mit ASCII-Uptimebalken) | embed (Discord Embed) | link_preview (Legacy)',
+      format: ['auto', 'direct', 'graphical', 'webhook_ascii', 'embed', 'link_preview'],
       default: 'auto',
       env: 'DISCORD_STATUS_RENDER_MODE'
+    },
+    statusWebhookUrl: {
+      doc: 'Optionaler Discord Webhook für Status-Nachrichten (nur für webhook_ascii Modus)',
+      format: String,
+      default: '',
+      env: 'DISCORD_STATUS_WEBHOOK_URL',
+      sensitive: true
     },
     channelStatusIndicator: {
       doc: 'Channel-Name und Topic automatisch mit Statusfarbe aktualisieren (🟢/🟡/🔴)',

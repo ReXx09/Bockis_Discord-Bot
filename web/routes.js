@@ -20,13 +20,6 @@ const express     = require('express');
 const axios       = require('axios');
 const { execFile, execSync, spawn } = require('child_process');
 
-let sharp = null;
-try {
-  sharp = require('sharp');
-} catch {
-  sharp = null;
-}
-
 // Erlaubte Werte für Service-Control (Whitelist gegen Command-Injection)
 const ALLOWED_SERVICES = ['bockis-bot', 'uptime-kuma', 'cloudflared'];
 const ALLOWED_ACTIONS  = ['start', 'stop', 'restart', 'status'];
@@ -359,83 +352,6 @@ module.exports = function startWebServer({
     }
   });
 
-  // ── API: Render-Pipeline Diagnose (Proxy + Bild-Endpunkt) ──────────────────
-
-  app.get('/api/diagnostics/render-pipeline', dashboardAuth, async (req, res) => {
-    try {
-      const statusUrl = getPublicStatusUrl();
-      const webPublicUrl = (config.get('webPublicUrl') || '').replace(/\/+$/, '');
-      const hints = [];
-
-      if (!statusUrl) {
-        hints.push('Keine öffentliche Status-URL verfügbar (cloudflare.publicUrl / uptimeKuma.statusPageSlug prüfen).');
-      }
-
-      if (!webPublicUrl) {
-        hints.push('WEB_PUBLIC_URL fehlt - Direct/Graphical können ohne öffentliche Bot-URL nicht funktionieren.');
-      }
-
-      let proxyProbe = { ok: false, error: 'übersprungen' };
-      let imageProbe = { ok: false, error: 'übersprungen' };
-
-      if (webPublicUrl) {
-        const proxyUrl = `${webPublicUrl}/api/status-unfurl`;
-        proxyProbe = await runLinkProbe(
-          proxyUrl,
-          'Mozilla/5.0 (compatible; Discordbot/2.0; +https://discord.com)'
-        );
-
-        try {
-          const imgResp = await axios.get(`${webPublicUrl}/api/badge/summary?format=png`, {
-            timeout: 10000,
-            validateStatus: () => true,
-            responseType: 'arraybuffer',
-            headers: {
-              'User-Agent': 'Mozilla/5.0 (compatible; Discordbot/2.0; +https://discord.com)'
-            }
-          });
-          const contentType = String(imgResp.headers?.['content-type'] || '');
-          const imageOk = imgResp.status >= 200 && imgResp.status < 400 && /^image\/(png|jpeg|jpg|webp|gif|svg\+xml)/i.test(contentType);
-          imageProbe = {
-            ok: imageOk,
-            status: imgResp.status,
-            contentType,
-          };
-          if (!imageOk) {
-            hints.push(`Bild-Endpunkt liefert kein unterstütztes Bild (${imgResp.status}, ${contentType || 'unbekannt'}).`);
-          }
-        } catch (err) {
-          imageProbe = { ok: false, error: err.message };
-          hints.push(`Bild-Endpunkt nicht erreichbar: ${err.message}`);
-        }
-
-        if (!proxyProbe.ok) {
-          hints.push(`Proxy-Endpunkt nicht erreichbar: ${proxyProbe.error || 'unbekannt'}`);
-        } else {
-          if (!(proxyProbe.status >= 200 && proxyProbe.status < 400)) {
-            hints.push(`Proxy-Endpunkt liefert HTTP ${proxyProbe.status}.`);
-          }
-          if (!proxyProbe.richPreview) {
-            hints.push('Proxy-Endpunkt liefert keine ausreichenden OG/Twitter Meta-Tags.');
-          }
-        }
-      }
-
-      return res.json({
-        ok: true,
-        checkedAt: new Date().toISOString(),
-        statusUrl,
-        webPublicUrl,
-        proxyProbe,
-        imageProbe,
-        hints,
-      });
-    } catch (err) {
-      logger.error(`/api/diagnostics/render-pipeline Fehler: ${err.message}`);
-      return res.json({ ok: false, error: err.message });
-    }
-  });
-
   // ── API: Discord-Refresh ────────────────────────────────────────────────────
 
   app.post('/api/refresh', dashboardAuth, async (req, res) => {
@@ -457,16 +373,6 @@ module.exports = function startWebServer({
         return res.status(400).json({ ok: false, error: 'Status URL nicht konfiguriert' });
       }
 
-      const monitors = await getMonitorData();
-      const total = Array.isArray(monitors) ? monitors.length : 0;
-      const up = Array.isArray(monitors)
-        ? monitors.filter((m) => m && m.status === 1).length
-        : 0;
-      const down = Math.max(0, total - up);
-      const summary = total > 0
-        ? `${up}/${total} Dienste online${down > 0 ? ` · ${down} offline` : ''}`
-        : 'Keine Monitor-Daten verfügbar';
-
       // Lade Status-Seite
       const resp = await axios.get(statusUrl, {
         timeout: 5000,
@@ -474,22 +380,21 @@ module.exports = function startWebServer({
       });
 
       let html = String(resp.data || '');
-      const webPublicUrl = (config.get('webPublicUrl') || '').trim();
       const uptimeKumaUrl = config.get('uptimeKuma.url') || '';
       const cloudflareUrl = config.get('cloudflare.publicUrl') || '';
-      const baseUrl = webPublicUrl || cloudflareUrl || uptimeKumaUrl;
+      const baseUrl = cloudflareUrl || uptimeKumaUrl;
 
       // Injiziere OG-Tags ins <head>
       const head = `
-        <meta property="og:title" content="Dienste-Status">
-        <meta property="og:description" content="${summary}">
-        <meta property="og:image" content="${baseUrl}/api/badge/summary?style=flat-square&format=png">
+        <meta property="og:title" content="🔍 Dinste-Status">
+        <meta property="og:description" content="Live Status deiner Services - Aktualisiert alle 5 Minuten">
+        <meta property="og:image" content="${baseUrl}/api/badge/summary?style=flat-square">
         <meta property="og:url" content="${statusUrl}">
         <meta property="og:type" content="website">
         <meta name="twitter:card" content="summary_large_image">
-        <meta name="twitter:title" content="Dienste-Status">
-        <meta name="twitter:description" content="${summary}">
-        <meta name="twitter:image" content="${baseUrl}/api/badge/summary?style=flat-square&format=png">
+        <meta name="twitter:title" content="🔍 Dienste-Status">
+        <meta name="twitter:description" content="Live Status deiner Services">
+        <meta name="twitter:image" content="${baseUrl}/api/badge/summary?style=flat-square">
       `;
 
       html = html.replace('</head>', `${head}</head>`);
@@ -501,18 +406,39 @@ module.exports = function startWebServer({
     }
   });
 
+  // ── API: Status-Badge (Umleitung zu Uptime Kuma Badge API) ──────────────────
+
+  app.get('/api/status-badge/:monitorId', async (req, res) => {
+    try {
+      const { monitorId } = req.params;
+      const baseUrl = (config.get('uptimeKuma.url') || '').replace(/\/+$/, '');
+      if (!baseUrl) {
+        return res.status(400).json({ ok: false, error: 'Uptime Kuma URL nicht konfiguriert' });
+      }
+
+      // Leite zur Uptime Kuma Badge API weiter
+      const badgeUrl = `${baseUrl}/api/badge/${monitorId}/uptime?style=flat-square`;
+      const resp = await axios.get(badgeUrl, { timeout: 5000, responseType: 'stream' });
+      res.setHeader('Content-Type', resp.headers['content-type']);
+      res.setHeader('Cache-Control', 'max-age=300'); // 5 Minuten Cache
+      resp.data.pipe(res);
+    } catch (err) {
+      logger.error(`/api/status-badge Fehler: ${err.message}`);
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
   // ── API: Grafische Summary-Badges generieren ────────────────────────────────
 
   app.get('/api/badge/summary', async (req, res) => {
     try {
-      const { format = 'svg' } = req.query;
-      const monitorData = await getMonitorData();
-      const monitors = Array.isArray(monitorData) ? monitorData : [];
-      const total = monitors.length;
-      const up = monitors.filter((m) => m && m.status === 1).length;
+      const { style = 'flat-square' } = req.query;
+      const monitorData = getMonitorData ? getMonitorData() : {};
+      const total = Object.keys(monitorData).length || 0;
+      const up = Object.values(monitorData).filter((m) => m.status === 'up').length || 0;
       const down = total - up;
 
-      // Einfache Summary-Grafik generieren. Discord rendert PNG deutlich zuverlässiger als SVG.
+      // Einfache SVG Badge generieren (für Link-Preview Image)
       const badgeText = `${up}/${total} Online`;
       const bgColor = down === 0 ? '31C16E' : down === total ? 'E74C3C' : 'F39C12'; // Grün/Rot/Orange
       const svg = `
@@ -546,17 +472,6 @@ module.exports = function startWebServer({
           </g>
         </svg>
       `;
-
-      if (String(format).toLowerCase() === 'png' && sharp) {
-        const png = await sharp(Buffer.from(svg)).png().toBuffer();
-        res.setHeader('Content-Type', 'image/png');
-        res.setHeader('Cache-Control', 'max-age=300');
-        return res.send(png);
-      }
-
-      if (String(format).toLowerCase() === 'png' && !sharp) {
-        logger.warn('/api/badge/summary: PNG angefordert, aber sharp ist nicht installiert - Fallback auf SVG');
-      }
 
       res.setHeader('Content-Type', 'image/svg+xml; charset=utf-8');
       res.setHeader('Cache-Control', 'max-age=300');
@@ -666,17 +581,21 @@ module.exports = function startWebServer({
         return m ? m[1].trim().replace(/^["']|["']$/g, '') : '';
       };
       const token  = get('DISCORD_TOKEN');
+      const webhook = get('DISCORD_STATUS_WEBHOOK_URL');
       const masked = token.length > 12
         ? `${token.slice(0, 6)}${'*'.repeat(token.length - 12)}${token.slice(-6)}`
         : token ? '***' : '';
+      const maskedWebhook = webhook.length > 24
+        ? `${webhook.slice(0, 18)}${'*'.repeat(Math.max(0, webhook.length - 24))}${webhook.slice(-6)}`
+        : webhook ? '***' : '';
       res.json({
         ok: true,
         DISCORD_TOKEN:                masked,
         STATUS_CHANNEL_ID:            get('STATUS_CHANNEL_ID'),
         DISCORD_NOTIFICATION_CHANNEL: get('DISCORD_NOTIFICATION_CHANNEL'),
         DISCORD_STATUS_RENDER_MODE:   get('DISCORD_STATUS_RENDER_MODE') || 'auto',
+        DISCORD_STATUS_WEBHOOK_URL:   maskedWebhook,
         UPTIME_KUMA_URL:              get('UPTIME_KUMA_URL'),
-        WEB_PUBLIC_URL:               get('WEB_PUBLIC_URL'),
         CHANNEL_STATUS_INDICATOR:     get('CHANNEL_STATUS_INDICATOR') || 'true',
       });
     } catch (err) {
@@ -689,8 +608,8 @@ module.exports = function startWebServer({
 
   app.post('/api/config', dashboardAuth, (req, res) => {
     const ALLOWED_CFG = ['DISCORD_TOKEN', 'STATUS_CHANNEL_ID', 'DISCORD_NOTIFICATION_CHANNEL',
-                         'DISCORD_STATUS_RENDER_MODE',
-               'UPTIME_KUMA_URL', 'WEB_PUBLIC_URL', 'CHANNEL_STATUS_INDICATOR'];
+               'DISCORD_STATUS_RENDER_MODE', 'DISCORD_STATUS_WEBHOOK_URL',
+                         'UPTIME_KUMA_URL', 'CHANNEL_STATUS_INDICATOR'];
     const envPath = path.join(rootDir, '.env');
     if (!fs.existsSync(envPath)) return res.json({ ok: false, error: '.env nicht gefunden' });
 
@@ -703,14 +622,18 @@ module.exports = function startWebServer({
         if (val.includes('*')) continue;
         if (/[\n\r]/.test(val)) return res.json({ ok: false, error: 'Ungültiger Token (enthält Zeilenumbruch)' });
       }
+      if (key === 'DISCORD_STATUS_WEBHOOK_URL') {
+        if (val.includes('*')) continue;
+        if (!/^https:\/\/(canary\.|ptb\.)?discord(?:app)?\.com\/api\/webhooks\/.+/.test(val)) {
+          return res.json({ ok: false, error: 'DISCORD_STATUS_WEBHOOK_URL muss eine gültige Discord Webhook URL sein' });
+        }
+      }
       if ((key === 'STATUS_CHANNEL_ID' || key === 'DISCORD_NOTIFICATION_CHANNEL') && !/^\d+$/.test(val))
         return res.json({ ok: false, error: `${key}: Nur Zahlen erlaubt (Discord ID)` });
-      if (key === 'DISCORD_STATUS_RENDER_MODE' && !['auto', 'direct', 'graphical', 'link_preview', 'embed'].includes(val))
-        return res.json({ ok: false, error: 'DISCORD_STATUS_RENDER_MODE muss auto, direct, graphical, link_preview oder embed sein' });
+      if (key === 'DISCORD_STATUS_RENDER_MODE' && !['auto', 'direct', 'graphical', 'webhook_ascii', 'link_preview', 'embed'].includes(val))
+        return res.json({ ok: false, error: 'DISCORD_STATUS_RENDER_MODE muss auto, direct, graphical, webhook_ascii, link_preview oder embed sein' });
       if (key === 'UPTIME_KUMA_URL' && !/^https?:\/\/.+/.test(val))
         return res.json({ ok: false, error: 'UPTIME_KUMA_URL muss mit http:// oder https:// beginnen' });
-      if (key === 'WEB_PUBLIC_URL' && !/^https?:\/\/.+/.test(val))
-        return res.json({ ok: false, error: 'WEB_PUBLIC_URL muss mit http:// oder https:// beginnen' });
       if (key === 'CHANNEL_STATUS_INDICATOR' && !['true', 'false'].includes(val))
         return res.json({ ok: false, error: 'CHANNEL_STATUS_INDICATOR muss true oder false sein' });
       updates[key] = val;
