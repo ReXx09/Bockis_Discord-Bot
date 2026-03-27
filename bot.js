@@ -18,19 +18,26 @@ const { Sequelize, DataTypes, Op } = require('sequelize');
 const fs = require('fs');
 
 // #region 1. ENV-VALIDIERUNG
-const envPath = require('path').join(__dirname, '.env');
-const dotenvExists = require('fs').existsSync(envPath);
+const fs = require('fs');
+const path = require('path');
+const envPath = path.join(__dirname, '.env');
+const envExamplePath = path.join(__dirname, '.env.example');
+const dotenvExists = fs.existsSync(envPath);
+
+if (dotenvExists) {
+  require('dotenv').config();
+} else {
+  console.warn('[INFO] Keine .env gefunden – Umgebungsvariablen werden von außen erwartet (Docker-Compose, systemd, Host-Env)');
+}
+
 const REQUIRED_ENV = ['DISCORD_TOKEN', 'STATUS_CHANNEL_ID', 'UPTIME_KUMA_URL'];
 const missingEnv = REQUIRED_ENV.filter(k => !process.env[k]);
 if (missingEnv.length) {
-  const mode = dotenvExists ? 'local (.env existiert)' : 'Docker/Host-Env';
-  console.error(`[FATAL] Konfigurationsfehler im Modus "${mode}"`);
-  console.error(`Fehlende Umgebungsvariablen: ${missingEnv.join(', ')}`);
-  if (dotenvExists) {
-    console.error('→ .env existiert. Prüfe ob die Werte korrekt gesetzt sind.');
-  } else {
-    console.error('→ Kein .env gefunden. Nutze docker-compose.yml mit env_file oder Docker-Umgebungsvariablen.');
-  }
+  console.error(`[FATAL] Fehlende Umgebungsvariablen: ${missingEnv.join(', ')}`);
+  console.error('\nSo behebst du das:');
+  console.error('  1. Lokal: Kopiere .env.example zu .env und f\u00fclle die Werte aus');
+  console.error('     $ cp .env.example .env');  
+  console.error('  2. Docker: Setze die Variablen in docker-compose.yml oder Host-ENV');
   process.exit(1);
 }
 // #endregion
