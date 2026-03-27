@@ -82,13 +82,60 @@
       border-radius: var(--radius);
       padding: 20px;
     }
+    .card.dragging { opacity: 0.5; }
+    .card.drag-over { border-color: var(--blue); box-shadow: 0 0 0 2px rgba(56,139,253,.2); }
+    
+    /* CARD WRAPPER MIT COLLAPSE */
+    .card-wrapper {
+      display: flex;
+      flex-direction: column;
+    }
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 14px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--border);
+      cursor: grab;
+      user-select: none;
+    }
+    .card-header:active { cursor: grabbing; }
+    .card-header-left { display: flex; align-items: center; gap: 8px; flex: 1; }
     .card-title {
       font-size: 11px;
       font-weight: 600;
       text-transform: uppercase;
       letter-spacing: .07em;
       color: var(--muted);
-      margin-bottom: 14px;
+      margin: 0;
+    }
+    .card-controls { display: flex; gap: 6px; }
+    .btn-collapse {
+      background: none;
+      border: none;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 14px;
+      padding: 4px 8px;
+      transition: color .15s;
+      width: 28px; height: 28px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .btn-collapse:hover { color: var(--text); }
+    
+    .card-content {
+      overflow: hidden;
+      transition: max-height .25s ease, opacity .25s ease;
+      max-height: 2000px;
+      opacity: 1;
+    }
+    .card-content.collapsed {
+      max-height: 0;
+      opacity: 0;
+      pointer-events: none;
     }
 
     /* INFO ROW */
@@ -1004,6 +1051,195 @@
 
   // Config beim Start laden
   loadConfig();
+
+  // ────────────────────────────────────────────────────────────────────────
+  // DRAGGABLE + COLLAPSIBLE CARDS SYSTEM
+  // ────────────────────────────────────────────────────────────────────────
+
+  const STORAGE_KEY_COLLAPSE = 'dashboard-collapsed';
+  const STORAGE_KEY_ORDER = 'dashboard-card-order';
+
+  function initCardSystem() {
+    const mainContent = document.body;
+    
+    /**  Alle Top-Level Cards sammeln (inkl. grid-2 children) */
+    const cards = [];
+    
+    // Sammle grid-2 Cards
+    document.querySelectorAll('.grid-2 > .card').forEach(card => {
+      card.dataset.cardId = card.dataset.cardId || generateCardId();
+      cards.push(card);
+    });
+    
+    // Sammle einzelne Cards (ID-basiert)
+    document.querySelectorAll('[id$="Card"] > .card, [id$="Card"]').forEach(card => {
+      card.dataset.cardId = card.dataset.cardId || generateCardId();
+      cards.push(card);
+    });
+    
+    // Sammle Monitor/Service Cards
+    document.querySelectorAll('.mc, .svc-card').forEach(card => {
+      card.dataset.cardId = card.dataset.cardId || generateCardId();
+      cards.push(card);
+    });
+
+    // Entferne Duplikate
+    const seen = new Set();
+    const uniqueCards = cards.filter(c => {
+      if (seen.has(c.dataset.cardId)) return false;
+      seen.add(c.dataset.cardId);
+      return true;
+    });
+
+    uniqueCards.forEach(card => {
+      card.draggable = true;
+      setupCard(card);
+    });
+
+    // Restore collapse states
+    restoreCollapseStates();
+  }
+
+  function generateCardId() {
+    return 'card-' + Math.random().toString(36).substr(2, 9);
+  }
+
+  function setupCard(card) {
+    card.addEventListener('dragstart', (e) => {
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/html', card.innerHTML);
+      card.classList.add('dragging');
+      setTimeout(() => card.style.opacity = '0.5', 0);
+    });
+
+    card.addEventListener('dragend', (e) => {
+      card.classList.remove('dragging');
+      card.style.opacity = '1';
+      document.querySelectorAll('.card.drag-over, .mc.drag-over, .svc-card.drag-over')
+        .forEach(c => c.classList.remove('drag-over'));
+    });
+
+    card.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      card.classList.add('drag-over');
+    });
+
+    card.addEventListener('dragleave', (e) => {
+      if (e.target === card) card.classList.remove('drag-over');
+    });
+
+    card.addEventListener('drop', (e) => {
+      e.preventDefault();
+      card.classList.remove('drag-over');
+      
+      const dragging = document.querySelector('.dragging');
+      if (dragging && dragging !== card) {
+        // Swap positions
+        const parent = card.parentNode;
+        const draggingParent = dragging.parentNode;
+        
+        if (parent === draggingParent) {
+          swapElements(dragging, card);
+        } else {
+          card.parentNode.insertBefore(dragging, card);
+        }
+        saveCardOrder();
+      }
+    });
+
+    // Add collapse button (für .card Wrapper)
+    if (card.classList.contains('card') && !card.querySelector('.btn-collapse')) {
+      const header = document.createElement('div');
+      header.className = 'card-header';
+      
+      const title = card.querySelector('.card-title');
+      const titleClone = title ? title.cloneNode(true) : document.createElement('div');
+      
+      const collapseBtn = document.createElement('button');
+      collapseBtn.className = 'btn-collapse';
+      collapseBtn.innerHTML = '−';
+      collapseBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        toggleCardCollapse(card, collapseBtn);
+      });
+
+      header.appendChild(document.createElement('div'));
+      header.querySelector('div').appendChild(titleClone);
+      header.querySelector('div').className = 'card-header-left';
+      header.appendChild(collapseBtn);
+
+      title?.remove();
+      card.insertBefore(header, card.firstChild);
+
+      const content = document.createElement('div');
+      content.className = 'card-content';
+      while (card.children.length > 1) {
+        content.appendChild(card.children[1]);
+      }
+      card.appendChild(content);
+    }
+  }
+
+  function swapElements(el1, el2) {
+    const temp = document.createElement('div');
+    el1.parentNode.insertBefore(temp, el1);
+    el2.parentNode.insertBefore(el1, el2);
+    temp.parentNode.insertBefore(el2, temp);
+    temp.parentNode.removeChild(temp);
+  }
+
+  function toggleCardCollapse(card, btn) {
+    const content = card.querySelector('.card-content');
+    if (!content) return;
+    
+    const isCollapsed = content.classList.toggle('collapsed');
+    btn.innerHTML = isCollapsed ? '+' : '−';
+    
+    saveCollapseState(card.dataset.cardId, isCollapsed);
+  }
+
+  function saveCollapseState(cardId, isCollapsed) {
+    const states = JSON.parse(localStorage.getItem(STORAGE_KEY_COLLAPSE) || '{}');
+    states[cardId] = isCollapsed;
+    localStorage.setItem(STORAGE_KEY_COLLAPSE, JSON.stringify(states));
+  }
+
+  function restoreCollapseStates() {
+    const states = JSON.parse(localStorage.getItem(STORAGE_KEY_COLLAPSE) || '{}');
+    document.querySelectorAll('.card[data-card-id]').forEach(card => {
+      const isCollapsed = states[card.dataset.cardId];
+      if (isCollapsed) {
+        const content = card.querySelector('.card-content');
+        const btn = card.querySelector('.btn-collapse');
+        if (content && btn) {
+          content.classList.add('collapsed');
+          btn.innerHTML = '+';
+        }
+      }
+    });
+  }
+
+  function saveCardOrder() {
+    const order = [];
+    document.querySelectorAll('.card[data-card-id], .mc[data-card-id], .svc-card[data-card-id]')
+      .forEach(card => order.push(card.dataset.cardId));
+    localStorage.setItem(STORAGE_KEY_ORDER, JSON.stringify(order));
+  }
+
+  // Init nach dem DOM ready
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initCardSystem);
+  } else {
+    initCardSystem();
+  }
+
+  // Re-init nach jedem fetchAll() (6 Sekunden Update)
+  const originalFetchAll = window.fetchAll;
+  window.fetchAll = function() {
+    originalFetchAll?.call(this);
+    setTimeout(initCardSystem, 100); // Nach Rendering ein bisschen warten
+  };
 </script>
 </body>
 </html>
