@@ -537,6 +537,13 @@ async function getStatusRenderMode() {
       logger.warn(`Status Render Mode: link_preview (legacy) - Statusseite nicht erreichbar, Fallback auf embed: ${publicStatusUrl}`);
       return { mode: 'custom_embed', publicStatusUrl };
     }
+
+    // Wichtig: Legacy-Wert link_preview wird auf den neuen Unfurl-Proxy gemappt,
+    // damit OG:description und OG:image zuverlässig gesetzt sind.
+    if (webUrl) {
+      return { mode: 'direct', proxyUrl: `${webUrl}/api/status-unfurl?legacy=1`, publicStatusUrl };
+    }
+
     return { mode: 'link_preview', publicStatusUrl };
   }
 
@@ -849,6 +856,9 @@ async function updateStatusMessage() {
     lastEditTimestamp = Date.now();
     logger.info(`Status aktualisiert: ${operationalCount}/${monitors.length} Dienste online`);
     logger.info(`Status Render Mode: ${renderDecision.mode}${renderDecision.publicStatusUrl ? ` | ${renderDecision.publicStatusUrl}` : renderDecision.proxyUrl ? ` | proxy` : ``}`);
+    if (messagePayload?.content) {
+      logger.info(`Status Link gesendet: ${messagePayload.content}`);
+    }
 
     // Channel-Name + Topic bei Statuswechsel aktualisieren
     await updateChannelIndicator(channel, monitors);
