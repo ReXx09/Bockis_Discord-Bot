@@ -45,13 +45,13 @@
     /* SUBNAV */
     .subnav {
       display: flex;
-      gap: 8px;
+      gap: 4px;
       flex-wrap: wrap;
-      margin: 0 0 16px;
-      padding: 10px;
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      background: linear-gradient(180deg, rgba(56,139,253,.10), rgba(56,139,253,.03));
+      margin: 0;
+      padding: 0;
+      border: none;
+      border-radius: 0;
+      background: transparent;
     }
     .subnav-btn {
       border: 1px solid var(--border);
@@ -532,6 +532,15 @@
     <h1>🤖 Bockis Bot · Dashboard</h1>
     <div class="sub" id="headerSub">Service Monitor · Live-Ansicht</div>
   </div>
+  
+  <!-- ── SUBNAV IN HEADER ─────────────────────────────── -->
+  <div class="subnav" style="position:absolute;left:50%;transform:translateX(-50%);width:auto;background:transparent;border:none;gap:4px;padding:0;margin:0">
+    <button class="subnav-btn active" data-pane-btn="overview" onclick="setActivePane('overview')" title="Live-Übersicht: Bot, System, Services">📊 Übersicht</button>
+    <button class="subnav-btn" data-pane-btn="settings" onclick="setActivePane('settings')" title="Konfiguration & Service-Steuerung">⚙️ Einstellungen</button>
+    <button class="subnav-btn" data-pane-btn="updates" onclick="setActivePane('updates')" title="Updates & Git-Commits">📦 Updates</button>
+    <button class="subnav-btn" data-pane-btn="diagnostics" onclick="setActivePane('diagnostics')" title="Logs & Link-Preview-Diagnose">🧪 Diagnose</button>
+  </div>
+  
   <div class="header-right">
     <span class="timer" id="timer">Auto-Refresh in 30s</span>
     <button class="btn btn-green" id="btnRefresh" onclick="manualRefresh()">
@@ -540,13 +549,7 @@
   </div>
 </div>
 
-<!-- ── SUBMENÜ ───────────────────────────────────────── -->
-<div class="subnav">
-  <button class="subnav-btn active" data-pane-btn="overview" onclick="setActivePane('overview')">Übersicht</button>
-  <button class="subnav-btn" data-pane-btn="settings" onclick="setActivePane('settings')">Einstellungen</button>
-  <button class="subnav-btn" data-pane-btn="updates" onclick="setActivePane('updates')">Updates</button>
-  <button class="subnav-btn" data-pane-btn="diagnostics" onclick="setActivePane('diagnostics')">Diagnose</button>
-</div>
+
 
 <!-- ── DASHBOARD GRID ───────────────────────────────── -->
 <div class="dashboard-grid" id="dashboardGrid">
