@@ -402,19 +402,21 @@ function buildStatusEmbed(monitors, statusPageUrl = null) {
   const R = '\u001b[1;31m';
   const Y = '\u001b[1;33m';
   const W = '\u001b[1;37m';
-  const C = '\u001b[1;36m';
+  const K = '\u001b[1;30m';
+  const BG_PANEL = '\u001b[100m'; // dunkles Grau (Panel)
+  const BG_HEADER = '\u001b[47m'; // helles Grau (Überschrift)
   const X = '\u001b[0m';
 
   // Discord-Embed-Beschreibungen umbrechen ANSI-Codeblöcke bei ~56 Zeichen.
   // Zeilenbudget: ●(1)+sp(1)+name(20)+sp(2)+STATUS(11)+sp(2)+bar(11)+sp(2)+%(6) = 56 Zeichen
   const lines = [];
   // Header auf 2 Zeilen aufteilen – sonst würde er selbst umbrechen
-  lines.push(`${C}⊞ DIENSTE STATUS-ÜBERSICHT${X}`);
-  lines.push(`${W}Stand: ${dateStr}, ${timeStr}${X}`);
+  lines.push(`${BG_HEADER}${K}  DIENSTE STATUS-ÜBERSICHT  ${X}`);
+  lines.push(`${BG_PANEL}${W} Stand: ${dateStr}, ${timeStr}${X}`);
   lines.push('');
 
   for (const [groupName, groupMonitors] of Object.entries(groups)) {
-    lines.push(`${W}⊞ ${groupName.toUpperCase()} [${groupMonitors.length}]${X}`);
+    lines.push(`${BG_HEADER}${K}  ${groupName.toUpperCase()} [${groupMonitors.length}]  ${X}`);
 
     for (const m of groupMonitors) {
       const isUp      = m.status === 1;
@@ -430,7 +432,7 @@ function buildStatusEmbed(monitors, statusPageUrl = null) {
       const uptime      = `${pct.toFixed(1)}%`.padStart(6);
 
       // Timestamp weggelassen – würde Zeile auf 73 Zeichen verlängern und umbrechen
-      lines.push(`${col}●${X} ${name}  ${col}${statusLabel}${X}  ${col}${bar}${X}  ${uptime}`);
+      lines.push(`${BG_PANEL}${col}●${W} ${name}  ${col}${statusLabel}${W}  ${col}${bar}${W}  ${uptime}${X}`);
     }
     lines.push('');
   }

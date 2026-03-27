@@ -935,18 +935,33 @@ status_docker() {
     err "Docker ist nicht installiert"; pause; return
   fi
 
+  if ! docker info >/dev/null 2>&1; then
+    local DOCKER_ERR
+    DOCKER_ERR=$(docker info 2>&1 | head -1)
+    if echo "$DOCKER_ERR" | grep -qi "permission denied"; then
+      err "Docker ist installiert, aber der aktuelle Benutzer hat keinen Zugriff auf den Docker-Socket"
+      info "Abhilfe: Benutzer zur Gruppe 'docker' hinzufügen oder das Menü mit passender Berechtigung ausführen"
+    elif echo "$DOCKER_ERR" | grep -Eqi "cannot connect to the docker daemon|error during connect|is the docker daemon running"; then
+      err "Docker ist installiert, aber der Daemon ist nicht erreichbar"
+      info "Prüfe mit: sudo systemctl status docker"
+    else
+      err "Docker antwortet nicht: ${DOCKER_ERR}"
+    fi
+    pause; return
+  fi
+
   echo -e "${BOLD}Laufende Container:${NC}"
-  local RUNNING; RUNNING=$(docker ps --format "table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}" 2>&1)
+  local RUNNING; RUNNING=$(docker ps --format "table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}")
   echo "$RUNNING"
-  if [[ $(docker ps -q 2>/dev/null | wc -l) -eq 0 ]]; then
+  if ! docker ps -q 2>/dev/null | grep -q .; then
     echo -e "  ${YELLOW}(keine laufenden Container — normal bei systemd-Betrieb ohne lokales Docker-Setup)${NC}"
   fi
 
   echo ""
   echo -e "${BOLD}Alle Container (inkl. gestoppte):${NC}"
-  local ALL; ALL=$(docker ps -a --format "table {{.Names}}\t{{.Status}}" 2>&1)
+  local ALL; ALL=$(docker ps -a --format "table {{.Names}}\t{{.Status}}")
   echo "$ALL" | tail -10
-  if [[ $(docker ps -aq 2>/dev/null | wc -l) -eq 0 ]]; then
+  if ! docker ps -aq 2>/dev/null | grep -q .; then
     echo -e "  ${YELLOW}(keine Container vorhanden)${NC}"
   fi
 
@@ -956,7 +971,7 @@ status_docker() {
 
   # ── Dangling Images erkennen ─────────────────────────────────────────────
   local DANGLING; DANGLING=$(docker images -f "dangling=true" -q 2>/dev/null)
-  local DANGLING_COUNT; DANGLING_COUNT=$(echo "$DANGLING" | grep -c . 2>/dev/null || echo 0)
+  local DANGLING_COUNT; DANGLING_COUNT=$(printf '%s' "$DANGLING" | grep -c . 2>/dev/null || true)
   if [[ "$DANGLING_COUNT" -gt 0 ]]; then
     local DANGLING_SIZE; DANGLING_SIZE=$(docker images -f "dangling=true" --format "{{.Size}}" 2>/dev/null | head -1)
     echo ""
