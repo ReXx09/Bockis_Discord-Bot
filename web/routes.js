@@ -126,7 +126,10 @@ module.exports = function startWebServer({
       const twitterImage = readMetaTag(html, 'name', 'twitter:image');
       const metaDescription = readMetaTag(html, 'name', 'description');
 
-      const richPreview = Boolean(ogTitle || ogDescription || ogImage || twitterCard || twitterImage || metaDescription);
+      // Discord braucht für RichPreview: Titel + (Beschreibung ODER Bild)
+      const hasDescription = ogDescription || metaDescription;
+      const hasImage = ogImage || twitterImage;
+      const richPreview = Boolean(ogTitle && (hasDescription || hasImage));
       const challengeDetected = /cf-challenge|attention required|captcha|cloudflare/i.test(html);
 
       return {
@@ -308,9 +311,22 @@ module.exports = function startWebServer({
         if (!/text\/html/i.test(discordProbe.contentType || '')) {
           hints.push(`Content-Type ist nicht text/html (${discordProbe.contentType || 'unbekannt'}).`);
         }
+        
+        // Detaillierte Meta-Tag-Analyse
         if (!discordProbe.richPreview) {
-          hints.push('Keine/zu wenige OG- oder Twitter-Meta-Tags gefunden.');
+          const ogTitle = discordProbe.meta?.ogTitle;
+          const hasDesc = discordProbe.meta?.ogDescription || discordProbe.meta?.metaDescription;
+          const hasImage = discordProbe.meta?.ogImage || discordProbe.meta?.twitterImage;
+          
+          if (ogTitle && !hasDesc && !hasImage) {
+            hints.push('⚠️ OG:Title vorhanden, aber OG:Description + OG:Image FEHLEN → Discord zeigt keine Rich Preview.');
+          } else if (!ogTitle) {
+            hints.push('❌ OG:Title FEHLT → Keine Rich Preview möglich.');
+          } else {
+            hints.push('⚠️ Unzureichend Meta-Tags für Discord Rich Preview (Beschreibung oder Bild erforderlich).');
+          }
         }
+        
         if (discordProbe.challengeDetected) {
           hints.push('Cloudflare/Challenge erkannt - Discord-Crawler kann blockiert sein.');
         }
