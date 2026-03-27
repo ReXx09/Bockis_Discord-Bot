@@ -511,14 +511,10 @@ async function getStatusRenderMode() {
     return { mode: 'link_preview', publicStatusUrl };
   }
 
-  const previewInfo = await inspectStatusPagePreview(publicStatusUrl);
-  if (!previewInfo.reachable) {
-    logger.warn(`Status Render Mode: Link-Preview nicht verfuegbar, Fallback auf Embed: ${publicStatusUrl}`);
-    return { mode: 'custom_embed', publicStatusUrl };
-  }
-
-  if (!previewInfo.richPreview) {
-    logger.warn(`Status Render Mode: Nur minimale Link-Vorschau erkannt, Fallback auf Embed: ${publicStatusUrl}`);
+  // Auto-Modus: Versuche Link-Preview wenn Seite erreichbar, sonst Embed
+  const reachable = await isStatusPageReachable(publicStatusUrl);
+  if (!reachable) {
+    logger.warn(`Status Render Mode: Auto - Statusseite nicht erreichbar, Fallback auf Embed: ${publicStatusUrl}`);
     return { mode: 'custom_embed', publicStatusUrl };
   }
 
