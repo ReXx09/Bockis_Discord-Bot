@@ -375,7 +375,78 @@ function buildAnsiStatusMessage(monitors, statusPageUrl = null) {
 function getPublicStatusUrl() {
   const cloudflareUrl = config.get('cloudflare.publicUrl');
   const slug          = config.get('uptimeKuma.statusPageSlug');
-  return cloudflareUrl ? `${cloudflareUrl}/status/${slug}` : null;
+  if (!cloudflareUrl) return null;
+  return `${cloudflareUrl.replace(/\/+$/, '')}/status/${slug}`;
+}
+
+async function isStatusPageReachable(url) {
+  if (!url) return false;
+
+  let parsed;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return false;
+  }
+
+  if (parsed.protocol !== 'https:') return false;
+
+  try {
+    const headResp = await axios.head(url, {
+      timeout: 8_000,
+      maxRedirects: 5,
+      validateStatus: () => true
+    });
+    if (headResp.status >= 200 && headResp.status < 400) return true;
+  } catch {
+    // Manche Setups blockieren HEAD, deshalb danach GET probieren.
+  }
+
+  try {
+    const getResp = await axios.get(url, {
+      timeout: 8_000,
+      maxRedirects: 5,
+      validateStatus: () => true,
+      responseType: 'text'
+    });
+    return getResp.status >= 200 && getResp.status < 400;
+  } catch {
+    return false;
+  }
+}
+
+async function getStatusRenderMode() {
+  const configuredMode = config.get('discord.statusRenderMode');
+  const publicStatusUrl = getPublicStatusUrl();
+
+  if (configuredMode === 'embed') {
+    return { mode: 'custom_embed', publicStatusUrl };
+  }
+
+  if (!publicStatusUrl) {
+    return { mode: 'custom_embed', publicStatusUrl: null };
+  }
+
+  if (configuredMode === 'link_preview') {
+    const reachable = await isStatusPageReachable(publicStatusUrl);
+    if (!reachable) {
+      logger.warn(`Status Render Mode: Link-Preview erzwungen, aber Statusseite nicht erreichbar: ${publicStatusUrl}`);
+      return { mode: 'custom_embed', publicStatusUrl };
+    }
+    return { mode: 'link_preview', publicStatusUrl };
+  }
+
+  const reachable = await isStatusPageReachable(publicStatusUrl);
+  if (!reachable) {
+    logger.warn(`Status Render Mode: Link-Preview nicht verfuegbar, Fallback auf Embed: ${publicStatusUrl}`);
+    return { mode: 'custom_embed', publicStatusUrl };
+  }
+
+  return { mode: 'link_preview', publicStatusUrl };
+}
+
+function buildStatusLinkPreviewMessage(statusPageUrl) {
+  return `\uD83C\uDF10 **LIVE SERVICE STATUS** | [Statusseite oeffnen](${statusPageUrl})\n${statusPageUrl}`;
 }
 // #endregion
 
@@ -405,57 +476,80 @@ function buildStatusEmbed(monitors, statusPageUrl = null) {
   const S = '\u001b[0;90m';
   const BG_CARD = '\u001b[40m';
   const BG_SECTION = '\u001b[100m';
+  const BG_BAR_ON = '\u001b[42m';
+  const BG_BAR_OFF = '\u001b[41m';
+  const BG_BAR_PENDING = '\u001b[43m';
+  const BG_BAR_TRACK = '\u001b[100m';
   const X = '\u001b[0m';
 
-  const headerWidth = 58;
-  const nameWidth = 18;
-  const barWidth = 10;
+  const headerWidth = 74;
+  const nameWidth = 20;
+  const statusWidth = 11;
+  const barUnits = 14;
+  const footerText = ' Uptime Kuma Status - automatisch generiert';
+
   const makeHeaderLine = (left, right = '') => {
     const padding = Math.max(2, headerWidth - left.length - right.length);
     return `${BG_CARD}${W} ${left}${' '.repeat(padding)}${right ? `${S}${right}` : ''}${X}`;
   };
+
   const makeSectionLine = (label) => {
-    const content = `≣ ${label}`;
+    const content = `## ${label}`;
     const padding = Math.max(1, headerWidth - content.length);
     return `${BG_SECTION}${W} ${content}${' '.repeat(padding)}${X}`;
   };
 
+  const makeSpacerLine = () => `${BG_CARD}${' '.repeat(headerWidth + 1)}${X}`;
+
+  const buildBar = (pct, status) => {
+    const clamped = Math.max(0, Math.min(100, pct));
+    const fillColor = status === 1 ? BG_BAR_ON : status === 2 ? BG_BAR_PENDING : BG_BAR_OFF;
+    const filled = clamped <= 0 ? 1 : Math.max(1, Math.round((clamped / 100) * barUnits));
+    const safeFilled = Math.min(barUnits, filled);
+    const empty = Math.max(0, barUnits - safeFilled);
+    return `${fillColor}${' '.repeat(safeFilled * 2)}${BG_BAR_TRACK}${' '.repeat(empty * 2)}`;
+  };
+
+  const padCardLine = (content, visibleLength) => {
+    const padding = Math.max(1, headerWidth - visibleLength);
+    return `${BG_CARD}${content}${' '.repeat(padding)}${X}`;
+  };
+
   const lines = [];
-  lines.push(makeHeaderLine('▤ DIENSTE STATUS-ÜBERSICHT', `Stand: ${dateStr}, ${timeStr}`));
-  lines.push('');
+  lines.push(makeHeaderLine('[] DIENSTE STATUS-UEBERSICHT', `Stand: ${dateStr}, ${timeStr}`));
+  lines.push(makeSpacerLine());
 
   for (const [groupName, groupMonitors] of Object.entries(groups)) {
     lines.push(makeSectionLine(`${groupName.toUpperCase()} [${groupMonitors.length}]`));
 
     for (const m of groupMonitors) {
-      const isUp      = m.status === 1;
+      const isUp = m.status === 1;
       const isPending = m.status === 2;
-      const col       = isUp ? G : isPending ? Y : R;
-
-      const pct         = parseFloat(m.uptime) || 0;
-      const filled      = Math.round((pct / 100) * barWidth);
-      const bar         = `${col}${'█'.repeat(filled)}${S}${'█'.repeat(barWidth - filled)}${X}`;
-      const statusLabel = isUp ? 'OPERATIONAL' : isPending ? 'PENDING    ' : 'OUTAGE     ';
-      const name        = m.name.slice(0, nameWidth).padEnd(nameWidth);
-      const uptime      = `${pct.toFixed(1)}%`.padStart(6);
-      const lastTime    = m.time
+      const col = isUp ? G : isPending ? Y : R;
+      const pct = parseFloat(m.uptime) || 0;
+      const statusLabel = (isUp ? 'OPERATIONAL' : isPending ? 'PENDING' : 'OUTAGE').padEnd(statusWidth);
+      const name = m.name.slice(0, nameWidth).padEnd(nameWidth);
+      const uptime = `${pct.toFixed(1)}%`.padStart(6);
+      const lastTime = m.time
         ? new Date(m.time).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
         : '--:--:--';
+      const bar = buildBar(pct, m.status);
 
-      lines.push(`${BG_CARD}${col}●${W} ${name}  ${col}${statusLabel}${W}  ${bar}  ${uptime} ${S}${lastTime}${X}`);
+      const visibleLength = 1 + 2 + nameWidth + 2 + statusWidth + 2 + (barUnits * 2) + 2 + uptime.length + 1 + lastTime.length;
+      const content = ` ${col}\u25CF${W} ${name}  ${col}${statusLabel}${W}  ${bar}${BG_CARD}${W}  ${uptime} ${S}${lastTime}`;
+      lines.push(padCardLine(content, visibleLength));
     }
-    lines.push('');
+
+    lines.push(makeSpacerLine());
   }
 
-  lines.push(`${BG_CARD}${S} Uptime Kuma Status - Automatisch generiert${X}`);
-
-  if (lines[lines.length - 1] === '') lines.pop();
+  lines.push(`${BG_CARD}${S}${footerText}${' '.repeat(Math.max(1, headerWidth - footerText.length))}${X}`);
 
   const ansiBlock = '```ansi\n' + lines.join('\n') + '\n```';
 
   const title = statusPageUrl
-    ? '🌐 LIVE SERVICE STATUS | Statusseite öffnen'
-    : '🌐 LIVE SERVICE STATUS';
+    ? '\uD83C\uDF10 LIVE SERVICE STATUS | Statusseite oeffnen'
+    : '\uD83C\uDF10 LIVE SERVICE STATUS';
 
   const embed = new EmbedBuilder()
     .setColor(embedColor)
@@ -465,8 +559,8 @@ function buildStatusEmbed(monitors, statusPageUrl = null) {
   if (statusPageUrl) embed.setURL(statusPageUrl);
 
   if (ansiBlock.length > 4000) {
-    logger.warn(`Status-Embed: Inhalt zu lang (${ansiBlock.length} Zeichen) – wird gekürzt`);
-    embed.setDescription('```ansi\n\u001b[1;31m⚠ Zu viele Dienste für eine Nachricht\u001b[0m\n```');
+    logger.warn(`Status-Embed: Inhalt zu lang (${ansiBlock.length} Zeichen) - wird gekuerzt`);
+    embed.setDescription('```ansi\n\u001b[1;31m[!] Zu viele Dienste fuer eine Nachricht\u001b[0m\n```');
   } else {
     embed.setDescription(ansiBlock);
   }
@@ -566,11 +660,12 @@ async function updateStatusMessage() {
   uptimeGauge.set(uptimePercent);
   statusCheckCounter.inc();
 
-  // ── Nachricht: Discord-Embed mit ANSI-Block (Uptime-Kuma-Style) ───────────
-  const publicStatusUrl = getPublicStatusUrl();
-
-  const statusEmbed    = buildStatusEmbed(monitors, publicStatusUrl);
-  const messagePayload = { content: null, embeds: [statusEmbed] };
+  // ── Nachricht: Link-Preview bevorzugen, Uptime-Kuma-Embed als Fallback ────
+  const renderDecision = await getStatusRenderMode();
+  const statusEmbed = buildStatusEmbed(monitors, renderDecision.publicStatusUrl);
+  const messagePayload = renderDecision.mode === 'link_preview'
+    ? { content: buildStatusLinkPreviewMessage(renderDecision.publicStatusUrl), embeds: [] }
+    : { content: null, embeds: [statusEmbed] };
 
   try {
     if (statusMessageId) {
@@ -589,6 +684,7 @@ async function updateStatusMessage() {
     }
     lastEditTimestamp = Date.now();
     logger.info(`Status aktualisiert: ${operationalCount}/${monitors.length} Dienste online`);
+    logger.info(`Status Render Mode: ${renderDecision.mode}${renderDecision.publicStatusUrl ? ` | ${renderDecision.publicStatusUrl}` : ''}`);
 
     // Channel-Name + Topic bei Statuswechsel aktualisieren
     await updateChannelIndicator(channel, monitors);

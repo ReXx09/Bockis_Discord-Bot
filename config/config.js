@@ -74,6 +74,12 @@ const config = convict({
       default: '',
       env: 'DISCORD_NOTIFICATION_CHANNEL'
     },
+    statusRenderMode: {
+      doc: 'Render-Modus fÃ¼r die Status-Nachricht: auto bevorzugt Link-Preview, link_preview erzwingt URL-Preview, embed erzwingt das Fallback-Embed',
+      format: ['auto', 'link_preview', 'embed'],
+      default: 'auto',
+      env: 'DISCORD_STATUS_RENDER_MODE'
+    },
     channelStatusIndicator: {
       doc: 'Channel-Name und Topic automatisch mit Statusfarbe aktualisieren (🟢/🟡/🔴)',
       format: Boolean,

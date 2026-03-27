@@ -501,6 +501,8 @@ async function finalize(rl, discord, kuma, optional) {
     `STATUS_CHANNEL_ID=${discord.statusChannelId}`,
     `DISCORD_NOTIFICATION_CHANNEL=${discord.notifChannel}`,
     '# Channel-Name automatisch mit Statusfarbe (🟢/🟡/🔴) aktualisieren',
+    '# Render-Modus fuer Discord-Status: auto = Link-Preview bevorzugen, embed = Fallback-Embed erzwingen',
+    'DISCORD_STATUS_RENDER_MODE=auto',
     'CHANNEL_STATUS_INDICATOR=true',
     '',
     '# ── Uptime Kuma ─────────────────────────────────────────────────────────────',

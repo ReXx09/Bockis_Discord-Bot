@@ -312,6 +312,7 @@ module.exports = function startWebServer({
         DISCORD_TOKEN:                masked,
         STATUS_CHANNEL_ID:            get('STATUS_CHANNEL_ID'),
         DISCORD_NOTIFICATION_CHANNEL: get('DISCORD_NOTIFICATION_CHANNEL'),
+        DISCORD_STATUS_RENDER_MODE:   get('DISCORD_STATUS_RENDER_MODE') || 'auto',
         UPTIME_KUMA_URL:              get('UPTIME_KUMA_URL'),
         CHANNEL_STATUS_INDICATOR:     get('CHANNEL_STATUS_INDICATOR') || 'true',
       });
@@ -325,6 +326,7 @@ module.exports = function startWebServer({
 
   app.post('/api/config', dashboardAuth, (req, res) => {
     const ALLOWED_CFG = ['DISCORD_TOKEN', 'STATUS_CHANNEL_ID', 'DISCORD_NOTIFICATION_CHANNEL',
+                         'DISCORD_STATUS_RENDER_MODE',
                          'UPTIME_KUMA_URL', 'CHANNEL_STATUS_INDICATOR'];
     const envPath = path.join(rootDir, '.env');
     if (!fs.existsSync(envPath)) return res.json({ ok: false, error: '.env nicht gefunden' });
@@ -340,6 +342,8 @@ module.exports = function startWebServer({
       }
       if ((key === 'STATUS_CHANNEL_ID' || key === 'DISCORD_NOTIFICATION_CHANNEL') && !/^\d+$/.test(val))
         return res.json({ ok: false, error: `${key}: Nur Zahlen erlaubt (Discord ID)` });
+      if (key === 'DISCORD_STATUS_RENDER_MODE' && !['auto', 'link_preview', 'embed'].includes(val))
+        return res.json({ ok: false, error: 'DISCORD_STATUS_RENDER_MODE muss auto, link_preview oder embed sein' });
       if (key === 'UPTIME_KUMA_URL' && !/^https?:\/\/.+/.test(val))
         return res.json({ ok: false, error: 'UPTIME_KUMA_URL muss mit http:// oder https:// beginnen' });
       if (key === 'CHANNEL_STATUS_INDICATOR' && !['true', 'false'].includes(val))
