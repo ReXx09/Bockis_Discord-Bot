@@ -747,7 +747,16 @@ async function updateStatusMessage() {
     if (statusMessageId) {
       try {
         const existingMessage = await channel.messages.fetch(statusMessageId);
-        await existingMessage.edit(messagePayload);
+        // Für Link-Preview: Lösche alte Message und sende neu (Discord unfurlt nur neue Messages)
+        if (renderDecision.mode === 'link_preview') {
+          await existingMessage.delete();
+          const newMessage = await channel.send(messagePayload);
+          statusMessageId = newMessage.id;
+          saveState({ statusMessageId, lastChannelStatus, lastChannelNameMs, serviceCategoryId, serviceChannels });
+        } else {
+          // Für Embeds: Normal editieren
+          await existingMessage.edit(messagePayload);
+        }
       } catch {
         const newMessage = await channel.send(messagePayload);
         statusMessageId = newMessage.id;
