@@ -114,6 +114,19 @@
     }
     .card.dragging { opacity: 0.5; }
     .card.drag-over { border-color: var(--blue); box-shadow: 0 0 0 2px rgba(56,139,253,.2); }
+    .drop-placeholder {
+      min-height: 96px;
+      border: 2px dashed rgba(56,139,253,.75);
+      border-radius: var(--radius);
+      background: rgba(56,139,253,.08);
+      box-shadow: 0 0 0 2px rgba(56,139,253,.16), 0 0 18px rgba(56,139,253,.24);
+      pointer-events: none;
+      animation: dropPulse .9s ease-in-out infinite alternate;
+    }
+    @keyframes dropPulse {
+      from { box-shadow: 0 0 0 1px rgba(56,139,253,.14), 0 0 8px rgba(56,139,253,.18); }
+      to   { box-shadow: 0 0 0 2px rgba(56,139,253,.28), 0 0 22px rgba(56,139,253,.34); }
+    }
     
     /* CARD WRAPPER MIT COLLAPSE */
     .card-wrapper {
@@ -1095,10 +1108,31 @@
   const STORAGE_KEY_SPAN     = 'dashboard-card-span';
 
   let dragSrc = null;
+  let dropPlaceholder = null;
 
   function initCardSystem() {
     const grid = document.getElementById('dashboardGrid');
     if (!grid) return;
+
+    if (!grid.dataset.dragBound) {
+      grid.dataset.dragBound = '1';
+      grid.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        if (!dragSrc || !dropPlaceholder) return;
+        if (e.target === grid) {
+          dropPlaceholder.dataset.span = dragSrc.dataset.span || '12';
+          grid.appendChild(dropPlaceholder);
+        }
+      });
+      grid.addEventListener('drop', (e) => {
+        e.preventDefault();
+        if (!dragSrc || !dropPlaceholder) return;
+        if (dropPlaceholder.parentNode === grid) {
+          grid.insertBefore(dragSrc, dropPlaceholder);
+          saveCardOrder();
+        }
+      });
+    }
 
     Array.from(grid.querySelectorAll(':scope > .card')).forEach(card => {
       if (!card.dataset.cardId)
@@ -1120,6 +1154,7 @@
 
     card.addEventListener('dragstart', (e) => {
       dragSrc = card;
+      ensureDropPlaceholder(card);
       e.dataTransfer.effectAllowed = 'move';
       e.dataTransfer.setData('text/plain', card.dataset.cardId);
       setTimeout(() => card.classList.add('dragging'), 0);
@@ -1128,12 +1163,30 @@
     card.addEventListener('dragend', () => {
       card.classList.remove('dragging');
       document.querySelectorAll('.card.drag-over').forEach(c => c.classList.remove('drag-over'));
+      removeDropPlaceholder();
       dragSrc = null;
     });
 
     card.addEventListener('dragover', (e) => {
       e.preventDefault();
-      if (dragSrc && dragSrc !== card) card.classList.add('drag-over');
+      if (!dragSrc || dragSrc === card) return;
+      card.classList.add('drag-over');
+
+      const rect = card.getBoundingClientRect();
+      const placeBefore = e.clientY < rect.top + rect.height / 2;
+      const grid = document.getElementById('dashboardGrid');
+      if (!grid || !dropPlaceholder) return;
+
+      dropPlaceholder.dataset.span = dragSrc.dataset.span || '12';
+      if (placeBefore) {
+        if (card !== dropPlaceholder.nextElementSibling) {
+          grid.insertBefore(dropPlaceholder, card);
+        }
+      } else {
+        if (card.nextSibling !== dropPlaceholder) {
+          grid.insertBefore(dropPlaceholder, card.nextSibling);
+        }
+      }
     });
 
     card.addEventListener('dragleave', (e) => {
@@ -1145,11 +1198,30 @@
       card.classList.remove('drag-over');
       if (!dragSrc || dragSrc === card) return;
       const grid = document.getElementById('dashboardGrid');
-      const cards = Array.from(grid.querySelectorAll(':scope > .card'));
-      const si = cards.indexOf(dragSrc), ti = cards.indexOf(card);
-      grid.insertBefore(dragSrc, si < ti ? card.nextSibling : card);
+      if (grid && dropPlaceholder && dropPlaceholder.parentNode === grid) {
+        grid.insertBefore(dragSrc, dropPlaceholder);
+      }
       saveCardOrder();
     });
+  }
+
+  function ensureDropPlaceholder(card) {
+    if (!dropPlaceholder) {
+      dropPlaceholder = document.createElement('div');
+      dropPlaceholder.className = 'drop-placeholder';
+      dropPlaceholder.setAttribute('aria-hidden', 'true');
+    }
+    dropPlaceholder.dataset.span = card.dataset.span || '12';
+    const grid = document.getElementById('dashboardGrid');
+    if (grid && dropPlaceholder.parentNode !== grid) {
+      grid.appendChild(dropPlaceholder);
+    }
+  }
+
+  function removeDropPlaceholder() {
+    if (dropPlaceholder && dropPlaceholder.parentNode) {
+      dropPlaceholder.parentNode.removeChild(dropPlaceholder);
+    }
   }
 
   function addCardControls(card) {
