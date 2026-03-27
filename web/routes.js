@@ -20,6 +20,13 @@ const express     = require('express');
 const axios       = require('axios');
 const { execFile, execSync, spawn } = require('child_process');
 
+let sharp = null;
+try {
+  sharp = require('sharp');
+} catch {
+  sharp = null;
+}
+
 // Erlaubte Werte für Service-Control (Whitelist gegen Command-Injection)
 const ALLOWED_SERVICES = ['bockis-bot', 'uptime-kuma', 'cloudflared'];
 const ALLOWED_ACTIONS  = ['start', 'stop', 'restart', 'status'];
@@ -398,13 +405,13 @@ module.exports = function startWebServer({
       const head = `
         <meta property="og:title" content="Dienste-Status">
         <meta property="og:description" content="${summary}">
-        <meta property="og:image" content="${baseUrl}/api/badge/summary?style=flat-square">
+        <meta property="og:image" content="${baseUrl}/api/badge/summary?style=flat-square&format=png">
         <meta property="og:url" content="${statusUrl}">
         <meta property="og:type" content="website">
         <meta name="twitter:card" content="summary_large_image">
         <meta name="twitter:title" content="Dienste-Status">
         <meta name="twitter:description" content="${summary}">
-        <meta name="twitter:image" content="${baseUrl}/api/badge/summary?style=flat-square">
+        <meta name="twitter:image" content="${baseUrl}/api/badge/summary?style=flat-square&format=png">
       `;
 
       html = html.replace('</head>', `${head}</head>`);
@@ -442,13 +449,14 @@ module.exports = function startWebServer({
 
   app.get('/api/badge/summary', async (req, res) => {
     try {
-      const { style = 'flat-square' } = req.query;
-      const monitorData = getMonitorData ? getMonitorData() : {};
-      const total = Object.keys(monitorData).length || 0;
-      const up = Object.values(monitorData).filter((m) => m.status === 'up').length || 0;
+      const { format = 'svg' } = req.query;
+      const monitorData = await getMonitorData();
+      const monitors = Array.isArray(monitorData) ? monitorData : [];
+      const total = monitors.length;
+      const up = monitors.filter((m) => m && m.status === 1).length;
       const down = total - up;
 
-      // Einfache SVG Badge generieren (für Link-Preview Image)
+      // Einfache Summary-Grafik generieren. Discord rendert PNG deutlich zuverlässiger als SVG.
       const badgeText = `${up}/${total} Online`;
       const bgColor = down === 0 ? '31C16E' : down === total ? 'E74C3C' : 'F39C12'; // Grün/Rot/Orange
       const svg = `
@@ -482,6 +490,17 @@ module.exports = function startWebServer({
           </g>
         </svg>
       `;
+
+      if (String(format).toLowerCase() === 'png' && sharp) {
+        const png = await sharp(Buffer.from(svg)).png().toBuffer();
+        res.setHeader('Content-Type', 'image/png');
+        res.setHeader('Cache-Control', 'max-age=300');
+        return res.send(png);
+      }
+
+      if (String(format).toLowerCase() === 'png' && !sharp) {
+        logger.warn('/api/badge/summary: PNG angefordert, aber sharp ist nicht installiert - Fallback auf SVG');
+      }
 
       res.setHeader('Content-Type', 'image/svg+xml; charset=utf-8');
       res.setHeader('Cache-Control', 'max-age=300');
