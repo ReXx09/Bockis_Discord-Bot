@@ -61,6 +61,25 @@ module.exports = function startWebServer({
     return res.status(401).send('Authentifizierung erforderlich');
   }
 
+  function readCpuTempC() {
+    try {
+      const tempFile = '/sys/class/thermal/thermal_zone0/temp';
+      if (fs.existsSync(tempFile)) {
+        const raw = fs.readFileSync(tempFile, 'utf8').trim();
+        const milli = parseInt(raw, 10);
+        if (Number.isFinite(milli)) return milli / 1000;
+      }
+    } catch { /* ignore */ }
+
+    try {
+      const out = execSync('vcgencmd measure_temp', { timeout: 1200 }).toString();
+      const match = out.match(/temp=([0-9.]+)/i);
+      if (match) return parseFloat(match[1]);
+    } catch { /* ignore */ }
+
+    return null;
+  }
+
   // ── Statische Routen ────────────────────────────────────────────────────────
 
   app.get('/', (req, res) => res.redirect('/dashboard'));
@@ -120,6 +139,37 @@ module.exports = function startWebServer({
       memHeapMb:    (mem.heapUsed / 1024 / 1024).toFixed(1),
       discordReady: client.isReady()
     });
+  });
+
+  // ── API: Raspberry/System-Info ─────────────────────────────────────────────
+
+  app.get('/api/raspi-status', dashboardAuth, (req, res) => {
+    try {
+      const total = os.totalmem();
+      const free = os.freemem();
+      const used = Math.max(0, total - free);
+      const usedPct = total > 0 ? (used / total) * 100 : 0;
+      const load = os.loadavg();
+      const cpuTemp = readCpuTempC();
+
+      res.json({
+        ok: true,
+        hostname: os.hostname(),
+        platform: `${os.type()} ${os.release()}`,
+        uptime: os.uptime(),
+        memTotalMb: Math.round(total / 1024 / 1024),
+        memUsedMb: Math.round(used / 1024 / 1024),
+        memFreeMb: Math.round(free / 1024 / 1024),
+        memUsedPercent: Number(usedPct.toFixed(1)),
+        load1: Number(load[0].toFixed(2)),
+        load5: Number(load[1].toFixed(2)),
+        load15: Number(load[2].toFixed(2)),
+        cpuTempC: cpuTemp != null ? Number(cpuTemp.toFixed(1)) : null
+      });
+    } catch (err) {
+      logger.error(`/api/raspi-status Fehler: ${err.message}`);
+      res.json({ ok: false, error: err.message });
+    }
   });
 
   // ── API: Log-Datei (letzte 100 Zeilen) ─────────────────────────────────────

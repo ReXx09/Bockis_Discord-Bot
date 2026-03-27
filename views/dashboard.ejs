@@ -580,6 +580,13 @@
     return `<div class="row"><span class="row-label">${label}</span><span class="row-value">${value}</span></div>`;
   }
 
+  function tempBadge(tempC) {
+    if (tempC == null || Number.isNaN(tempC)) return '<span class="badge b-gray">N/V</span>';
+    if (tempC >= 75) return `<span class="badge b-red">${tempC.toFixed(1)} °C</span>`;
+    if (tempC >= 65) return `<span class="badge b-yellow">${tempC.toFixed(1)} °C</span>`;
+    return `<span class="badge b-green">${tempC.toFixed(1)} °C</span>`;
+  }
+
   // ── Render: Bot Info ─────────────────────────────────
   function renderBot(d) {
     const dot   = d.discordReady ? '<span class="dot dot-g"></span>' : '<span class="dot dot-r"></span>';
@@ -595,12 +602,23 @@
   }
 
   // ── Render: System ───────────────────────────────────
-  function renderSys(d) {
+  function renderSys(bot, raspi = null) {
+    const systemRam = raspi
+      ? `${raspi.memUsedMb} / ${raspi.memTotalMb} MB (${raspi.memUsedPercent}%)`
+      : '–';
+    const load = raspi
+      ? `${raspi.load1} / ${raspi.load5} / ${raspi.load15}`
+      : '–';
+    const platform = raspi?.platform || navigator.platform || '–';
+
     document.getElementById('sysInfo').innerHTML =
-      row('Node.js',      d.nodeVersion) +
-      row('RAM (Prozess)', d.memUsedMb + ' MB') +
-      row('Heap (genutzt)', d.memHeapMb + ' MB') +
-      row('Plattform',    navigator.platform || '–');
+      row('CPU-Temperatur', tempBadge(raspi?.cpuTempC ?? null)) +
+      row('RAM (Raspberry)', systemRam) +
+      row('Load (1/5/15)', load) +
+      row('Node.js', bot.nodeVersion) +
+      row('RAM (Prozess)', bot.memUsedMb + ' MB') +
+      row('Heap (genutzt)', bot.memHeapMb + ' MB') +
+      row('Plattform', platform);
   }
 
   // ── Render: Monitors ─────────────────────────────────
@@ -680,12 +698,13 @@
   // ── Fetch All ────────────────────────────────────────
   async function fetchAll() {
     try {
-      const [bot, status, logs] = await Promise.all([
+      const [bot, status, logs, raspi] = await Promise.all([
         fetch('/api/bot-info').then(r => r.json()),
         fetch('/api/status').then(r => r.json()),
-        fetch('/api/logs').then(r => r.json())
+        fetch('/api/logs').then(r => r.json()),
+        fetch('/api/raspi-status').then(r => r.json()).catch(() => ({ ok: false }))
       ]);
-      if (bot.ok)    { renderBot(bot);    renderSys(bot); }
+      if (bot.ok)    { renderBot(bot); renderSys(bot, raspi?.ok ? raspi : null); }
       if (status.ok) renderMonitors(status.monitors);
       if (logs.ok)   renderLogs(logs);
     } catch (e) {
