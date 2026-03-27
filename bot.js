@@ -430,6 +430,66 @@ async function isStatusPageReachable(url) {
   }
 }
 
+function readMetaTag(html, attribute, name) {
+  const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const pattern = new RegExp(
+    `<meta[^>]+${attribute}=["']${escapedName}["'][^>]+content=["']([^"']*)["'][^>]*>|<meta[^>]+content=["']([^"']*)["'][^>]+${attribute}=["']${escapedName}["'][^>]*>`,
+    'i'
+  );
+  const match = html.match(pattern);
+  return (match?.[1] || match?.[2] || '').trim();
+}
+
+async function inspectStatusPagePreview(url) {
+  if (!url) {
+    return { reachable: false, richPreview: false };
+  }
+
+  try {
+    const resp = await axios.get(url, {
+      timeout: 8_000,
+      maxRedirects: 5,
+      validateStatus: () => true,
+      responseType: 'text'
+    });
+
+    if (resp.status < 200 || resp.status >= 400 || typeof resp.data !== 'string') {
+      return { reachable: false, richPreview: false };
+    }
+
+    const html = resp.data;
+    const ogTitle = readMetaTag(html, 'property', 'og:title');
+    const ogDescription = readMetaTag(html, 'property', 'og:description');
+    const ogImage = readMetaTag(html, 'property', 'og:image');
+    const twitterCard = readMetaTag(html, 'name', 'twitter:card');
+    const twitterImage = readMetaTag(html, 'name', 'twitter:image');
+    const metaDescription = readMetaTag(html, 'name', 'description');
+
+    const richPreview = Boolean(
+      ogImage ||
+      twitterImage ||
+      (twitterCard && twitterCard !== 'summary') ||
+      ogDescription ||
+      metaDescription
+    );
+
+    return {
+      reachable: true,
+      richPreview,
+      meta: {
+        ogTitle,
+        ogDescription,
+        ogImage,
+        twitterCard,
+        twitterImage,
+        metaDescription
+      }
+    };
+  } catch {
+    return { reachable: false, richPreview: false };
+  }
+}
+
 async function getStatusRenderMode() {
   const configuredMode = config.get('discord.statusRenderMode');
   const publicStatusUrl = getPublicStatusUrl();
@@ -451,9 +511,14 @@ async function getStatusRenderMode() {
     return { mode: 'link_preview', publicStatusUrl };
   }
 
-  const reachable = await isStatusPageReachable(publicStatusUrl);
-  if (!reachable) {
+  const previewInfo = await inspectStatusPagePreview(publicStatusUrl);
+  if (!previewInfo.reachable) {
     logger.warn(`Status Render Mode: Link-Preview nicht verfuegbar, Fallback auf Embed: ${publicStatusUrl}`);
+    return { mode: 'custom_embed', publicStatusUrl };
+  }
+
+  if (!previewInfo.richPreview) {
+    logger.warn(`Status Render Mode: Nur minimale Link-Vorschau erkannt, Fallback auf Embed: ${publicStatusUrl}`);
     return { mode: 'custom_embed', publicStatusUrl };
   }
 
@@ -461,7 +526,7 @@ async function getStatusRenderMode() {
 }
 
 function buildStatusLinkPreviewMessage(statusPageUrl) {
-  return `\uD83C\uDF10 **LIVE SERVICE STATUS** | [Statusseite oeffnen](${statusPageUrl})\n${statusPageUrl}`;
+  return statusPageUrl;
 }
 // #endregion
 
