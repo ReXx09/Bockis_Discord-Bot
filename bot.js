@@ -18,7 +18,6 @@ const { Sequelize, DataTypes, Op } = require('sequelize');
 const fs = require('fs');
 
 // #region 1. ENV-VALIDIERUNG
-const fs = require('fs');
 const path = require('path');
 const envPath = path.join(__dirname, '.env');
 const envExamplePath = path.join(__dirname, '.env.example');
