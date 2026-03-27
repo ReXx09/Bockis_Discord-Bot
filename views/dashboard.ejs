@@ -559,6 +559,15 @@
              placeholder="http://192.168.x.x:3001">
     </div>
     <div class="cfg-field">
+      <label class="cfg-label" for="cfgRenderMode">Discord Status Renderer</label>
+      <select class="cfg-input" id="cfgRenderMode">
+        <option value="link_preview">Link-Preview (bevorzugt)</option>
+        <option value="embed">Custom-Embed (fallback-fest)</option>
+        <option value="auto">Auto (entscheidet automatisch)</option>
+      </select>
+      <div class="cfg-hint">Hier kannst du direkt zwischen Discord Link-Preview und Custom-Embed umschalten.</div>
+    </div>
+    <div class="cfg-field">
       <label class="cfg-label">Channel-Status-Indikator</label>
       <div style="display:flex;align-items:center;gap:12px;margin-top:2px">
         <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px">
@@ -1033,6 +1042,7 @@
       document.getElementById('cfgStatusCh').value = d.STATUS_CHANNEL_ID || '';
       document.getElementById('cfgNotifCh').value  = d.DISCORD_NOTIFICATION_CHANNEL || '';
       document.getElementById('cfgKumaUrl').value  = d.UPTIME_KUMA_URL || '';
+      document.getElementById('cfgRenderMode').value = d.DISCORD_STATUS_RENDER_MODE || 'auto';
       document.getElementById('cfgStatus').textContent = '';
       document.getElementById('cfgToken').placeholder = d.DISCORD_TOKEN
         ? `Aktuell: ${d.DISCORD_TOKEN} — leer lassen = unverändert`
@@ -1059,11 +1069,13 @@
     const statusCh= document.getElementById('cfgStatusCh').value.trim();
     const notifCh = document.getElementById('cfgNotifCh').value.trim();
     const kumaUrl = document.getElementById('cfgKumaUrl').value.trim();
+    const renderMode = document.getElementById('cfgRenderMode').value;
 
     if (token)    body.DISCORD_TOKEN                = token;
     if (statusCh) body.STATUS_CHANNEL_ID            = statusCh;
     if (notifCh)  body.DISCORD_NOTIFICATION_CHANNEL = notifCh;
     if (kumaUrl)  body.UPTIME_KUMA_URL              = kumaUrl;
+    if (renderMode) body.DISCORD_STATUS_RENDER_MODE = renderMode;
     body.CHANNEL_STATUS_INDICATOR = document.getElementById('cfgChannelIndicator').checked ? 'true' : 'false';
 
     // immer mindestens CHANNEL_STATUS_INDICATOR → body nie leer
