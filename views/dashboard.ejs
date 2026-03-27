@@ -620,17 +620,18 @@
         <select class="cfg-input" id="cfgRenderMode" style="flex:1;">
           <option value="auto">🤖 Auto (beste Methode wählen)</option>
           <option value="direct">🔗 Direct (Link + OG-Tags Proxy)</option>
-          <option value="graphical">📊 Graphical (Link + Uptime-Badge)</option>
+          <option value="graphical">📊 Graphical (Link + PNG-Statusgrafik)</option>
           <option value="link_preview">🧷 Link-Preview (Legacy direkt auf Statusseite)</option>
           <option value="embed">📋 Embed (Discord Rich Card)</option>
         </select>
         <button class="btn btn-small" id="btnTestRender" onclick="testRendering()" style="padding:8px 12px;font-size:12px;white-space:nowrap;">🧪 Jetzt testen</button>
+        <button class="btn btn-small" id="btnPipelineTest" onclick="testRenderPipeline()" style="padding:8px 12px;font-size:12px;white-space:nowrap;">🔎 Pipeline-Test</button>
       </div>
       <div class="cfg-hint">
         <strong>Render-Modi:</strong><br/>
         🤖 <strong>Auto</strong> = Beste Methode automatisch wählen<br/>
         🔗 <strong>Direct</strong> = Link mit Bot-Proxy (OG-Tags injiziert)<br/>
-        📊 <strong>Graphical</strong> = Link mit Uptime-Badge-SVG als Bild<br/>
+        📊 <strong>Graphical</strong> = Link mit PNG-Statusgrafik als Bild<br/>
         📋 <strong>Embed</strong> = Traditioneller Discord Embed (keine Link-Preview)
       </div>
     </div>
@@ -1366,6 +1367,43 @@
     } finally {
       btn.disabled = false;
       btn.textContent = '🧪 Jetzt testen';
+    }
+  }
+
+  async function testRenderPipeline() {
+    const btn = document.getElementById('btnPipelineTest');
+    const st = document.getElementById('cfgStatus');
+    btn.disabled = true;
+    btn.textContent = '⏳ Prüfe…';
+
+    try {
+      const d = await fetch('/api/diagnostics/render-pipeline').then(r => r.json());
+      if (!d.ok) {
+        st.textContent = `✗ Pipeline-Test fehlgeschlagen: ${d.error || 'unknown'}`;
+        st.className = 'err';
+        return;
+      }
+
+      const proxyOk = Boolean(d.proxyProbe?.ok && d.proxyProbe?.richPreview);
+      const imageOk = Boolean(d.imageProbe?.ok);
+      const hasWebPublicUrl = Boolean(d.webPublicUrl);
+
+      if (proxyOk && imageOk && hasWebPublicUrl) {
+        st.textContent = '✓ Pipeline OK: Proxy liefert OG-Tags + Bild-Endpunkt ist erreichbar.';
+        st.className = 'ok';
+        toast('✓ Render-Pipeline ist vollständig erreichbar', 'ok');
+      } else {
+        const hintText = Array.isArray(d.hints) && d.hints.length ? d.hints.join(' | ') : 'Unbekannte Ursache';
+        st.textContent = `⚠ Pipeline unvollständig: ${hintText}`;
+        st.className = 'warn';
+        toast('⚠ Render-Pipeline hat Lücken', 'warn');
+      }
+    } catch (e) {
+      st.textContent = `✗ Pipeline-Test Fehler: ${e.message}`;
+      st.className = 'err';
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '🔎 Pipeline-Test';
     }
   }
 

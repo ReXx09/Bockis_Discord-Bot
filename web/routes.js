@@ -359,6 +359,83 @@ module.exports = function startWebServer({
     }
   });
 
+  // ── API: Render-Pipeline Diagnose (Proxy + Bild-Endpunkt) ──────────────────
+
+  app.get('/api/diagnostics/render-pipeline', dashboardAuth, async (req, res) => {
+    try {
+      const statusUrl = getPublicStatusUrl();
+      const webPublicUrl = (config.get('webPublicUrl') || '').replace(/\/+$/, '');
+      const hints = [];
+
+      if (!statusUrl) {
+        hints.push('Keine öffentliche Status-URL verfügbar (cloudflare.publicUrl / uptimeKuma.statusPageSlug prüfen).');
+      }
+
+      if (!webPublicUrl) {
+        hints.push('WEB_PUBLIC_URL fehlt - Direct/Graphical können ohne öffentliche Bot-URL nicht funktionieren.');
+      }
+
+      let proxyProbe = { ok: false, error: 'übersprungen' };
+      let imageProbe = { ok: false, error: 'übersprungen' };
+
+      if (webPublicUrl) {
+        const proxyUrl = `${webPublicUrl}/api/status-unfurl`;
+        proxyProbe = await runLinkProbe(
+          proxyUrl,
+          'Mozilla/5.0 (compatible; Discordbot/2.0; +https://discord.com)'
+        );
+
+        try {
+          const imgResp = await axios.get(`${webPublicUrl}/api/badge/summary?format=png`, {
+            timeout: 10000,
+            validateStatus: () => true,
+            responseType: 'arraybuffer',
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (compatible; Discordbot/2.0; +https://discord.com)'
+            }
+          });
+          const contentType = String(imgResp.headers?.['content-type'] || '');
+          const imageOk = imgResp.status >= 200 && imgResp.status < 400 && /^image\/(png|jpeg|jpg|webp|gif|svg\+xml)/i.test(contentType);
+          imageProbe = {
+            ok: imageOk,
+            status: imgResp.status,
+            contentType,
+          };
+          if (!imageOk) {
+            hints.push(`Bild-Endpunkt liefert kein unterstütztes Bild (${imgResp.status}, ${contentType || 'unbekannt'}).`);
+          }
+        } catch (err) {
+          imageProbe = { ok: false, error: err.message };
+          hints.push(`Bild-Endpunkt nicht erreichbar: ${err.message}`);
+        }
+
+        if (!proxyProbe.ok) {
+          hints.push(`Proxy-Endpunkt nicht erreichbar: ${proxyProbe.error || 'unbekannt'}`);
+        } else {
+          if (!(proxyProbe.status >= 200 && proxyProbe.status < 400)) {
+            hints.push(`Proxy-Endpunkt liefert HTTP ${proxyProbe.status}.`);
+          }
+          if (!proxyProbe.richPreview) {
+            hints.push('Proxy-Endpunkt liefert keine ausreichenden OG/Twitter Meta-Tags.');
+          }
+        }
+      }
+
+      return res.json({
+        ok: true,
+        checkedAt: new Date().toISOString(),
+        statusUrl,
+        webPublicUrl,
+        proxyProbe,
+        imageProbe,
+        hints,
+      });
+    } catch (err) {
+      logger.error(`/api/diagnostics/render-pipeline Fehler: ${err.message}`);
+      return res.json({ ok: false, error: err.message });
+    }
+  });
+
   // ── API: Discord-Refresh ────────────────────────────────────────────────────
 
   app.post('/api/refresh', dashboardAuth, async (req, res) => {
@@ -397,9 +474,10 @@ module.exports = function startWebServer({
       });
 
       let html = String(resp.data || '');
+      const webPublicUrl = (config.get('webPublicUrl') || '').trim();
       const uptimeKumaUrl = config.get('uptimeKuma.url') || '';
       const cloudflareUrl = config.get('cloudflare.publicUrl') || '';
-      const baseUrl = cloudflareUrl || uptimeKumaUrl;
+      const baseUrl = webPublicUrl || cloudflareUrl || uptimeKumaUrl;
 
       // Injiziere OG-Tags ins <head>
       const head = `
@@ -419,28 +497,6 @@ module.exports = function startWebServer({
       res.send(html);
     } catch (err) {
       logger.error(`/api/status-unfurl Fehler: ${err.message}`);
-      res.status(500).json({ ok: false, error: err.message });
-    }
-  });
-
-  // ── API: Status-Badge (Umleitung zu Uptime Kuma Badge API) ──────────────────
-
-  app.get('/api/status-badge/:monitorId', async (req, res) => {
-    try {
-      const { monitorId } = req.params;
-      const baseUrl = (config.get('uptimeKuma.url') || '').replace(/\/+$/, '');
-      if (!baseUrl) {
-        return res.status(400).json({ ok: false, error: 'Uptime Kuma URL nicht konfiguriert' });
-      }
-
-      // Leite zur Uptime Kuma Badge API weiter
-      const badgeUrl = `${baseUrl}/api/badge/${monitorId}/uptime?style=flat-square`;
-      const resp = await axios.get(badgeUrl, { timeout: 5000, responseType: 'stream' });
-      res.setHeader('Content-Type', resp.headers['content-type']);
-      res.setHeader('Cache-Control', 'max-age=300'); // 5 Minuten Cache
-      resp.data.pipe(res);
-    } catch (err) {
-      logger.error(`/api/status-badge Fehler: ${err.message}`);
       res.status(500).json({ ok: false, error: err.message });
     }
   });
