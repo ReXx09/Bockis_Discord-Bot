@@ -17,6 +17,7 @@ const path        = require('path');
 const fs          = require('fs');
 const os          = require('os');
 const express     = require('express');
+const axios       = require('axios');
 const { execFile, execSync, spawn } = require('child_process');
 
 // Erlaubte Werte für Service-Control (Whitelist gegen Command-Injection)
@@ -78,6 +79,84 @@ module.exports = function startWebServer({
     } catch { /* ignore */ }
 
     return null;
+  }
+
+  function getPublicStatusUrl() {
+    const cloudflareUrl = config.get('cloudflare.publicUrl');
+    const slug = config.get('uptimeKuma.statusPageSlug');
+    if (cloudflareUrl) return `${cloudflareUrl.replace(/\/+$/, '')}/status/${slug}`;
+
+    const base = config.get('uptimeKuma.url');
+    if (!base) return null;
+    return `${base.replace(/\/+$/, '')}/status/${slug}`;
+  }
+
+  function readMetaTag(html, attrName, attrValue) {
+    const esc = String(attrValue).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(`<meta[^>]*${attrName}=["']${esc}["'][^>]*content=["']([^"']*)["'][^>]*>`, 'i');
+    const altRegex = new RegExp(`<meta[^>]*content=["']([^"']*)["'][^>]*${attrName}=["']${esc}["'][^>]*>`, 'i');
+    const match = html.match(regex) || html.match(altRegex);
+    return match?.[1]?.trim() || null;
+  }
+
+  async function runLinkProbe(url, userAgent) {
+    try {
+      const resp = await axios.get(url, {
+        timeout: 10000,
+        maxRedirects: 5,
+        validateStatus: () => true,
+        responseType: 'text',
+        headers: {
+          'User-Agent': userAgent,
+          Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+        }
+      });
+
+      const html = typeof resp.data === 'string' ? resp.data : '';
+      const headers = resp.headers || {};
+      const status = resp.status;
+      const contentType = String(headers['content-type'] || '');
+      const finalUrl = resp.request?.res?.responseUrl || url;
+
+      const ogTitle = readMetaTag(html, 'property', 'og:title');
+      const ogDescription = readMetaTag(html, 'property', 'og:description');
+      const ogImage = readMetaTag(html, 'property', 'og:image');
+      const ogUrl = readMetaTag(html, 'property', 'og:url');
+      const twitterCard = readMetaTag(html, 'name', 'twitter:card');
+      const twitterImage = readMetaTag(html, 'name', 'twitter:image');
+      const metaDescription = readMetaTag(html, 'name', 'description');
+
+      const richPreview = Boolean(ogTitle || ogDescription || ogImage || twitterCard || twitterImage || metaDescription);
+      const challengeDetected = /cf-challenge|attention required|captcha|cloudflare/i.test(html);
+
+      return {
+        ok: true,
+        status,
+        finalUrl,
+        contentType,
+        headers: {
+          cacheControl: headers['cache-control'] || null,
+          cfCacheStatus: headers['cf-cache-status'] || null,
+          server: headers.server || null,
+        },
+        meta: {
+          ogTitle,
+          ogDescription,
+          ogImage,
+          ogUrl,
+          twitterCard,
+          twitterImage,
+          metaDescription,
+        },
+        richPreview,
+        challengeDetected,
+      };
+    } catch (err) {
+      return {
+        ok: false,
+        error: err.message,
+      };
+    }
   }
 
   // ── Statische Routen ────────────────────────────────────────────────────────
@@ -190,6 +269,70 @@ module.exports = function startWebServer({
     } catch (err) {
       logger.error(`/api/logs Fehler: ${err.message}`);
       res.json({ ok: false, error: err.message, lines: [], file: null });
+    }
+  });
+
+  // ── API: Diagnose Link-Preview / Discord-Unfurl ───────────────────────────
+
+  app.get('/api/diagnostics/link-preview', dashboardAuth, async (req, res) => {
+    try {
+      const targetUrl = getPublicStatusUrl();
+      if (!targetUrl) {
+        return res.json({
+          ok: false,
+          error: 'Keine öffentliche Status-URL konfiguriert (CLOUDFLARE_PUBLIC_URL / UPTIME_KUMA_URL)',
+          targetUrl: null,
+        });
+      }
+
+      const discordProbe = await runLinkProbe(
+        targetUrl,
+        'Mozilla/5.0 (compatible; Discordbot/2.0; +https://discord.com)'
+      );
+      const defaultProbe = await runLinkProbe(
+        targetUrl,
+        'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0 Safari/537.36'
+      );
+
+      const hints = [];
+      if (!/^https:\/\//i.test(targetUrl)) {
+        hints.push('Link-Preview benötigt in Discord in der Regel HTTPS.');
+      }
+
+      if (!discordProbe.ok) {
+        hints.push(`Discord-Probe fehlgeschlagen: ${discordProbe.error}`);
+      } else {
+        if (!(discordProbe.status >= 200 && discordProbe.status < 400)) {
+          hints.push(`Discord-Probe liefert HTTP ${discordProbe.status} statt 2xx/3xx.`);
+        }
+        if (!/text\/html/i.test(discordProbe.contentType || '')) {
+          hints.push(`Content-Type ist nicht text/html (${discordProbe.contentType || 'unbekannt'}).`);
+        }
+        if (!discordProbe.richPreview) {
+          hints.push('Keine/zu wenige OG- oder Twitter-Meta-Tags gefunden.');
+        }
+        if (discordProbe.challengeDetected) {
+          hints.push('Cloudflare/Challenge erkannt - Discord-Crawler kann blockiert sein.');
+        }
+      }
+
+      if (defaultProbe.ok && discordProbe.ok && defaultProbe.status !== discordProbe.status) {
+        hints.push(`Unterschiedliche HTTP-Statuscodes (Browser=${defaultProbe.status}, Discord=${discordProbe.status}) deuten auf Crawler-Filter hin.`);
+      }
+
+      return res.json({
+        ok: true,
+        targetUrl,
+        checkedAt: new Date().toISOString(),
+        probes: {
+          discord: discordProbe,
+          browser: defaultProbe,
+        },
+        hints,
+      });
+    } catch (err) {
+      logger.error(`/api/diagnostics/link-preview Fehler: ${err.message}`);
+      return res.json({ ok: false, error: err.message });
     }
   });
 

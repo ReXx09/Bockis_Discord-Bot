@@ -42,6 +42,37 @@
     .header-right { display: flex; align-items: center; gap: 12px; }
     .timer { font-size: 12px; color: var(--muted); }
 
+    /* SUBNAV */
+    .subnav {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin: 0 0 16px;
+      padding: 10px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: linear-gradient(180deg, rgba(56,139,253,.10), rgba(56,139,253,.03));
+    }
+    .subnav-btn {
+      border: 1px solid var(--border);
+      background: var(--surface2);
+      color: var(--muted);
+      padding: 7px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: .03em;
+    }
+    .subnav-btn:hover { color: var(--text); border-color: var(--blue); }
+    .subnav-btn.active {
+      background: rgba(56,139,253,.18);
+      color: #c8e1ff;
+      border-color: rgba(56,139,253,.75);
+      box-shadow: inset 0 0 0 1px rgba(56,139,253,.2);
+    }
+    .pane-hidden { display: none !important; }
+
     /* BUTTONS */
     .btn {
       display: inline-flex;
@@ -461,12 +492,18 @@
     #cfgStatus.ok  { color: var(--green); }
     #cfgStatus.err { color: var(--red); }
     #cfgStatus.warn { color: var(--yellow, #d4b60d); }
+
+    .diag-hints { margin-top: 10px; }
+    .diag-hints .ll { border-left: 2px solid transparent; padding-left: 8px; }
+    .diag-hints .ll.e { border-left-color: var(--red); }
+    .diag-hints .ll.w { border-left-color: var(--yellow); }
+    .diag-hints .ll.i { border-left-color: var(--blue); }
   </style>
 </head>
 <body>
 
 <!-- ── UPDATE BANNER (wird per JS eingeblendet) ─────── -->
-<div id="updateBanner" class="hidden">
+<div id="updateBanner" class="hidden" data-pane="updates">
   <div class="ub-left">
     <span class="ub-icon">⚠️</span>
     <div>
@@ -481,7 +518,7 @@
 </div>
 
 <!-- ── UPDATE DETAIL SECTION ──────────────────────────── -->
-<div id="updateSection">
+<div id="updateSection" data-pane="updates">
   <div class="card" style="margin-bottom:16px">
     <div class="card-title">Neue Commits auf GitHub</div>
     <div id="commitList" class="commit-list"></div>
@@ -493,7 +530,7 @@
 <div class="header">
   <div>
     <h1>🤖 Bockis Bot · Dashboard</h1>
-    <div class="sub">Service Monitor · Live-Ansicht</div>
+    <div class="sub" id="headerSub">Service Monitor · Live-Ansicht</div>
   </div>
   <div class="header-right">
     <span class="timer" id="timer">Auto-Refresh in 30s</span>
@@ -503,11 +540,19 @@
   </div>
 </div>
 
+<!-- ── SUBMENÜ ───────────────────────────────────────── -->
+<div class="subnav">
+  <button class="subnav-btn active" data-pane-btn="overview" onclick="setActivePane('overview')">Übersicht</button>
+  <button class="subnav-btn" data-pane-btn="settings" onclick="setActivePane('settings')">Einstellungen</button>
+  <button class="subnav-btn" data-pane-btn="updates" onclick="setActivePane('updates')">Updates</button>
+  <button class="subnav-btn" data-pane-btn="diagnostics" onclick="setActivePane('diagnostics')">Diagnose</button>
+</div>
+
 <!-- ── DASHBOARD GRID ───────────────────────────────── -->
 <div class="dashboard-grid" id="dashboardGrid">
 
 <!-- ── BOT STATUS ─────────────────────────────────────── -->
-<div class="card" id="botCard" data-span="6">
+<div class="card" id="botCard" data-span="6" data-pane="overview">
   <div class="card-title">Bot Status</div>
   <div id="botInfo">
     <div class="sk"></div>
@@ -517,7 +562,7 @@
 </div>
 
 <!-- ── SYSTEM ─────────────────────────────────────────── -->
-<div class="card" id="sysCard" data-span="6">
+<div class="card" id="sysCard" data-span="6" data-pane="overview">
   <div class="card-title">System</div>
   <div id="sysInfo">
     <div class="sk"></div>
@@ -527,7 +572,7 @@
 </div>
 
 <!-- ── ROW 1b: CLOUDFLARE TUNNEL ─────────────────────── -->
-<div class="card" id="tunnelCard" data-span="12">
+<div class="card" id="tunnelCard" data-span="12" data-pane="overview">
   <div class="card-title">🌐 Cloudflare Tunnel</div>
   <div id="tunnelInfo">
     <div class="sk"></div>
@@ -536,7 +581,7 @@
 </div>
 
 <!-- ── ROW 1c: DISCORD KONFIGURATION ───────────────────── -->
-<div class="card" id="cfgCard" data-span="12">
+<div class="card" id="cfgCard" data-span="12" data-pane="settings">
   <div class="card-title">⚙️ Discord-Konfiguration</div>
   <div class="cfg-form">
     <div class="cfg-field">
@@ -591,13 +636,13 @@
 </div>
 
 <!-- ── ROW 2: MONITORS ────────────────────────────────── -->
-<div class="card" id="monitorsCard" data-span="12">
+<div class="card" id="monitorsCard" data-span="12" data-pane="overview">
   <div class="card-title">📡 Services <span class="count" id="monCount" style="margin-left:8px">–</span></div>
   <div class="grid-monitors" id="monGrid"></div>
 </div>
 
 <!-- ── ROW 2b: SERVICE CONTROL ────────────────── -->
-<div class="card" id="svcCard" data-span="12">
+<div class="card" id="svcCard" data-span="12" data-pane="settings">
   <div class="card-title">⚙️ Dienste verwalten <span class="muted" style="font-size:11px;font-weight:400;text-transform:none;letter-spacing:0;margin-left:8px">start / stop / restart via systemctl</span></div>
 <div class="svc-grid" id="svcGrid">
   <div class="svc-card" id="svc-bockis-bot">
@@ -638,11 +683,27 @@
 </div>
 
 <!-- ── ROW 3: LOGS ────────────────────────────────────── -->
-<div class="card" id="logsCard" data-span="12">
+<div class="card" id="logsCard" data-span="12" data-pane="diagnostics">
   <div class="card-title">📄 Bot-Logs <span class="muted" id="logFile" style="font-size:11px;font-weight:400;text-transform:none;letter-spacing:0;margin-left:8px">–</span></div>
   <div class="log-viewer" id="logViewer">
     <span class="muted">Lade Logs…</span>
   </div>
+</div>
+
+<!-- ── DIAGNOSE: LINK PREVIEW ─────────────────────────── -->
+<div class="card" id="diagCard" data-span="12" data-pane="diagnostics">
+  <div class="card-title">🧪 Link-Preview Diagnose</div>
+  <div class="mb12" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+    <button class="btn" id="btnDiagRun" onclick="runLinkPreviewDiagnostics()">Diagnose jetzt ausführen</button>
+    <span class="muted" id="diagCheckedAt">Noch kein Lauf</span>
+  </div>
+  <div id="diagSummary" class="mb12">
+    <div class="muted">Noch keine Diagnosedaten.</div>
+  </div>
+  <div class="log-viewer" id="diagViewer">
+    <span class="muted">Ausgabe erscheint nach dem ersten Diagnoselauf.</span>
+  </div>
+  <div class="diag-hints" id="diagHints"></div>
 </div>
 
 </div><!-- /.dashboard-grid -->
@@ -651,6 +712,114 @@
 <div id="toast"></div>
 
 <script>
+  const STORAGE_KEY_ACTIVE_PANE = 'dashboard-active-pane';
+
+  function setActivePane(pane) {
+    const paneLabels = {
+      overview: 'Service Monitor · Live-Ansicht',
+      settings: 'Einstellungen · Konfiguration & Steuerung',
+      updates: 'Updates · Versionen & Deploy',
+      diagnostics: 'Diagnose · Logs & Link-Preview-Checks'
+    };
+
+    document.querySelectorAll('[data-pane]').forEach(el => {
+      el.classList.toggle('pane-hidden', el.dataset.pane !== pane);
+    });
+
+    document.querySelectorAll('[data-pane-btn]').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.paneBtn === pane);
+    });
+
+    const headerSub = document.getElementById('headerSub');
+    if (headerSub) headerSub.textContent = paneLabels[pane] || paneLabels.overview;
+
+    localStorage.setItem(STORAGE_KEY_ACTIVE_PANE, pane);
+
+    if (pane === 'diagnostics') {
+      runLinkPreviewDiagnostics();
+    }
+  }
+
+  function escapeHtml(v) {
+    return String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  function diagLine(text, level = 'i') {
+    return `<div class="ll ${level}">${escapeHtml(text)}</div>`;
+  }
+
+  function renderLinkPreviewDiagnostics(d) {
+    const checkedAt = document.getElementById('diagCheckedAt');
+    const summary = document.getElementById('diagSummary');
+    const viewer = document.getElementById('diagViewer');
+    const hints = document.getElementById('diagHints');
+
+    if (!d.ok) {
+      checkedAt.textContent = 'Letzter Lauf: Fehler';
+      summary.innerHTML = `<div class="ll e">Diagnose fehlgeschlagen: ${escapeHtml(d.error || 'Unbekannter Fehler')}</div>`;
+      viewer.innerHTML = diagLine('Keine Daten verfügbar', 'w');
+      hints.innerHTML = '';
+      return;
+    }
+
+    const localTs = d.checkedAt ? new Date(d.checkedAt).toLocaleString('de-DE') : '–';
+    checkedAt.textContent = `Letzter Lauf: ${localTs}`;
+
+    const discord = d.probes?.discord || {};
+    const browser = d.probes?.browser || {};
+
+    summary.innerHTML =
+      row('Ziel-URL', escapeHtml(d.targetUrl || '–')) +
+      row('Discord HTTP', discord.ok ? discord.status : `Fehler (${escapeHtml(discord.error || 'n/a')})`) +
+      row('Browser HTTP', browser.ok ? browser.status : `Fehler (${escapeHtml(browser.error || 'n/a')})`) +
+      row('Discord Rich Preview', discord.richPreview ? '<span class="badge b-green">JA</span>' : '<span class="badge b-red">NEIN</span>') +
+      row('Discord Content-Type', escapeHtml(discord.contentType || '–'));
+
+    const lines = [];
+    lines.push(`URL: ${d.targetUrl || '–'}`);
+    if (discord.ok) {
+      lines.push(`Discord final URL: ${discord.finalUrl || '-'}`);
+      lines.push(`Discord cache-control: ${discord.headers?.cacheControl || '-'}`);
+      lines.push(`Discord cf-cache-status: ${discord.headers?.cfCacheStatus || '-'}`);
+      lines.push(`Discord server: ${discord.headers?.server || '-'}`);
+      lines.push(`OG title: ${discord.meta?.ogTitle || '-'}`);
+      lines.push(`OG description: ${discord.meta?.ogDescription || '-'}`);
+      lines.push(`OG image: ${discord.meta?.ogImage || '-'}`);
+      lines.push(`Twitter card: ${discord.meta?.twitterCard || '-'}`);
+      lines.push(`Twitter image: ${discord.meta?.twitterImage || '-'}`);
+      if (discord.challengeDetected) lines.push('Cloudflare/Challenge Hinweise im HTML erkannt');
+    } else {
+      lines.push(`Discord Probe Fehler: ${discord.error || 'unbekannt'}`);
+    }
+
+    viewer.innerHTML = lines.map(l => {
+      if (/fehler|challenge|nein/i.test(l)) return diagLine(l, 'e');
+      if (/cache|server|twitter|og /i.test(l)) return diagLine(l, 'w');
+      return diagLine(l, 'i');
+    }).join('');
+
+    const hintList = (d.hints || []).length
+      ? d.hints.map(h => diagLine(h, /block|fehler|nicht/i.test(h) ? 'e' : 'w')).join('')
+      : diagLine('Keine offensichtlichen Probleme gefunden.', 'i');
+    hints.innerHTML = hintList;
+  }
+
+  async function runLinkPreviewDiagnostics() {
+    const btn = document.getElementById('btnDiagRun');
+    if (!btn) return;
+    btn.disabled = true;
+    btn.textContent = '⏳ Diagnose läuft…';
+    try {
+      const d = await fetch('/api/diagnostics/link-preview').then(r => r.json());
+      renderLinkPreviewDiagnostics(d);
+    } catch (e) {
+      renderLinkPreviewDiagnostics({ ok: false, error: e.message });
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Diagnose jetzt ausführen';
+    }
+  }
+
   // ── Countdown ────────────────────────────────────────
   let cd = 30, cdTimer = null;
 
@@ -926,6 +1095,7 @@
   fetchAll();
   resetCd();
   checkUpdate();
+  setActivePane(localStorage.getItem(STORAGE_KEY_ACTIVE_PANE) || 'overview');
 
   // ── Update Check ─────────────────────────────────────
   let _updateData = null;
