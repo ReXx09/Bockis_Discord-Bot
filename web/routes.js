@@ -370,63 +370,40 @@ module.exports = function startWebServer({
       return res.json({ ok: false, error: `Fehler beim Schreiben: ${err.message}` });
     }
 
-    // Systemctl Restart mit sudo-n Fallback
-    let respSent = false;
-    
+    // Wichtig: erst Antwort senden, dann asynchron restarten.
+    // Sonst wird der HTTP-Request beim Selbst-Neustart oft abgebrochen ("Failed to fetch").
+    const updatedKeys = Object.keys(updates);
+
     const attemptRestart = (useSudo = true) => {
       const cmd = useSudo ? 'sudo' : 'systemctl';
       const args = useSudo ? ['-n', 'systemctl', 'restart', 'bockis-bot'] : ['restart', 'bockis-bot'];
-      
-      execFile(cmd, args, { timeout: 12000 }, (e, stdout, stderr) => {
-        if (e) {
-          // Wenn sudo fehlschlägt UND wir noch nicht ohne sudo versucht haben
-          if (useSudo && e.message.includes('sudo')) {
-            logger.info('Service Restart: sudo fehlgeschlagen, versuche ohne sudo…');
-            attemptRestart(false); // Rekursiv ohne sudo versuchen
-            return;
-          }
-          
-          logger.error(`Service Restart fehlgeschlagen: ${e.message}`);
-          if (!respSent) {
-            respSent = true;
-            res.json({
-              ok: true,
-              updated:     Object.keys(updates),
-              restarted:   false,
-              restartNote: `Service-Restart fehlgeschlagen: ${e.message}`,
-            });
-          }
-        } else {
-          logger.info(`Service 'bockis-bot' erfolgreich neu gestartet (${useSudo ? 'mit sudo' : 'ohne sudo'})`);
-          if (!respSent) {
-            respSent = true;
-            res.json({
-              ok: true,
-              updated:     Object.keys(updates),
-              restarted:   true,
-              restartNote: null,
-            });
-          }
+
+      execFile(cmd, args, { timeout: 12000 }, (e) => {
+        if (!e) {
+          logger.info(`Service 'bockis-bot' erfolgreich neu gestartet (${useSudo ? 'mit sudo -n' : 'ohne sudo'})`);
+          return;
         }
+
+        if (useSudo) {
+          logger.warn(`Restart via sudo -n fehlgeschlagen, fallback auf systemctl direkt: ${e.message}`);
+          attemptRestart(false);
+          return;
+        }
+
+        logger.error(`Service Restart endgültig fehlgeschlagen: ${e.message}`);
       });
     };
-    
-    // Starte mit sudo -n (non-interactive); Falls fehlschlag, fallback zu normalem systemctl
-    attemptRestart(true);
-    
-    // Fallback Response wenn execFile nicht antwortet
-    setTimeout(() => {
-      if (!respSent) {
-        respSent = true;
-        logger.warn('systemctl restart: Timeout - sende Success trotzdem');
-        res.json({
-          ok: true,
-          updated:     Object.keys(updates),
-          restarted:   true,
-          restartNote: 'Neustart-Befehl gesendet (Bestätigung ausstehend)',
-        });
-      }
-    }, 5000);
+
+    res.once('finish', () => {
+      setTimeout(() => attemptRestart(true), 150);
+    });
+
+    return res.json({
+      ok: true,
+      updated: updatedKeys,
+      restarted: true,
+      restartNote: 'Neustart wird im Hintergrund ausgelöst',
+    });
   });
 
   // ── API: Cloudflare Tunnel Status ───────────────────────────────────────────
