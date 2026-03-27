@@ -1110,6 +1110,13 @@
   let dragSrc = null;
   let dropPlaceholder = null;
 
+  function getStableCardId(card, idx) {
+    if (card.id) return `card:${card.id}`;
+    const title = card.querySelector('.card-title')?.textContent?.trim().toLowerCase() || 'unknown';
+    const slug = title.replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'unknown';
+    return `card:${slug}:${idx}`;
+  }
+
   function initCardSystem() {
     const grid = document.getElementById('dashboardGrid');
     if (!grid) return;
@@ -1134,9 +1141,10 @@
       });
     }
 
-    Array.from(grid.querySelectorAll(':scope > .card')).forEach(card => {
-      if (!card.dataset.cardId)
-        card.dataset.cardId = (card.id || '') + '-' + Math.random().toString(36).substr(2, 7);
+    Array.from(grid.querySelectorAll(':scope > .card')).forEach((card, idx) => {
+      if (!card.dataset.cardId) {
+        card.dataset.cardId = getStableCardId(card, idx);
+      }
       if (!card.dataset.initialized) {
         card.dataset.initialized = '1';
         setupDrag(card);
