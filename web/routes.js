@@ -370,34 +370,49 @@ module.exports = function startWebServer({
       return res.json({ ok: false, error: `Fehler beim Schreiben: ${err.message}` });
     }
 
-    // Systemctl Restart starten und Response mit Status senden
+    // Systemctl Restart mit sudo-n Fallback
     let respSent = false;
-    execFile('systemctl', ['restart', 'bockis-bot'], { timeout: 12000 }, (e, stdout, stderr) => {
-      // Log Restart-Versuch
-      if (e) {
-        logger.error(`Service Restart fehlgeschlagen: ${e.message}`);
-        if (!respSent) {
-          respSent = true;
-          res.json({
-            ok: true,
-            updated:     Object.keys(updates),
-            restarted:   false,
-            restartNote: `Service-Restart fehlgeschlagen: ${e.message} (möglicherweise kein systemd verfügbar)`,
-          });
+    
+    const attemptRestart = (useSudo = true) => {
+      const cmd = useSudo ? 'sudo' : 'systemctl';
+      const args = useSudo ? ['-n', 'systemctl', 'restart', 'bockis-bot'] : ['restart', 'bockis-bot'];
+      
+      execFile(cmd, args, { timeout: 12000 }, (e, stdout, stderr) => {
+        if (e) {
+          // Wenn sudo fehlschlägt UND wir noch nicht ohne sudo versucht haben
+          if (useSudo && e.message.includes('sudo')) {
+            logger.info('Service Restart: sudo fehlgeschlagen, versuche ohne sudo…');
+            attemptRestart(false); // Rekursiv ohne sudo versuchen
+            return;
+          }
+          
+          logger.error(`Service Restart fehlgeschlagen: ${e.message}`);
+          if (!respSent) {
+            respSent = true;
+            res.json({
+              ok: true,
+              updated:     Object.keys(updates),
+              restarted:   false,
+              restartNote: `Service-Restart fehlgeschlagen: ${e.message}`,
+            });
+          }
+        } else {
+          logger.info(`Service 'bockis-bot' erfolgreich neu gestartet (${useSudo ? 'mit sudo' : 'ohne sudo'})`);
+          if (!respSent) {
+            respSent = true;
+            res.json({
+              ok: true,
+              updated:     Object.keys(updates),
+              restarted:   true,
+              restartNote: null,
+            });
+          }
         }
-      } else {
-        logger.info(`Service 'bockis-bot' erfolgreich neu gestartet nach Config-Änderung`);
-        if (!respSent) {
-          respSent = true;
-          res.json({
-            ok: true,
-            updated:     Object.keys(updates),
-            restarted:   true,
-            restartNote: null,
-          });
-        }
-      }
-    });
+      });
+    };
+    
+    // Starte mit sudo -n (non-interactive); Falls fehlschlag, fallback zu normalem systemctl
+    attemptRestart(true);
     
     // Fallback Response wenn execFile nicht antwortet
     setTimeout(() => {
