@@ -13,6 +13,12 @@ const config = convict({
     default: 3000,
     env: 'WEB_PORT'
   },
+  webPublicUrl: {
+    doc: 'Öffentliche Basis-URL des Bot-Webservers für Proxy-Endpunkte (z.B. https://bot.example.com)',
+    format: String,
+    default: '',
+    env: 'WEB_PUBLIC_URL'
+  },
   checkIntervalMs: {
     doc: 'Intervall in ms zwischen Status-Updates',
     format: 'int',

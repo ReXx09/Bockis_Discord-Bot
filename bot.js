@@ -395,9 +395,9 @@ function getPublicStatusUrl() {
 }
 
 function getWebUrl() {
-  // Liefert die öffentliche URL zum internen Web-Server (für API-Endpoints wie /api/status-unfurl)
-  const cloudflareUrl = config.get('cloudflare.publicUrl');
-  if (cloudflareUrl) return cloudflareUrl.replace(/\/+$/, '');
+  // Liefert die öffentliche URL zum Bot-Webserver (für API-Endpoints wie /api/status-unfurl)
+  const webPublicUrl = config.get('webPublicUrl');
+  if (webPublicUrl) return webPublicUrl.replace(/\/+$/, '');
   return null;
 }
 

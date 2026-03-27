@@ -601,6 +601,7 @@ module.exports = function startWebServer({
         DISCORD_NOTIFICATION_CHANNEL: get('DISCORD_NOTIFICATION_CHANNEL'),
         DISCORD_STATUS_RENDER_MODE:   get('DISCORD_STATUS_RENDER_MODE') || 'auto',
         UPTIME_KUMA_URL:              get('UPTIME_KUMA_URL'),
+        WEB_PUBLIC_URL:               get('WEB_PUBLIC_URL'),
         CHANNEL_STATUS_INDICATOR:     get('CHANNEL_STATUS_INDICATOR') || 'true',
       });
     } catch (err) {
@@ -614,7 +615,7 @@ module.exports = function startWebServer({
   app.post('/api/config', dashboardAuth, (req, res) => {
     const ALLOWED_CFG = ['DISCORD_TOKEN', 'STATUS_CHANNEL_ID', 'DISCORD_NOTIFICATION_CHANNEL',
                          'DISCORD_STATUS_RENDER_MODE',
-                         'UPTIME_KUMA_URL', 'CHANNEL_STATUS_INDICATOR'];
+               'UPTIME_KUMA_URL', 'WEB_PUBLIC_URL', 'CHANNEL_STATUS_INDICATOR'];
     const envPath = path.join(rootDir, '.env');
     if (!fs.existsSync(envPath)) return res.json({ ok: false, error: '.env nicht gefunden' });
 
@@ -633,6 +634,8 @@ module.exports = function startWebServer({
         return res.json({ ok: false, error: 'DISCORD_STATUS_RENDER_MODE muss auto, direct, graphical, link_preview oder embed sein' });
       if (key === 'UPTIME_KUMA_URL' && !/^https?:\/\/.+/.test(val))
         return res.json({ ok: false, error: 'UPTIME_KUMA_URL muss mit http:// oder https:// beginnen' });
+      if (key === 'WEB_PUBLIC_URL' && !/^https?:\/\/.+/.test(val))
+        return res.json({ ok: false, error: 'WEB_PUBLIC_URL muss mit http:// oder https:// beginnen' });
       if (key === 'CHANNEL_STATUS_INDICATOR' && !['true', 'false'].includes(val))
         return res.json({ ok: false, error: 'CHANNEL_STATUS_INDICATOR muss true oder false sein' });
       updates[key] = val;

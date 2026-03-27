@@ -609,6 +609,12 @@
              placeholder="http://192.168.x.x:3001">
     </div>
     <div class="cfg-field">
+      <label class="cfg-label" for="cfgWebPublicUrl">Öffentliche Bot-Web-URL</label>
+      <input class="cfg-input" id="cfgWebPublicUrl" type="text" autocomplete="off"
+             placeholder="https://bot.example.com">
+      <div class="cfg-hint">Diese URL muss auf den Bot-Webserver zeigen, nicht auf Uptime Kuma. Darüber laufen /api/status-unfurl und /api/badge/summary.</div>
+    </div>
+    <div class="cfg-field">
       <label class="cfg-label" for="cfgRenderMode">Discord Status Renderer</label>
       <div style="display:flex;gap:8px;align-items:end;">
         <select class="cfg-input" id="cfgRenderMode" style="flex:1;">
@@ -1228,6 +1234,7 @@
       document.getElementById('cfgStatusCh').value = d.STATUS_CHANNEL_ID || '';
       document.getElementById('cfgNotifCh').value  = d.DISCORD_NOTIFICATION_CHANNEL || '';
       document.getElementById('cfgKumaUrl').value  = d.UPTIME_KUMA_URL || '';
+      document.getElementById('cfgWebPublicUrl').value = d.WEB_PUBLIC_URL || '';
       document.getElementById('cfgRenderMode').value = d.DISCORD_STATUS_RENDER_MODE || 'auto';
       document.getElementById('cfgStatus').textContent = '';
       document.getElementById('cfgToken').placeholder = d.DISCORD_TOKEN
@@ -1255,12 +1262,14 @@
     const statusCh= document.getElementById('cfgStatusCh').value.trim();
     const notifCh = document.getElementById('cfgNotifCh').value.trim();
     const kumaUrl = document.getElementById('cfgKumaUrl').value.trim();
+    const webPublicUrl = document.getElementById('cfgWebPublicUrl').value.trim();
     const renderMode = document.getElementById('cfgRenderMode')?.value || 'auto';
 
     if (token)    body.DISCORD_TOKEN                = token;
     if (statusCh) body.STATUS_CHANNEL_ID            = statusCh;
     if (notifCh)  body.DISCORD_NOTIFICATION_CHANNEL = notifCh;
     if (kumaUrl)  body.UPTIME_KUMA_URL              = kumaUrl;
+    if (webPublicUrl) body.WEB_PUBLIC_URL           = webPublicUrl;
     body.DISCORD_STATUS_RENDER_MODE = renderMode;  // IMMER senden (select hat immer einen Wert)
     body.CHANNEL_STATUS_INDICATOR = document.getElementById('cfgChannelIndicator').checked ? 'true' : 'false';
 
