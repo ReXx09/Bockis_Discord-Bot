@@ -38,6 +38,7 @@ BOT_DIR="$HOME/bockis-bot"
 MODE="auto"
 SKIP_CONFIRM=false
 SKIP_NPM=false
+SKIP_GIT=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -45,6 +46,7 @@ while [[ $# -gt 0 ]]; do
     --mode)        MODE="$2"; shift 2 ;;
     --yes|-y)      SKIP_CONFIRM=true; shift ;;
     --skip-npm)    SKIP_NPM=true; shift ;;
+    --skip-git)    SKIP_GIT=true; shift ;;
     --help|-h)
       echo "Verwendung: bash update.sh [OPTIONEN]"
       echo ""
@@ -53,6 +55,7 @@ while [[ $# -gt 0 ]]; do
       echo "  --mode <auto|native|docker>  Update-Modus (Standard: auto)"
       echo "  --yes, -y                    Alle Bestätigungen überspringen"
       echo "  --skip-npm                   npm-Abhängigkeiten NICHT aktualisieren"
+      echo "  --skip-git                   Git pull NICHT ausführen"
       echo "  --help, -h                   Diese Hilfe anzeigen"
       echo ""
       echo "Modi:"
@@ -135,27 +138,31 @@ update_native() {
   command -v git >/dev/null 2>&1 || die "git ist nicht installiert: sudo apt-get install -y git"
   cd "$BOT_DIR"
 
-  if git -C "$BOT_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-    print_status "Lade neueste Version von GitHub..."
-    STASH_DONE=false
-
-    # Lokale .env-Änderungen sichern falls sie tracked sind
-    if git -C "$BOT_DIR" diff --quiet -- .env 2>/dev/null; then
-      true
-    else
-      git -C "$BOT_DIR" stash push -m "update-backup" -- .env 2>/dev/null && STASH_DONE=true || true
-    fi
-
-    git -C "$BOT_DIR" pull --ff-only origin main 2>&1 | while IFS= read -r line; do
-      print_status "$line"
-    done
-
-    if [[ "$STASH_DONE" == "true" ]]; then
-      git -C "$BOT_DIR" stash pop 2>/dev/null || print_warn ".env-Stash konnte nicht wiederhergestellt werden. Backup: $BACKUP_FILE"
-    fi
-    print_success "Code aktualisiert"
+  if [[ "$SKIP_GIT" == "true" ]]; then
+    print_warn "Git-Update übersprungen (--skip-git)"
   else
-    print_warn "Kein Git-Repository — Code-Update wird übersprungen (nur npm-Pakete werden aktualisiert)"
+    if git -C "$BOT_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+      print_status "Lade neueste Version von GitHub..."
+      STASH_DONE=false
+
+      # Lokale .env-Änderungen sichern falls sie tracked sind
+      if git -C "$BOT_DIR" diff --quiet -- .env 2>/dev/null; then
+        true
+      else
+        git -C "$BOT_DIR" stash push -m "update-backup" -- .env 2>/dev/null && STASH_DONE=true || true
+      fi
+
+      git -C "$BOT_DIR" pull --ff-only origin main 2>&1 | while IFS= read -r line; do
+        print_status "$line"
+      done
+
+      if [[ "$STASH_DONE" == "true" ]]; then
+        git -C "$BOT_DIR" stash pop 2>/dev/null || print_warn ".env-Stash konnte nicht wiederhergestellt werden. Backup: $BACKUP_FILE"
+      fi
+      print_success "Code aktualisiert"
+    else
+      print_warn "Kein Git-Repository — Code-Update wird übersprungen (nur npm-Pakete werden aktualisiert)"
+    fi
   fi
 
   # 2. npm-Pakete aktualisieren
@@ -252,6 +259,10 @@ update_native() {
 # ── UPDATE: Docker ───────────────────────────────────────────────────────────
 update_docker() {
   print_header "Docker-Update"
+
+  if [[ "$SKIP_GIT" == "true" || "$SKIP_NPM" == "true" ]]; then
+    die "Separate git/npm-Aktionen werden im Docker-Modus nicht unterstützt. Bitte vollständiges Docker-Update nutzen."
+  fi
 
   [[ -f "$BOT_DIR/docker-compose.yml" ]] || die "docker-compose.yml nicht gefunden in $BOT_DIR"
   command -v docker >/dev/null 2>&1 || die "Docker ist nicht installiert."

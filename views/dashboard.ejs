@@ -848,6 +848,12 @@
       <option value="native">Native</option>
       <option value="docker">Docker</option>
     </select>
+    <label class="muted" for="updateTask">Aktion:</label>
+    <select class="cfg-input" id="updateTask" style="max-width:210px;height:34px;padding:6px 8px">
+      <option value="full" selected>Vollständig</option>
+      <option value="git">Nur git pull</option>
+      <option value="npm">Nur npm</option>
+    </select>
     <button class="btn btn-green" id="btnUpdateRunPane" onclick="runUpdate(null, 'btnUpdateRunPane')">▶ Update starten</button>
     <span class="muted" id="updateState">Noch nicht geprüft</span>
   </div>
@@ -1293,8 +1299,8 @@
       const state = document.getElementById('updateState');
 
       if (!d.ok) {
-        if (state) state.textContent = 'Fehler beim Prüfen';
-        if (showToast) toast('Update-Prüfung fehlgeschlagen', 'err');
+        if (state) state.textContent = 'Fehler: ' + (d.error || 'Update-Prüfung fehlgeschlagen');
+        if (showToast) toast('Update-Prüfung fehlgeschlagen: ' + (d.error || 'Unbekannt'), 'err');
         return;
       }
 
@@ -1329,7 +1335,11 @@
         renderCommits([]);
         if (showToast) toast('Kein Update verfügbar', 'ok');
       }
-    } catch { /* update check ist nicht kritisch */ }
+    } catch (e) {
+      const state = document.getElementById('updateState');
+      if (state) state.textContent = 'Verbindungsfehler beim Prüfen';
+      if (showToast) toast('Netzwerkfehler: ' + e.message, 'err');
+    }
   }
 
   function renderCommits(commits) {
@@ -1412,7 +1422,9 @@
     const bannerBtn = document.getElementById('btnUpdateRun');
     const paneBtn = document.getElementById('btnUpdateRunPane');
     const modeSelect = document.getElementById('updateMode');
+    const taskSelect = document.getElementById('updateTask');
     const selectedMode = modeOverride || (modeSelect ? modeSelect.value : 'auto');
+    const selectedTask = taskSelect ? taskSelect.value : 'full';
 
     btn.disabled = true;
     btn.textContent = '⏳ Update läuft…';
@@ -1421,7 +1433,7 @@
 
     const log  = document.getElementById('updateLog');
     const state = document.getElementById('updateState');
-    if (state) state.textContent = `Update läuft (${selectedMode})…`;
+    if (state) state.textContent = `Update läuft (${selectedMode}, ${selectedTask})…`;
     log.innerHTML = '';
     log.classList.add('visible');
     log.scrollTop = 0;
@@ -1439,7 +1451,7 @@
       const res  = await fetch('/api/update-run', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mode: selectedMode })
+        body: JSON.stringify({ mode: selectedMode, task: selectedTask })
       });
 
       const reader = res.body.getReader();

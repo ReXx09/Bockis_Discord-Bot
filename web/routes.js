@@ -18,7 +18,7 @@ const fs          = require('fs');
 const os          = require('os');
 const express     = require('express');
 const axios       = require('axios');
-const { execFile, execSync, spawn } = require('child_process');
+const { execFile, execFileSync, execSync, spawn } = require('child_process');
 
 // Erlaubte Werte für Service-Control (Whitelist gegen Command-Injection)
 const ALLOWED_SERVICES = ['bockis-bot', 'uptime-kuma', 'cloudflared'];
@@ -438,21 +438,22 @@ module.exports = function startWebServer({
 
   app.get('/api/update-check', dashboardAuth, (req, res) => {
     try {
-      try { execSync('git rev-parse --is-inside-work-tree', { cwd: rootDir, stdio: 'ignore' }); }
+      try { execFileSync('git', ['rev-parse', '--is-inside-work-tree'], { cwd: rootDir, stdio: 'ignore' }); }
       catch { return res.json({ ok: true, hasGit: false, updateAvailable: false }); }
 
-      try { execSync('git fetch origin main --quiet', { cwd: rootDir, timeout: 8000, stdio: 'ignore' }); }
+      try { execFileSync('git', ['fetch', 'origin', 'main', '--quiet'], { cwd: rootDir, timeout: 8000, stdio: 'ignore' }); }
       catch { return res.json({ ok: true, hasGit: true, fetchFailed: true, updateAvailable: false }); }
 
-      const behind = parseInt(execSync('git rev-list HEAD..origin/main --count', { cwd: rootDir }).toString().trim(), 10) || 0;
-      const ahead  = parseInt(execSync('git rev-list origin/main..HEAD --count', { cwd: rootDir }).toString().trim(), 10) || 0;
-      const local  = execSync('git rev-parse --short HEAD',        { cwd: rootDir }).toString().trim();
-      const remote = execSync('git rev-parse --short origin/main', { cwd: rootDir }).toString().trim();
+      const behind = parseInt(execFileSync('git', ['rev-list', 'HEAD..origin/main', '--count'], { cwd: rootDir }).toString().trim(), 10) || 0;
+      const ahead  = parseInt(execFileSync('git', ['rev-list', 'origin/main..HEAD', '--count'], { cwd: rootDir }).toString().trim(), 10) || 0;
+      const local  = execFileSync('git', ['rev-parse', '--short', 'HEAD'],        { cwd: rootDir }).toString().trim();
+      const remote = execFileSync('git', ['rev-parse', '--short', 'origin/main'], { cwd: rootDir }).toString().trim();
 
       let commits = [];
       if (behind > 0) {
-        commits = execSync(
-          'git log HEAD..origin/main --oneline --format=%h|||%s|||%cr',
+        commits = execFileSync(
+          'git',
+          ['log', 'HEAD..origin/main', '--oneline', '--format=%h|||%s|||%cr'],
           { cwd: rootDir }
         ).toString().trim().split('\n').filter(Boolean).slice(0, 10)
           .map(l => { const [hash, subject, when] = l.split('|||'); return { hash, subject, when }; });
@@ -564,7 +565,9 @@ module.exports = function startWebServer({
 
   app.post('/api/update-run', dashboardAuth, (req, res) => {
     const ALLOWED_MODES = ['auto', 'native', 'docker'];
+    const ALLOWED_TASKS = ['full', 'git', 'npm'];
     const mode       = ALLOWED_MODES.includes(req.body?.mode) ? req.body.mode : 'auto';
+    const task       = ALLOWED_TASKS.includes(req.body?.task) ? req.body.task : 'full';
     const scriptPath = path.join(rootDir, 'update.sh');
 
     if (!fs.existsSync(scriptPath))
@@ -575,8 +578,11 @@ module.exports = function startWebServer({
     res.setHeader('Connection', 'keep-alive');
     res.flushHeaders();
 
-    const proc = spawn('bash', [scriptPath, '--bot-dir', rootDir, '--mode', mode, '--yes'],
-      { cwd: rootDir });
+    const args = [scriptPath, '--bot-dir', rootDir, '--mode', mode, '--yes'];
+    if (task === 'git') args.push('--skip-npm');
+    if (task === 'npm') args.push('--skip-git');
+
+    const proc = spawn('bash', args, { cwd: rootDir });
     const send = (line) => res.write(`data: ${line.replace(/\n/g, ' ')}\n\n`);
     proc.stdout.on('data', d => d.toString().split('\n').filter(Boolean).forEach(send));
     proc.stderr.on('data', d => d.toString().split('\n').filter(Boolean).forEach(send));
