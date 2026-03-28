@@ -118,12 +118,12 @@
       grid-column: span 12;
     }
     .dashboard-grid > .card[data-span="6"]  { grid-column: span 6; }
-    .dashboard-grid > .card[data-span="9"]  { grid-column: span 9; }
+    .dashboard-grid > .card[data-span="8"]  { grid-column: span 8; }
     .dashboard-grid > .card[data-span="4"]  { grid-column: span 4; }
     .dashboard-grid > .card[data-span="3"]  { grid-column: span 3; }
     .dashboard-grid > .card[data-span="12"] { grid-column: span 12; }
     .dashboard-grid > .drop-placeholder[data-span="6"]  { grid-column: span 6; }
-    .dashboard-grid > .drop-placeholder[data-span="9"]  { grid-column: span 9; }
+    .dashboard-grid > .drop-placeholder[data-span="8"]  { grid-column: span 8; }
     .dashboard-grid > .drop-placeholder[data-span="4"]  { grid-column: span 4; }
     .dashboard-grid > .drop-placeholder[data-span="3"]  { grid-column: span 3; }
     .dashboard-grid > .drop-placeholder[data-span="12"] { grid-column: span 12; }
@@ -1752,6 +1752,12 @@
   let dragSrc = null;
   let dropPlaceholder = null;
 
+  function normalizeCardSpan(span) {
+    // Historische 3/4-Einstellung (9/12) auf 2/3 (8/12) migrieren,
+    // weil 9/12 im Layout kaum Mehrwert bietet und fast wie Vollbreite wirkt.
+    return span === '9' ? '8' : span;
+  }
+
   function getStableCardId(card, idx) {
     if (card.id) return `card:${card.id}`;
     const title = card.querySelector('.card-title')?.textContent?.trim().toLowerCase() || 'unknown';
@@ -1890,12 +1896,13 @@
     const SPANS = [
       { label: '⅓', span: '4',  title: 'Ein Drittel Breite' },
       { label: '½', span: '6',  title: 'Halbe Breite' },
-      { label: '¾', span: '9',  title: 'Dreiviertel Breite' },
+      { label: '⅔', span: '8',  title: 'Zwei Drittel Breite' },
       { label: '↔', span: '12', title: 'Volle Breite' },
     ];
     const widthBtns = document.createElement('div');
     widthBtns.style.cssText = 'display:flex;gap:3px;margin-right:6px';
-    const currentSpan = card.dataset.span || '12';
+    const currentSpan = normalizeCardSpan(card.dataset.span || '12');
+    card.dataset.span = currentSpan;
     SPANS.forEach(({ label, span, title }) => {
       const wb = document.createElement('button');
       wb.className = 'btn-width' + (span === currentSpan ? ' active' : '');
@@ -1956,13 +1963,15 @@
   function restoreSpanStates() {
     const s = JSON.parse(localStorage.getItem(STORAGE_KEY_SPAN) || '{}');
     document.querySelectorAll('#dashboardGrid > .card').forEach(card => {
-      const span = s[card.dataset.cardId];
+      const span = normalizeCardSpan(s[card.dataset.cardId]);
       if (!span) return;
       card.dataset.span = span;
+      s[card.dataset.cardId] = span;
       card.querySelectorAll('.btn-width').forEach(wb => {
         wb.classList.toggle('active', wb.dataset.spanValue === span);
       });
     });
+    localStorage.setItem(STORAGE_KEY_SPAN, JSON.stringify(s));
   }
 
   function restoreCardOrder() {
