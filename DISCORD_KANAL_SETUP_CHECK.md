@@ -1,61 +1,41 @@
-# Discord Kanal-Integration Check
+# Discord Kanal-Setup Anleitung
 
 Stand: 28.03.2026
 
-## Kurzantwort
+## Ziel dieser Anleitung
 
-Ja, dein gewünschtes Setup ist möglich:
-- Eine Kategorie für Uptime-Dienste
-- Ein eigener Kanal pro Dienst
-- Sichtbarer Live-Status pro Dienst direkt in der Kanalleiste (über Emoji im Kanalnamen)
+Mit dieser Anleitung richtest du den Bot so ein, dass er:
 
-Nein, du musst die einzelnen Service-Kanäle nicht manuell vorbereiten.
-Der Bot kann die Service-Kategorie und die einzelnen Dienst-Kanäle selbst erstellen und später automatisch umbenennen.
+1. Eine Kategorie fuer Uptime-Dienste nutzt (oder automatisch erstellt).
+2. Fuer jeden konfigurierten Dienst einen eigenen Kanal erstellt.
+3. Den Status pro Dienst direkt in der Kanalleiste anzeigt (`🟢`, `🟡`, `🔴`).
+4. Deinen Status-Hauptkanal (Name + Topic) automatisch aktualisiert.
 
-Was du manuell setzen musst:
-- Einen bestehenden Status-Channel für `STATUS_CHANNEL_ID`
-- Korrekte Rechte für den Bot auf dem Server
-- Die Konfiguration in `.env` (insbesondere `GUILD_ID` und `MONITORED_SERVICES`)
+## Wichtig vorab
 
-Pflichtbedingungen für die automatische Dienst-Kanal-Funktion:
-- `GUILD_ID` muss gesetzt und korrekt sein
-- `MONITORED_SERVICES` muss aktuell befüllt sein (Whitelist)
-- Bot braucht `Manage Channels`
+Ja, das ist mit dem aktuellen Bot moeglich.
 
-## Geprüfte Bot-Integration
+Du musst nicht jeden Dienst-Kanal manuell erstellen.
+Der Bot kann Kategorie und Dienst-Kanaele selbst anlegen und bei Statusaenderungen umbenennen.
 
-### 1) Channel-Name + Topic des Status-Kanals
+## Voraussetzungen
 
-- Funktion: `updateChannelIndicator(...)` in `bot.js`
-- Verhalten:
-  - Setzt Präfix im Kanalnamen auf `🟢` / `🟡` / `🔴`
-  - Aktualisiert Kanal-Topic mit Online/Offline-Zahlen + Zeit
-  - Nutzt Cooldown (`MIN_CHANNEL_RENAME_MS = 6 min`) gegen Discord-Rate-Limits
-- Voraussetzung:
-  - `CHANNEL_STATUS_INDICATOR=true`
-  - `STATUS_CHANNEL_ID` muss auf einen existierenden Kanal zeigen
+1. Der Bot ist auf deinem Server eingeladen.
+2. Der Bot hat die noetigen Rechte.
+3. Du hast die IDs fuer Server und Status-Kanal.
+4. Uptime Kuma liefert die Monitore, die du anzeigen willst.
 
-### 2) Automatische Service-Kanäle pro Uptime-Dienst
+## 1. Discord vorbereiten
 
-- Funktion: `syncServiceChannels(...)` in `bot.js`
-- Verhalten:
-  - Nutzt `GUILD_ID`, um den Server zu finden
-  - Erstellt Kategorie (Standardname `📊 Service Status`) automatisch, falls nicht vorhanden
-  - Erstellt pro überwachten Dienst einen Textkanal automatisch
-  - Kanalnamen enthalten den Live-Status (`🟢-dienst`, `🟡-dienst`, `🔴-dienst`)
-  - Topic wird mit Uptime/Ping aktualisiert
-  - Umbenennungen sind ebenfalls rate-limitiert
+### 1.1 Developer Mode aktivieren
 
-Wichtig:
-- Der Bot verarbeitet hier nur Dienste aus `MONITORED_SERVICES` (Whitelist).
-- Wenn `MONITORED_SERVICES` leer ist, wird das Feature aktuell deaktiviert.
-- Hinweis: In der Config-Beschreibung steht zwar "leer = alle aktiven", der aktuelle Bot-Code deaktiviert das Feature bei leerer Liste.
+1. Discord -> Benutzereinstellungen -> Erweitert.
+2. `Entwicklermodus` aktivieren.
 
-## Was du auf Discord vorbereiten solltest
-
-### A) Bot-Rechte
+### 1.2 Bot-Rechte pruefen
 
 Der Bot braucht mindestens:
+
 - View Channels
 - Send Messages
 - Embed Links
@@ -63,51 +43,99 @@ Der Bot braucht mindestens:
 - Manage Channels
 - Read Message History
 
-Empfohlen zusätzlich:
-- Manage Messages (falls Aufräumen im Status-Channel nötig)
+Empfohlen zusaetzlich:
 
-### B) Kanal/Server IDs
+- Manage Messages
 
-In Developer Mode in Discord kopieren:
-- Server-ID -> `GUILD_ID`
-- Status-Kanal-ID -> `STATUS_CHANNEL_ID`
+## 2. Benoetigte IDs sammeln
 
-### C) Uptime-Monitorliste
+1. Rechtsklick auf deinen Server -> `ID kopieren` -> `GUILD_ID`.
+2. Rechtsklick auf den Status-Hauptkanal -> `ID kopieren` -> `STATUS_CHANNEL_ID`.
 
-`MONITORED_SERVICES` muss zu den exakten Uptime-Namen passen (kommagetrennt), z. B.:
+## 3. .env konfigurieren
 
-`MONITORED_SERVICES=Ark-ASA Svartaltheim,Next-Cloud,Pi-VPN,VPN-Mutti,VPN-Andy,VPN-Thomas`
-
-### D) Beispiel `.env`-Block
+Trage mindestens folgende Werte in deine `.env` ein:
 
 ```env
 STATUS_CHANNEL_ID=123456789012345678
 CHANNEL_STATUS_INDICATOR=true
 GUILD_ID=123456789012345678
-SERVICE_CATEGORY_NAME=📊 Service Status
+SERVICE_CATEGORY_NAME=Service Status
 MONITORED_SERVICES=Ark-ASA Svartaltheim,Next-Cloud,Pi-VPN,VPN-Mutti,VPN-Andy,VPN-Thomas
 ```
 
-## Test-Checkliste
+## 4. Bedeutung der wichtigsten Variablen
 
-1. Bot starten oder neu starten.
-2. Prüfen, ob im Status-Channel Name/Topic angepasst werden.
-3. Prüfen, ob Kategorie `SERVICE_CATEGORY_NAME` automatisch erscheint.
-4. Prüfen, ob Dienst-Kanäle automatisch erstellt werden.
-5. Einen Dienst in Uptime auf Down setzen und auf nächsten Poll warten.
-6. Prüfen, ob der zugehörige Kanalname auf `🔴-...` umspringt.
+1. `STATUS_CHANNEL_ID`
+   Der bestehende Hauptkanal fuer die Status-Nachricht.
 
-## Fehlerbilder und Ursachen
+2. `CHANNEL_STATUS_INDICATOR`
+   Wenn `true`, setzt der Bot im Hauptkanal Emoji + Topic automatisch.
 
-- Keine Service-Kanäle werden erstellt:
-  - `GUILD_ID` fehlt/falsch
-  - `MONITORED_SERVICES` leer oder Namen stimmen nicht exakt
-  - Bot hat keine Rechte für `Manage Channels`
+3. `GUILD_ID`
+   Pflicht fuer die automatische Dienst-Kanal-Funktion.
 
-- Status-Channel ändert Name/Topic nicht:
-  - `CHANNEL_STATUS_INDICATOR=false`
-  - `STATUS_CHANNEL_ID` falsch
-  - Cooldown aktiv (max. 1 Rename je Kanal innerhalb des internen Fensters)
+4. `SERVICE_CATEGORY_NAME`
+   Name der Kategorie fuer Dienst-Kanaele.
+   Wenn die Kategorie nicht existiert, erstellt der Bot sie.
 
-- Alles korrekt in Git Pull, aber UI zeigt kurz Verbindungsfehler:
-  - Erwartbar bei Service-Neustart; wurde im Dashboard bereits abgefangen (Reconnect-Logik)
+5. `MONITORED_SERVICES`
+   Kommagetrennte Whitelist mit exakten Uptime-Dienstnamen.
+   Nur diese Dienste werden als eigene Kanaele erstellt/aktualisiert.
+
+## 5. Was der Bot automatisch macht
+
+1. Sucht den Server per `GUILD_ID`.
+2. Sucht oder erstellt die Kategorie `SERVICE_CATEGORY_NAME`.
+3. Erstellt pro Dienst in `MONITORED_SERVICES` einen Textkanal.
+4. Setzt Kanalnamen im Format `🟢-dienstname`, `🟡-dienstname`, `🔴-dienstname`.
+5. Aktualisiert den Namen bei Statuswechseln (mit Rate-Limit-Schutz).
+6. Aktualisiert den Hauptkanal (`STATUS_CHANNEL_ID`) mit Gesamtstatus im Namen und Topic.
+
+## 6. Wichtige aktuelle Einschraenkung
+
+Wenn `MONITORED_SERVICES` leer ist, ist die automatische Dienst-Kanal-Funktion aktuell deaktiviert.
+
+Hinweis:
+In Teilen der Konfigurationsbeschreibung steht "leer = alle aktiven". Das entspricht derzeit nicht dem Laufzeitverhalten. Fuer die automatische Erstellung muss die Liste aktuell befuellt sein.
+
+## 7. Einrichtung testen
+
+1. Bot neu starten.
+2. Im Discord-Server pruefen, ob die Kategorie vorhanden ist.
+3. Pruefen, ob Dienst-Kanaele erstellt wurden.
+4. Einen Monitor in Uptime Kuma auf `down` bringen.
+5. Auf den naechsten Update-Zyklus warten.
+6. Pruefen, ob der Kanalname auf `🔴-...` wechselt.
+7. Pruefen, ob im Hauptkanal Name/Topic aktualisiert werden.
+
+## 8. Fehlerbehebung (kurz)
+
+### Problem: Keine Dienst-Kanaele werden erstellt
+
+Pruefen:
+
+1. `GUILD_ID` korrekt?
+2. `MONITORED_SERVICES` nicht leer?
+3. Namen exakt wie in Uptime Kuma geschrieben?
+4. Bot hat `Manage Channels`?
+
+### Problem: Hauptkanal bekommt keine Emoji/Topic-Aenderung
+
+Pruefen:
+
+1. `CHANNEL_STATUS_INDICATOR=true`?
+2. `STATUS_CHANNEL_ID` korrekt?
+3. Cooldown aktiv? (Umbenennungen sind rate-limitiert)
+
+### Problem: Nach Update kurz Verbindungsfehler im Web-UI
+
+Das kann waehrend Service-Neustart kurz normal sein. Die Reconnect-Logik im Dashboard faengt das inzwischen ab.
+
+## 9. Schnell-Checkliste fuer neue Nutzer
+
+1. IDs holen (`GUILD_ID`, `STATUS_CHANNEL_ID`).
+2. Bot-Rechte setzen (`Manage Channels` wichtig).
+3. `.env` mit `MONITORED_SERVICES` befuellen.
+4. Bot starten.
+5. Kategorie/Kanaele und Status-Emoji im Discord pruefen.
