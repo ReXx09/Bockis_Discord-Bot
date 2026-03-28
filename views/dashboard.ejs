@@ -843,8 +843,28 @@
         </div>
         <div class="cfg-field">
           <label class="cfg-label" for="cfgTimezone">Zeitzone (Raspberry Pi)</label>
-          <input class="cfg-input" id="cfgTimezone" type="text" autocomplete="off"
-                 placeholder="z. B. Europe/Berlin">
+          <select class="cfg-input" id="cfgTimezone">
+            <option value="">Bitte wählen…</option>
+            <option value="Europe/Berlin">Europe/Berlin (Deutschland)</option>
+            <option value="Europe/Vienna">Europe/Vienna (Österreich)</option>
+            <option value="Europe/Zurich">Europe/Zurich (Schweiz)</option>
+            <option value="Europe/London">Europe/London (UK)</option>
+            <option value="Europe/Paris">Europe/Paris (Frankreich)</option>
+            <option value="Europe/Madrid">Europe/Madrid (Spanien)</option>
+            <option value="Europe/Rome">Europe/Rome (Italien)</option>
+            <option value="Europe/Warsaw">Europe/Warsaw (Polen)</option>
+            <option value="UTC">UTC</option>
+            <option value="America/New_York">America/New_York (US East)</option>
+            <option value="America/Chicago">America/Chicago (US Central)</option>
+            <option value="America/Denver">America/Denver (US Mountain)</option>
+            <option value="America/Los_Angeles">America/Los_Angeles (US West)</option>
+            <option value="Asia/Dubai">Asia/Dubai</option>
+            <option value="Asia/Kolkata">Asia/Kolkata (India)</option>
+            <option value="Asia/Bangkok">Asia/Bangkok</option>
+            <option value="Asia/Singapore">Asia/Singapore</option>
+            <option value="Asia/Tokyo">Asia/Tokyo</option>
+            <option value="Australia/Sydney">Australia/Sydney</option>
+          </select>
           <div class="cfg-hint">Wird per <code>timedatectl set-timezone</code> gesetzt.</div>
         </div>
         <div class="cfg-field">
@@ -1777,7 +1797,25 @@
       const tz = document.getElementById('cfgTimezone');
       const dt = document.getElementById('cfgDateTimeLocal');
       const locale = document.getElementById('cfgSystemLocale');
-      if (tz) tz.value = d.timezone || '';
+      if (tz) {
+        if (Array.isArray(d.timezoneOptions) && d.timezoneOptions.length) {
+          const existingValues = new Set(Array.from(tz.options).map(o => o.value));
+          d.timezoneOptions.forEach((opt) => {
+            if (!opt?.value || existingValues.has(opt.value)) return;
+            const o = document.createElement('option');
+            o.value = opt.value;
+            o.textContent = opt.label || opt.value;
+            tz.appendChild(o);
+          });
+        }
+        if (d.timezone && !Array.from(tz.options).some(o => o.value === d.timezone)) {
+          const o = document.createElement('option');
+          o.value = d.timezone;
+          o.textContent = `${d.timezone} (aktuell)`;
+          tz.appendChild(o);
+        }
+        tz.value = d.timezone || '';
+      }
       if (dt) dt.value = d.dateTimeLocal || '';
       if (locale) {
         if (Array.isArray(d.localeOptions) && d.localeOptions.length) {
@@ -1825,7 +1863,10 @@
         body: JSON.stringify(body)
       }).then(r => r.json());
 
-      if (!d.ok) throw new Error(d.error || d.details || 'Speichern fehlgeschlagen');
+      if (!d.ok) {
+        const msg = [d.error, d.hint, d.details].filter(Boolean).join(' | ');
+        throw new Error(msg || 'Speichern fehlgeschlagen');
+      }
       if (statusEl) { statusEl.textContent = '✓ Übernommen: ' + (d.applied || []).join(', '); statusEl.className = 'ok'; }
       toast('✓ Raspi-Einstellungen übernommen', 'ok');
       loadSystemLocalization();

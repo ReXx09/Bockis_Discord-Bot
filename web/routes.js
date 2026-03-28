@@ -280,6 +280,28 @@ module.exports = function startWebServer({
     let timezone = '';
     let systemLocale = '';
 
+    const timezoneOptions = [
+      { value: 'Europe/Berlin', label: 'Europe/Berlin (Deutschland)' },
+      { value: 'Europe/Vienna', label: 'Europe/Vienna (Österreich)' },
+      { value: 'Europe/Zurich', label: 'Europe/Zurich (Schweiz)' },
+      { value: 'Europe/London', label: 'Europe/London (UK)' },
+      { value: 'Europe/Paris', label: 'Europe/Paris (Frankreich)' },
+      { value: 'Europe/Madrid', label: 'Europe/Madrid (Spanien)' },
+      { value: 'Europe/Rome', label: 'Europe/Rome (Italien)' },
+      { value: 'Europe/Warsaw', label: 'Europe/Warsaw (Polen)' },
+      { value: 'UTC', label: 'UTC' },
+      { value: 'America/New_York', label: 'America/New_York (US East)' },
+      { value: 'America/Chicago', label: 'America/Chicago (US Central)' },
+      { value: 'America/Denver', label: 'America/Denver (US Mountain)' },
+      { value: 'America/Los_Angeles', label: 'America/Los_Angeles (US West)' },
+      { value: 'Asia/Dubai', label: 'Asia/Dubai' },
+      { value: 'Asia/Kolkata', label: 'Asia/Kolkata (India)' },
+      { value: 'Asia/Bangkok', label: 'Asia/Bangkok' },
+      { value: 'Asia/Singapore', label: 'Asia/Singapore' },
+      { value: 'Asia/Tokyo', label: 'Asia/Tokyo' },
+      { value: 'Australia/Sydney', label: 'Australia/Sydney' }
+    ];
+
     const localeOptions = [
       { value: 'de_DE.UTF-8', label: 'Deutsch (Deutschland)' },
       { value: 'en_GB.UTF-8', label: 'English (UK)' },
@@ -332,6 +354,7 @@ module.exports = function startWebServer({
     return res.json({
       ok: true,
       timezone,
+      timezoneOptions,
       systemLocale,
       localeOptions,
       localDate,
@@ -362,6 +385,7 @@ module.exports = function startWebServer({
     }
 
     const applied = [];
+    let ntpWasEnabled = false;
 
     try {
       if (timezone) {
@@ -371,8 +395,24 @@ module.exports = function startWebServer({
 
       if (datetimeLocal) {
         const dateForTimedatectl = datetimeLocal.replace('T', ' ') + ':00';
+
+        try {
+          const ntpRaw = execFileSync('timedatectl', ['show', '-p', 'NTP', '--value'], { timeout: 2500 })
+            .toString().trim().toLowerCase();
+          ntpWasEnabled = (ntpRaw === 'yes' || ntpRaw === 'true' || ntpRaw === '1');
+        } catch { /* ignore */ }
+
+        if (ntpWasEnabled) {
+          await execFilePromise('sudo', ['timedatectl', 'set-ntp', 'false'], { timeout: 10_000 });
+        }
+
         await execFilePromise('sudo', ['timedatectl', 'set-time', dateForTimedatectl], { timeout: 10_000 });
         applied.push(`Datum/Uhrzeit=${datetimeLocal}`);
+
+        if (ntpWasEnabled) {
+          await execFilePromise('sudo', ['timedatectl', 'set-ntp', 'true'], { timeout: 10_000 });
+          applied.push('NTP wieder aktiviert');
+        }
       }
 
       if (systemLocale) {
@@ -388,9 +428,15 @@ module.exports = function startWebServer({
       logger.info(`/api/system-localization gesetzt: ${applied.join(', ')}`);
       return res.json({ ok: true, applied });
     } catch (err) {
+      if (ntpWasEnabled) {
+        try { await execFilePromise('sudo', ['timedatectl', 'set-ntp', 'true'], { timeout: 10_000 }); } catch { /* ignore */ }
+      }
       const details = `${err.stderr || ''}${err.stdout || ''}${err.message || ''}`;
       logger.error(`/api/system-localization Fehler: ${details}`);
-      return res.status(500).json({ ok: false, error: 'Systemeinstellung konnte nicht gesetzt werden', details: String(details).trim() });
+      const hint = /automatic time synchronization is enabled/i.test(String(details))
+        ? 'Tipp: NTP war aktiv. Der Server versucht NTP automatisch zu pausieren; prüfe sudo-Rechte für timedatectl set-ntp.'
+        : '';
+      return res.status(500).json({ ok: false, error: 'Systemeinstellung konnte nicht gesetzt werden', details: String(details).trim(), hint });
     }
   });
 
