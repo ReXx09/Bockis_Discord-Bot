@@ -836,6 +836,7 @@ module.exports = function startWebServer({
       res.json({
         ok: true,
         DISCORD_TOKEN:                maskSecret(token),
+        DISCORD_BOT_NAME:             get('DISCORD_BOT_NAME') || '',
         STATUS_CHANNEL_ID:            get('STATUS_CHANNEL_ID'),
         DISCORD_NOTIFICATION_CHANNEL: get('DISCORD_NOTIFICATION_CHANNEL'),
         DISCORD_STATUS_RENDER_MODE:   get('DISCORD_STATUS_RENDER_MODE') || 'auto',
@@ -872,12 +873,14 @@ module.exports = function startWebServer({
   app.post('/api/config', dashboardAuth, (req, res) => {
     const ALLOWED_CFG = [
       'DISCORD_TOKEN',
+      'DISCORD_BOT_NAME',
       'STATUS_CHANNEL_ID',
       'DISCORD_NOTIFICATION_CHANNEL',
       'DISCORD_STATUS_RENDER_MODE',
       'DISCORD_STATUS_MESSAGE_TITLE',
       'DISCORD_STATUS_BUTTON_LABEL',
       'DISCORD_WEBUI_BUTTON_LABEL',
+      'DISCORD_BOT_NAME',
       'DISCORD_STATUS_WEBHOOK_URL',
       'UPTIME_KUMA_URL',
       'UPTIME_KUMA_API_KEY',
@@ -928,6 +931,10 @@ module.exports = function startWebServer({
       if (key === 'DISCORD_TOKEN' || key === 'UPTIME_KUMA_API_KEY' || key === 'DISCORD_STATUS_WEBHOOK_URL' || key === 'DASHBOARD_PASSWORD') {
         if (val.includes('*')) continue;
         if (/[\n\r]/.test(val)) return res.json({ ok: false, error: 'Ungültiger Token (enthält Zeilenumbruch)' });
+      }
+      if (key === 'DISCORD_BOT_NAME') {
+        if (/[\n\r]/.test(val)) return res.json({ ok: false, error: 'DISCORD_BOT_NAME darf keine Zeilenumbrüche enthalten' });
+        if (val.length > 32) return res.json({ ok: false, error: 'DISCORD_BOT_NAME darf maximal 32 Zeichen enthalten' });
       }
       if ((key === 'STATUS_CHANNEL_ID' || key === 'DISCORD_NOTIFICATION_CHANNEL') && !/^\d+$/.test(val))
         return res.json({ ok: false, error: `${key}: Nur Zahlen erlaubt (Discord ID)` });

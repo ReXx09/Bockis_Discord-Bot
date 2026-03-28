@@ -1532,6 +1532,21 @@ async function registerSlashCommands() {
 }
 // #endregion
 
+async function applyConfiguredBotName() {
+  const desiredName = String(config.get('discord.botName') || '').trim();
+  if (!desiredName) return;
+  if (!client.user) return;
+  if (client.user.username === desiredName) return;
+
+  try {
+    await client.user.setUsername(desiredName);
+    logger.info(`Bot-Username aktualisiert: ${desiredName}`);
+  } catch (err) {
+    // Discord limitiert Username-Änderungen; deshalb nur warnen, kein Abbruch.
+    logger.warn(`Bot-Username konnte nicht gesetzt werden: ${err.message}`);
+  }
+}
+
 // #region 21. SLASH-COMMAND HANDLER
 client.on('interactionCreate', async interaction => {
   if (!interaction.isChatInputCommand()) return;
@@ -1618,6 +1633,7 @@ initializeDatabase().then(() => { _httpServer = startWebServer(_webDeps); }).cat
 
 client.once('ready', async () => {
   logger.info(`Bot eingeloggt als ${client.user.tag}`);
+  await applyConfiguredBotName();
   client.user.setActivity('Service Health', { type: ActivityType.Watching });
   await registerSlashCommands();
   initializeUpdateCycle();

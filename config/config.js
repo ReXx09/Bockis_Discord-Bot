@@ -62,6 +62,12 @@ const config = convict({
       env: 'DISCORD_TOKEN',
       sensitive: true
     },
+    botName: {
+      doc: 'Optionaler Bot-Username für Discord (leer = unverändert lassen)',
+      format: String,
+      default: '',
+      env: 'DISCORD_BOT_NAME'
+    },
     statusChannelId: {
       doc: 'Channel-ID für die gepinnte Status-Nachricht',
       format: String,

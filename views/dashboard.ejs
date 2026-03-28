@@ -712,6 +712,12 @@
           <div class="cfg-hint">Leer lassen, um den bestehenden Token zu behalten.</div>
         </div>
         <div class="cfg-field">
+          <label class="cfg-label" for="cfgBotName">Discord Bot Name</label>
+          <input class="cfg-input" id="cfgBotName" type="text" autocomplete="off"
+                 placeholder="z. B. Uptime-Bot">
+          <div class="cfg-hint">Wird beim nächsten Bot-Start als Discord-Username gesetzt (max. 32 Zeichen).</div>
+        </div>
+        <div class="cfg-field">
           <label class="cfg-label" for="cfgStatusCh">Status-Channel ID</label>
           <input class="cfg-input" id="cfgStatusCh" type="text" autocomplete="off"
                  placeholder="z. B. 123456789012345678">
@@ -1940,6 +1946,7 @@
       document.getElementById('cfgDashPassword').dataset.initialValue = d.DASHBOARD_PASSWORD ? '__MASKED__' : '';
 
       setFieldValue('cfgStatusCh', d.STATUS_CHANNEL_ID || '');
+      setFieldValue('cfgBotName', d.DISCORD_BOT_NAME || '');
       setFieldValue('cfgNotifCh', d.DISCORD_NOTIFICATION_CHANNEL || '');
       setFieldValue('cfgKumaUrl', d.UPTIME_KUMA_URL || '');
       setFieldValue('cfgRenderMode', d.DISCORD_STATUS_RENDER_MODE || 'auto');
@@ -1997,6 +2004,7 @@
 
     const body = {};
     maybeSetChanged(body, 'DISCORD_TOKEN', 'cfgToken');
+    maybeSetChanged(body, 'DISCORD_BOT_NAME', 'cfgBotName', { allowEmpty: true });
     maybeSetChanged(body, 'STATUS_CHANNEL_ID', 'cfgStatusCh');
     maybeSetChanged(body, 'DISCORD_NOTIFICATION_CHANNEL', 'cfgNotifCh');
     maybeSetChanged(body, 'UPTIME_KUMA_URL', 'cfgKumaUrl');
