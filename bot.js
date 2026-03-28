@@ -8,13 +8,14 @@
  * SPDX-License-Identifier: MIT
  */
 
-const { Client, GatewayIntentBits, ActivityType, REST, Routes, SlashCommandBuilder, EmbedBuilder, ChannelType, PermissionFlagsBits } = require('discord.js');
+const { Client, GatewayIntentBits, ActivityType, REST, Routes, SlashCommandBuilder, EmbedBuilder, ChannelType, PermissionFlagsBits, AttachmentBuilder } = require('discord.js');
 const axios = require('axios');
 const winston = require('winston');
 require('winston-daily-rotate-file');
 const prom = require('prom-client');
 const { Sequelize, DataTypes, Op } = require('sequelize');
 const fs = require('fs');
+const { execFile } = require('child_process');
 
 // #region 1. ENV-VALIDIERUNG
 const path = require('path');
@@ -532,8 +533,12 @@ async function getStatusRenderMode() {
     return { mode: 'webhook_ascii', publicStatusUrl };
   }
 
+  if (configuredMode === 'svg_attachment') {
+    return { mode: 'svg_attachment', publicStatusUrl };
+  }
+
   if (!publicStatusUrl) {
-    return { mode: 'custom_embed', publicStatusUrl: null };
+    return { mode: 'svg_attachment', publicStatusUrl: null };
   }
 
   // "direct" Mode: Proxy mit injiziertem OG-Tags
@@ -575,14 +580,14 @@ async function getStatusRenderMode() {
   // Bei fehlenden OG-Metadaten sofort auf Embed wechseln statt fehlerhafte Link-Previews zu posten.
   const reachable = await isStatusPageReachable(publicStatusUrl);
   if (!reachable) {
-    logger.warn(`Status Render Mode: auto - Statusseite nicht erreichbar, Fallback auf embed: ${publicStatusUrl}`);
-    return { mode: 'custom_embed', publicStatusUrl };
+    logger.warn(`Status Render Mode: auto - Statusseite nicht erreichbar, Fallback auf svg_attachment: ${publicStatusUrl}`);
+    return { mode: 'svg_attachment', publicStatusUrl };
   }
 
   const preview = await inspectStatusPagePreview(publicStatusUrl);
   if (!preview.reachable || !preview.richPreview) {
-    logger.warn('Status Render Mode: auto - OG Metadaten unzureichend, Fallback auf embed (kein fehlerhafter Link-Preview Spam)');
-    return { mode: 'custom_embed', publicStatusUrl };
+    logger.warn('Status Render Mode: auto - OG Metadaten unzureichend, Fallback auf svg_attachment');
+    return { mode: 'svg_attachment', publicStatusUrl };
   }
 
   // Nur wenn Metadaten ok sind, Link-Preview nutzen.
@@ -871,6 +876,132 @@ function buildStatusEmbed(monitors, statusPageUrl = null) {
 
   return embed;
 }
+
+function _escapeSvgText(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function buildStatusSvg(monitors) {
+  const active = (monitors || []).filter(m => m.active !== false);
+  const groups = [...new Set(active.map(m => m.group || 'General'))].sort((a, b) => a.localeCompare(b, 'de'));
+
+  const servicesByGroup = {};
+  for (const group of groups) {
+    servicesByGroup[group] = active.filter(m => (m.group || 'General') === group);
+  }
+
+  const headerHeight = 90;
+  const groupHeaderHeight = 36;
+  const serviceHeight = 44;
+  const groupSpacing = 22;
+
+  let totalHeight = headerHeight + 20;
+  for (const group of groups) {
+    totalHeight += groupHeaderHeight + (servicesByGroup[group].length * serviceHeight) + groupSpacing;
+  }
+  totalHeight = Math.max(totalHeight, 200);
+
+  const now = new Date().toLocaleString('de-DE', { hour12: false });
+
+  let svg = `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="${totalHeight}" viewBox="0 0 1000 ${totalHeight}">
+  <rect width="1000" height="${totalHeight}" fill="#181c24"/>
+  <rect width="1000" height="${headerHeight}" fill="#131720"/>
+  <text x="30" y="52" font-family="Segoe UI, Arial, sans-serif" font-size="30" font-weight="700" fill="#f2f6ff">LIVE DIENSTE STATUS</text>
+  <text x="670" y="52" font-family="Segoe UI, Arial, sans-serif" font-size="16" fill="#9aa4b6">Stand: ${_escapeSvgText(now)}</text>`;
+
+  let currentY = headerHeight + 14;
+
+  for (const group of groups) {
+    const services = servicesByGroup[group];
+    svg += `
+  <rect x="24" y="${currentY}" width="952" height="${groupHeaderHeight}" rx="6" fill="#2a303b"/>
+  <text x="40" y="${currentY + 24}" font-family="Segoe UI, Arial, sans-serif" font-size="18" font-weight="700" fill="#ffffff">${_escapeSvgText(group.toUpperCase())} [${services.length}]</text>`;
+
+    currentY += groupHeaderHeight + 8;
+
+    for (const monitor of services) {
+      const isUp = monitor.status === 1;
+      const isPending = monitor.status === 2;
+      const color = isUp ? '#3fb950' : isPending ? '#e3a341' : '#f85149';
+      const statusText = isUp ? 'OPERATIONAL' : isPending ? 'PENDING' : 'OUTAGE';
+      const pct = Math.max(0, Math.min(100, Number.parseFloat(monitor.uptime) || 0));
+      const barWidth = Math.max(2, Math.round((pct / 100) * 250));
+      const timeText = monitor.time
+        ? new Date(monitor.time).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+        : '--:--:--';
+
+      svg += `
+  <circle cx="44" cy="${currentY + 16}" r="7" fill="${color}"/>
+  <text x="62" y="${currentY + 21}" font-family="Segoe UI, Arial, sans-serif" font-size="16" font-weight="700" fill="#ecf1fb">${_escapeSvgText(monitor.name)}</text>
+  <text x="360" y="${currentY + 21}" font-family="Segoe UI, Arial, sans-serif" font-size="14" font-weight="700" fill="${color}">${statusText}</text>
+  <rect x="510" y="${currentY + 6}" width="250" height="18" rx="4" fill="#4a5568"/>
+  <rect x="510" y="${currentY + 6}" width="${barWidth}" height="18" rx="4" fill="${color}"/>
+  <text x="774" y="${currentY + 21}" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="700" fill="#ecf1fb">${pct.toFixed(1)}%</text>
+  <text x="850" y="${currentY + 21}" font-family="Segoe UI, Arial, sans-serif" font-size="12" fill="#9aa4b6">${_escapeSvgText(timeText)}</text>`;
+
+      currentY += serviceHeight;
+    }
+
+    currentY += groupSpacing;
+  }
+
+  svg += `
+  <text x="24" y="${totalHeight - 12}" font-family="Segoe UI, Arial, sans-serif" font-size="12" fill="#95a2b8">Uptime Kuma Status - automatisch generiert</text>
+</svg>`;
+
+  return svg;
+}
+
+async function convertSvgToPngBuffer(svgContent) {
+  const tmpDir = path.join(__dirname, 'data', 'tmp');
+  fs.mkdirSync(tmpDir, { recursive: true });
+
+  const stamp = `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+  const svgFilePath = path.join(tmpDir, `status-${stamp}.svg`);
+  const pngFilePath = path.join(tmpDir, `status-${stamp}.png`);
+
+  fs.writeFileSync(svgFilePath, svgContent, 'utf8');
+
+  try {
+    await new Promise((resolve, reject) => {
+      execFile('rsvg-convert', ['-w', '1000', svgFilePath, '-o', pngFilePath], { timeout: 12_000 }, (err, stdout, stderr) => {
+        if (err) {
+          const details = (stderr || stdout || err.message || '').toString().trim();
+          reject(new Error(details || 'rsvg-convert fehlgeschlagen'));
+          return;
+        }
+        resolve();
+      });
+    });
+
+    return fs.readFileSync(pngFilePath);
+  } catch (err) {
+    throw new Error(`SVG-Konvertierung fehlgeschlagen (${err.message}). Installiere auf dem Raspberry Pi: sudo apt-get install -y librsvg2-bin`);
+  } finally {
+    try { fs.unlinkSync(svgFilePath); } catch { /* ignore */ }
+    try { fs.unlinkSync(pngFilePath); } catch { /* ignore */ }
+  }
+}
+
+async function buildSvgAttachmentPayload(monitors, statusPageUrl = null) {
+  const svg = buildStatusSvg(monitors);
+  const pngBuffer = await convertSvgToPngBuffer(svg);
+  const attachment = new AttachmentBuilder(pngBuffer, { name: 'status.png' });
+
+  return {
+    content: statusPageUrl
+      ? `🌐 **LIVE SERVICE STATUS**\n${statusPageUrl}`
+      : '🌐 **LIVE SERVICE STATUS**',
+    embeds: [],
+    files: [attachment]
+  };
+}
 // #endregion
 
 // #region 16. CHANNEL-INDIKATOR (Name + Topic)
@@ -965,7 +1096,7 @@ async function updateStatusMessage() {
     uptimeGauge.set(uptimePercent);
     statusCheckCounter.inc();
 
-    // ── Nachricht: Multi-Mode Support (direct / graphical / link_preview / webhook_ascii / embed) ────
+    // ── Nachricht: Multi-Mode Support (direct / graphical / link_preview / svg_attachment / webhook_ascii / embed) ────
     const renderDecision = await getStatusRenderMode();
 
     // Webhook-Mode hat einen eigenen Versandpfad ohne Discord Channel Message.
@@ -999,6 +1130,13 @@ async function updateStatusMessage() {
       messagePayload = { content: buildStatusGraphicalMessage(renderDecision.statusUrl, renderDecision.badgeUrl), embeds: [] };
     } else if (renderDecision.mode === 'link_preview') {
       messagePayload = { content: buildStatusLinkPreviewMessage(renderDecision.publicStatusUrl), embeds: [] };
+    } else if (renderDecision.mode === 'svg_attachment') {
+      try {
+        messagePayload = await buildSvgAttachmentPayload(monitors, renderDecision.publicStatusUrl || getPublicStatusUrl());
+      } catch (err) {
+        logger.warn(`SVG-Render fehlgeschlagen, Fallback auf Embed: ${err.message}`);
+        messagePayload = { content: null, embeds: [statusEmbed] };
+      }
     }
 
     try {
@@ -1006,7 +1144,7 @@ async function updateStatusMessage() {
         try {
           const existingMessage = await channel.messages.fetch(statusMessageId);
           // Für Link-Preview Modi: Lösche alte Message und sende neu (Discord unfurlt nur neue Messages)
-          if (['direct', 'graphical', 'link_preview'].includes(renderDecision.mode)) {
+          if (['direct', 'graphical', 'link_preview', 'svg_attachment'].includes(renderDecision.mode)) {
             await existingMessage.delete();
             const newMessage = await channel.send(messagePayload);
             statusMessageId = newMessage.id;

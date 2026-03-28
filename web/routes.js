@@ -590,8 +590,8 @@ module.exports = function startWebServer({
       }
       if ((key === 'STATUS_CHANNEL_ID' || key === 'DISCORD_NOTIFICATION_CHANNEL') && !/^\d+$/.test(val))
         return res.json({ ok: false, error: `${key}: Nur Zahlen erlaubt (Discord ID)` });
-      if (key === 'DISCORD_STATUS_RENDER_MODE' && !['auto', 'direct', 'graphical', 'webhook_ascii', 'embed', 'link_preview'].includes(val))
-        return res.json({ ok: false, error: 'DISCORD_STATUS_RENDER_MODE muss auto, direct, graphical, webhook_ascii, embed oder link_preview sein' });
+      if (key === 'DISCORD_STATUS_RENDER_MODE' && !['auto', 'direct', 'graphical', 'svg_attachment', 'webhook_ascii', 'embed', 'link_preview'].includes(val))
+        return res.json({ ok: false, error: 'DISCORD_STATUS_RENDER_MODE muss auto, direct, graphical, svg_attachment, webhook_ascii, embed oder link_preview sein' });
       if ((key === 'DISCORD_STATUS_WEBHOOK_URL' || key === 'CLOUDFLARE_PUBLIC_URL') && val && !/^https?:\/\/.+/.test(val))
         return res.json({ ok: false, error: `${key} muss mit http:// oder https:// beginnen` });
       if (key === 'UPTIME_KUMA_URL' && !/^https?:\/\/.+/.test(val))

@@ -75,8 +75,8 @@ const config = convict({
       env: 'DISCORD_NOTIFICATION_CHANNEL'
     },
     statusRenderMode: {
-      doc: 'Render-Modus für die Status-Nachricht: auto (beste Methode wählen) | direct (Link mit injiziertem OG) | graphical (Link mit Uptime-Badge-Bild) | webhook_ascii (Webhook mit ASCII-Uptimebalken) | embed (Discord Embed) | link_preview (Legacy)',
-      format: ['auto', 'direct', 'graphical', 'webhook_ascii', 'embed', 'link_preview'],
+      doc: 'Render-Modus für die Status-Nachricht: auto (beste Methode wählen) | direct (Link mit injiziertem OG) | graphical (Link mit Uptime-Badge-Bild) | svg_attachment (Statusgrafik als PNG-Anhang via rsvg-convert) | webhook_ascii (Webhook mit ASCII-Uptimebalken) | embed (Discord Embed) | link_preview (Legacy)',
+      format: ['auto', 'direct', 'graphical', 'svg_attachment', 'webhook_ascii', 'embed', 'link_preview'],
       default: 'auto',
       env: 'DISCORD_STATUS_RENDER_MODE'
     },
