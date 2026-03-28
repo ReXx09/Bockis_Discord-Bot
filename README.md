@@ -83,6 +83,9 @@ Der Assistent führt dich Schritt für Schritt durch:
 # 1. Abhängigkeiten installieren
 npm install
 
+# 1b. System-Abhängigkeit für SVG-Rendering (Raspberry Pi / Debian)
+sudo apt-get install -y librsvg2-bin
+
 # 2. Konfigurationsdatei erstellen
 cp .env.example .env
 

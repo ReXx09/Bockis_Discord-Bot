@@ -105,7 +105,7 @@ menu_system() {
     CHOICE=$(whiptail --title "🍓 System vorbereiten" --menu \
       "Raspberry Pi für den Bot-Betrieb einrichten:" $H $W 10 \
       "1" "System aktualisieren  (apt update + upgrade)" \
-      "2" "Wichtige Pakete installieren  (git, curl, ufw, ...)" \
+      "2" "Wichtige Pakete installieren  (git, curl, ufw, librsvg2-bin, ...)" \
       "3" "Swap-Speicher einrichten (empfohlen für Pi 3)" \
       "4" "Firewall (ufw) konfigurieren" \
       "5" "Zeitzone setzen" \
@@ -144,7 +144,7 @@ sys_update() {
 sys_packages() {
   clear
   echo -e "${BOLD}${CYAN}━━ Pakete installieren ━━${NC}\n"
-  local PKGS=(git curl wget nano lsb-release ca-certificates gnupg ufw htop net-tools)
+  local PKGS=(git curl wget nano lsb-release ca-certificates gnupg ufw htop net-tools librsvg2-bin)
   info "Installiere: ${PKGS[*]}"
   sudo apt-get install -y "${PKGS[@]}" 2>&1 | tail -5
   ok "Pakete installiert"

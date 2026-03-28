@@ -123,6 +123,14 @@ print_success ".env gesichert als $(basename "$BACKUP_FILE")"
 update_native() {
   print_header "Bot-Update (native)"
 
+  # System-Abhängigkeit für SVG-Rendering sicherstellen
+  if ! command -v rsvg-convert >/dev/null 2>&1; then
+    print_status "Installiere fehlende System-Abhaengigkeit: librsvg2-bin"
+    sudo apt-get update -qq
+    sudo apt-get install -y -qq librsvg2-bin
+    print_success "librsvg2-bin installiert"
+  fi
+
   # 1. git pull
   command -v git >/dev/null 2>&1 || die "git ist nicht installiert: sudo apt-get install -y git"
   cd "$BOT_DIR"

@@ -59,6 +59,8 @@ print_header "2. Systempakete aktualisieren"
 print_status "sudo apt-get update && apt-get upgrade ..."
 sudo apt-get update -qq
 sudo apt-get upgrade -y -qq
+print_status "Installiere System-Abhaengigkeiten (librsvg2-bin fuer SVG->PNG)..."
+sudo apt-get install -y -qq librsvg2-bin
 print_success "Systempakete aktualisiert"
 
 # ── 3. Node.js LTS installieren ──────────────────────────────────────────────
