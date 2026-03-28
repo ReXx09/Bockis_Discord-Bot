@@ -8,7 +8,6 @@
  * SPDX-License-Identifier: MIT
  */
 
-require('dotenv').config();
 const { Client, GatewayIntentBits, ActivityType, REST, Routes, SlashCommandBuilder, EmbedBuilder, ChannelType, PermissionFlagsBits } = require('discord.js');
 const axios = require('axios');
 const winston = require('winston');
@@ -20,13 +19,15 @@ const fs = require('fs');
 // #region 1. ENV-VALIDIERUNG
 const path = require('path');
 const envPath = path.join(__dirname, '.env');
-const envExamplePath = path.join(__dirname, '.env.example');
-const dotenvExists = fs.existsSync(envPath);
-
-if (dotenvExists) {
-  require('dotenv').config();
+if (fs.existsSync(envPath)) {
+  require('dotenv').config({ path: envPath });
 } else {
-  console.warn('[INFO] Keine .env gefunden – Umgebungsvariablen werden von außen erwartet (Docker-Compose, systemd, Host-Env)');
+  console.error('[FATAL] Keine .env gefunden.');
+  console.error('\nSo behebst du das:');
+  console.error('  1. Kopiere .env.example zu .env');
+  console.error('     PowerShell: Copy-Item .env.example .env');
+  console.error('  2. Fuelle die Werte in .env aus und starte den Bot neu');
+  process.exit(1);
 }
 
 const REQUIRED_ENV = ['DISCORD_TOKEN', 'STATUS_CHANNEL_ID', 'UPTIME_KUMA_URL'];
@@ -34,9 +35,9 @@ const missingEnv = REQUIRED_ENV.filter(k => !process.env[k]);
 if (missingEnv.length) {
   console.error(`[FATAL] Fehlende Umgebungsvariablen: ${missingEnv.join(', ')}`);
   console.error('\nSo behebst du das:');
-  console.error('  1. Lokal: Kopiere .env.example zu .env und f\u00fclle die Werte aus');
-  console.error('     $ cp .env.example .env');  
-  console.error('  2. Docker: Setze die Variablen in docker-compose.yml oder Host-ENV');
+  console.error('  1. Kopiere .env.example zu .env und fuelle die Werte aus');
+  console.error('     PowerShell: Copy-Item .env.example .env');
+  console.error('  2. Starte den Bot nach dem Speichern neu');
   process.exit(1);
 }
 // #endregion
@@ -172,7 +173,7 @@ const notificationManager = new NotificationManager();
 // #endregion
 
 // #region 10. STATE PERSISTENZ
-const STATE_FILE = './data/state.json';
+const STATE_FILE = path.join(__dirname, 'data', 'state.json');
 
 function loadState() {
   try {
@@ -185,7 +186,7 @@ function loadState() {
 
 function saveState(state) {
   try {
-    fs.mkdirSync('./data', { recursive: true });
+    fs.mkdirSync(path.dirname(STATE_FILE), { recursive: true });
     fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2), 'utf8');
   } catch (err) {
     logger.error(`State speichern fehlgeschlagen: ${err.message}`);
@@ -218,6 +219,8 @@ let lastEditTimestamp = 0;
 const MIN_EDIT_INTERVAL_MS  = 5_000;
 const MIN_CHANNEL_RENAME_MS = 6 * 60 * 1000;  // 6 min sicherer Puffer (Discord: max 2/10min)
 const STATUS_DOT = { green: '🟢', yellow: '🟡', red: '🔴' };
+let statusUpdateInProgress = false;
+let statusUpdateQueued = false;
 // #endregion
 
 // #region 12. RETRY-LOGIK
@@ -886,109 +889,127 @@ async function updateChannelIndicator(channel, monitors) {
 
 // #region 16b. DISCORD STATUS-NACHRICHT
 async function updateStatusMessage() {
-  const now = Date.now();
-  if (now - lastEditTimestamp < MIN_EDIT_INTERVAL_MS) {
-    logger.warn('Rate-Limit-Schutz: Update übersprungen (zu schnell aufgerufen)');
+  if (statusUpdateInProgress) {
+    statusUpdateQueued = true;
+    logger.warn('Status-Update bereits aktiv - neuer Run wird in Queue gelegt');
     return;
   }
 
-  const monitors = await getMonitorData();
-  if (!monitors?.length) {
-    logger.warn('Keine Monitore von Uptime Kuma erhalten');
-    return;
-  }
-
-  let operationalCount = 0;
-  for (const monitor of monitors) {
-    try {
-      const statusStr = monitor.status === 1 ? 'up' : monitor.status === 0 ? 'down' : 'unknown';
-      await MonitorStatus.create({
-        monitorId: parseInt(monitor.id),
-        status: statusStr,
-        responseTime: monitor.ping || null
-      });
-      await notificationManager.checkForNotifications(monitor, monitor.status);
-      if (monitor.status === 1) operationalCount++;
-    } catch (err) {
-      logger.error(`DB-Fehler bei Monitor ${monitor.id}: ${err.message}`);
-    }
-  }
-
-  const uptimePercent = (operationalCount / monitors.length) * 100;
-  uptimeGauge.set(uptimePercent);
-  statusCheckCounter.inc();
-
-  // ── Nachricht: Multi-Mode Support (direct / graphical / link_preview / webhook_ascii / embed) ────
-  const renderDecision = await getStatusRenderMode();
-
-  // Webhook-Mode hat einen eigenen Versandpfad ohne Discord Channel Message.
-  if (renderDecision.mode === 'webhook_ascii') {
-    try {
-      await sendOrEditWebhookStatus(monitors, renderDecision.publicStatusUrl || getPublicStatusUrl());
-      lastEditTimestamp = Date.now();
-      logger.info(`Status aktualisiert via Webhook ASCII: ${operationalCount}/${monitors.length} Dienste online`);
-      await syncServiceChannels(monitors);
-      return;
-    } catch (error) {
-      logger.error(`Webhook-Statusfehler: ${error.message}`);
-      // Fallback auf Standard-Embed im Status-Channel
-    }
-  }
-
-  const channelId = config.get('discord.statusChannelId');
-  const channel = client.channels.cache.get(channelId);
-  if (!channel) {
-    logger.error('Ung\u00fcltige discord.statusChannelId \u2013 Channel nicht gefunden');
-    return;
-  }
-
-  const statusEmbed = buildStatusEmbed(monitors, renderDecision.publicStatusUrl);
-  
-  let messagePayload = { content: null, embeds: [statusEmbed] };
-  
-  if (renderDecision.mode === 'direct') {
-    messagePayload = { content: buildStatusDirectMessage(renderDecision.proxyUrl), embeds: [] };
-  } else if (renderDecision.mode === 'graphical') {
-    messagePayload = { content: buildStatusGraphicalMessage(renderDecision.statusUrl, renderDecision.badgeUrl), embeds: [] };
-  } else if (renderDecision.mode === 'link_preview') {
-    messagePayload = { content: buildStatusLinkPreviewMessage(renderDecision.publicStatusUrl), embeds: [] };
-  }
-
+  statusUpdateInProgress = true;
   try {
-    if (statusMessageId) {
+    const now = Date.now();
+    if (now - lastEditTimestamp < MIN_EDIT_INTERVAL_MS) {
+      logger.warn('Rate-Limit-Schutz: Update übersprungen (zu schnell aufgerufen)');
+      return;
+    }
+
+    const monitors = await getMonitorData();
+    if (!monitors?.length) {
+      logger.warn('Keine Monitore von Uptime Kuma erhalten');
+      return;
+    }
+
+    let operationalCount = 0;
+    for (const monitor of monitors) {
       try {
-        const existingMessage = await channel.messages.fetch(statusMessageId);
-        // Für Link-Preview Modi: Lösche alte Message und sende neu (Discord unfurlt nur neue Messages)
-        if (['direct', 'graphical', 'link_preview'].includes(renderDecision.mode)) {
-          await existingMessage.delete();
+        const statusStr = monitor.status === 1 ? 'up' : monitor.status === 0 ? 'down' : 'unknown';
+        await MonitorStatus.create({
+          monitorId: parseInt(monitor.id),
+          status: statusStr,
+          responseTime: monitor.ping || null
+        });
+        await notificationManager.checkForNotifications(monitor, monitor.status);
+        if (monitor.status === 1) operationalCount++;
+      } catch (err) {
+        logger.error(`DB-Fehler bei Monitor ${monitor.id}: ${err.message}`);
+      }
+    }
+
+    const uptimePercent = (operationalCount / monitors.length) * 100;
+    uptimeGauge.set(uptimePercent);
+    statusCheckCounter.inc();
+
+    // ── Nachricht: Multi-Mode Support (direct / graphical / link_preview / webhook_ascii / embed) ────
+    const renderDecision = await getStatusRenderMode();
+
+    // Webhook-Mode hat einen eigenen Versandpfad ohne Discord Channel Message.
+    if (renderDecision.mode === 'webhook_ascii') {
+      try {
+        await sendOrEditWebhookStatus(monitors, renderDecision.publicStatusUrl || getPublicStatusUrl());
+        lastEditTimestamp = Date.now();
+        logger.info(`Status aktualisiert via Webhook ASCII: ${operationalCount}/${monitors.length} Dienste online`);
+        await syncServiceChannels(monitors);
+        return;
+      } catch (error) {
+        logger.error(`Webhook-Statusfehler: ${error.message}`);
+        // Fallback auf Standard-Embed im Status-Channel
+      }
+    }
+
+    const channelId = config.get('discord.statusChannelId');
+    const channel = client.channels.cache.get(channelId);
+    if (!channel) {
+      logger.error('Ung\u00fcltige discord.statusChannelId \u2013 Channel nicht gefunden');
+      return;
+    }
+
+    const statusEmbed = buildStatusEmbed(monitors, renderDecision.publicStatusUrl);
+
+    let messagePayload = { content: null, embeds: [statusEmbed] };
+
+    if (renderDecision.mode === 'direct') {
+      messagePayload = { content: buildStatusDirectMessage(renderDecision.proxyUrl), embeds: [] };
+    } else if (renderDecision.mode === 'graphical') {
+      messagePayload = { content: buildStatusGraphicalMessage(renderDecision.statusUrl, renderDecision.badgeUrl), embeds: [] };
+    } else if (renderDecision.mode === 'link_preview') {
+      messagePayload = { content: buildStatusLinkPreviewMessage(renderDecision.publicStatusUrl), embeds: [] };
+    }
+
+    try {
+      if (statusMessageId) {
+        try {
+          const existingMessage = await channel.messages.fetch(statusMessageId);
+          // Für Link-Preview Modi: Lösche alte Message und sende neu (Discord unfurlt nur neue Messages)
+          if (['direct', 'graphical', 'link_preview'].includes(renderDecision.mode)) {
+            await existingMessage.delete();
+            const newMessage = await channel.send(messagePayload);
+            statusMessageId = newMessage.id;
+            persistState();
+          } else {
+            // Für Embeds: Normal editieren
+            await existingMessage.edit(messagePayload);
+          }
+        } catch (err) {
+          logger.warn(`Vorherige Status-Nachricht konnte nicht aktualisiert werden (${err.message}) - sende neue Nachricht`);
           const newMessage = await channel.send(messagePayload);
           statusMessageId = newMessage.id;
           persistState();
-        } else {
-          // Für Embeds: Normal editieren
-          await existingMessage.edit(messagePayload);
         }
-      } catch {
+      } else {
         const newMessage = await channel.send(messagePayload);
         statusMessageId = newMessage.id;
         persistState();
       }
-    } else {
-      const newMessage = await channel.send(messagePayload);
-      statusMessageId = newMessage.id;
-      persistState();
-    }
-    lastEditTimestamp = Date.now();
-    logger.info(`Status aktualisiert: ${operationalCount}/${monitors.length} Dienste online`);
-    logger.info(`Status Render Mode: ${renderDecision.mode}${renderDecision.publicStatusUrl ? ` | ${renderDecision.publicStatusUrl}` : renderDecision.proxyUrl ? ` | proxy` : ``}`);
+      lastEditTimestamp = Date.now();
+      logger.info(`Status aktualisiert: ${operationalCount}/${monitors.length} Dienste online`);
+      logger.info(`Status Render Mode: ${renderDecision.mode}${renderDecision.publicStatusUrl ? ` | ${renderDecision.publicStatusUrl}` : renderDecision.proxyUrl ? ` | proxy` : ``}`);
 
-    // Channel-Name + Topic bei Statuswechsel aktualisieren
-    await updateChannelIndicator(channel, monitors);
-    // Service-Kanäle in der Kanalleiste aktualisieren
-    await syncServiceChannels(monitors);
-  } catch (error) {
-    logger.error(`Discord-Nachrichtenfehler: ${error.message}`);
-    statusMessageId = null;
+      // Channel-Name + Topic bei Statuswechsel aktualisieren
+      await updateChannelIndicator(channel, monitors);
+      // Service-Kanäle in der Kanalleiste aktualisieren
+      await syncServiceChannels(monitors);
+    } catch (error) {
+      logger.error(`Discord-Nachrichtenfehler: ${error.message}`);
+      statusMessageId = null;
+    }
+  } finally {
+    statusUpdateInProgress = false;
+    if (statusUpdateQueued) {
+      statusUpdateQueued = false;
+      setTimeout(() => {
+        updateStatusMessage().catch(err => logger.error(`Queued Status-Update fehlgeschlagen: ${err.message}`));
+      }, 750);
+    }
   }
 }
 // #endregion
