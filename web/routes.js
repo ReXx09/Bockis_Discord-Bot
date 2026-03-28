@@ -18,6 +18,7 @@ const fs          = require('fs');
 const os          = require('os');
 const express     = require('express');
 const axios       = require('axios');
+const { ChannelType } = require('discord.js');
 const { execFile, execFileSync, execSync, spawn } = require('child_process');
 
 // Erlaubte Werte für Service-Control (Whitelist gegen Command-Injection)
@@ -1010,6 +1011,65 @@ module.exports = function startWebServer({
     proc.stdout.on('data', d => d.toString().split('\n').filter(Boolean).forEach(send));
     proc.stderr.on('data', d => d.toString().split('\n').filter(Boolean).forEach(send));
     proc.on('close', code => { res.write(`data: __EXIT__:${code}\n\n`); res.end(); });
+  });
+
+  // ── API: Vorhandene Discord-Kategorien/Kanäle lesen ───────────────────────
+
+  app.get('/api/discord-channel-browser', dashboardAuth, async (req, res) => {
+    try {
+      if (!client.isReady()) {
+        return res.json({ ok: false, error: 'Discord-Client ist nicht bereit. Bot online?' });
+      }
+
+      const cfgServiceGuildId = String(config.get('discord.serviceGuildId') || '').trim();
+      const cfgGuildId = String(config.get('discord.guildId') || '').trim();
+      const reqGuildId = String(req.query?.guildId || '').trim();
+      const guildId = reqGuildId || cfgServiceGuildId || cfgGuildId;
+
+      if (!guildId || !/^\d+$/.test(guildId)) {
+        return res.json({ ok: false, error: 'Guild-ID fehlt oder ist ungültig.' });
+      }
+
+      let guild = client.guilds.cache.get(guildId);
+      if (!guild) guild = await client.guilds.fetch(guildId);
+      if (!guild) return res.json({ ok: false, error: 'Guild nicht gefunden.' });
+
+      await guild.channels.fetch();
+
+      const all = Array.from(guild.channels.cache.values());
+      const categories = all
+        .filter(ch => ch?.type === ChannelType.GuildCategory)
+        .sort((a, b) => (a.rawPosition ?? a.position ?? 0) - (b.rawPosition ?? b.position ?? 0));
+
+      const textChannels = all
+        .filter(ch => ch?.type === ChannelType.GuildText)
+        .sort((a, b) => (a.rawPosition ?? a.position ?? 0) - (b.rawPosition ?? b.position ?? 0));
+
+      const byCategory = categories.map((cat) => {
+        const channels = textChannels
+          .filter(ch => ch.parentId === cat.id)
+          .map(ch => ({ id: ch.id, name: ch.name }));
+        return {
+          id: cat.id,
+          name: cat.name,
+          channels,
+        };
+      });
+
+      const uncategorized = textChannels
+        .filter(ch => !ch.parentId)
+        .map(ch => ({ id: ch.id, name: ch.name }));
+
+      res.json({
+        ok: true,
+        guild: { id: guild.id, name: guild.name },
+        categories: byCategory,
+        uncategorized,
+      });
+    } catch (err) {
+      logger.error(`/api/discord-channel-browser Fehler: ${err.message}`);
+      res.json({ ok: false, error: err.message });
+    }
   });
 
   // ── API: Konfiguration lesen (Token maskiert) ───────────────────────────────

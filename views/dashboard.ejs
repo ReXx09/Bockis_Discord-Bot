@@ -768,6 +768,24 @@
                  placeholder="Next-Cloud=123456789012345678;Pi-VPN=234567890123456789">
           <div class="cfg-hint">Format: <code>Monitorname=ChannelID;Anderer Monitor=ChannelID</code>. Die Channel-ID muss zu einem bereits vorhandenen Kanal gehören. Wenn leer, kann der Bot fehlende Kanäle automatisch selbst erstellen.</div>
         </div>
+        <div class="cfg-field" style="border:1px solid var(--border);border-radius:8px;padding:12px;background:rgba(255,255,255,.01)">
+          <label class="cfg-label">Bestehende Kategorien &amp; Kanäle übernehmen</label>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">
+            <button class="btn" id="btnLoadExistingChannels" onclick="loadExistingGuildChannels()">🔎 Aus Discord laden</button>
+            <select class="cfg-input" id="cfgExistingCategorySelect" style="min-width:240px;flex:1">
+              <option value="">Kategorie auswählen…</option>
+            </select>
+            <select class="cfg-input" id="cfgExistingChannelSelect" style="min-width:240px;flex:1">
+              <option value="">Kanal auswählen…</option>
+            </select>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+            <input class="cfg-input" id="cfgExistingMonitorName" type="text" autocomplete="off" style="min-width:240px;flex:1"
+                   placeholder="Monitorname (z. B. NextCloud)">
+            <button class="btn btn-green" onclick="addSelectedChannelToMap()">➕ Zu Mapping hinzufügen</button>
+          </div>
+          <div class="cfg-hint" id="cfgExistingChannelState" style="margin-top:8px">Lädt vorhandene Kategorien/Kanäle aus der gewählten Guild und übernimmt sie als <code>Monitor=ChannelID</code> Eintrag.</div>
+        </div>
         <div class="cfg-field">
           <label class="cfg-label">Fehlende Kanäle automatisch erstellen</label>
           <div style="display:flex;align-items:center;gap:12px;margin-top:2px">
@@ -2056,6 +2074,124 @@
       .filter(Boolean);
     const unique = Array.from(new Set(entries)).filter(cmd => allowed.includes(cmd));
     return unique.length ? unique : ['status', 'uptime', 'refresh', 'help', 'coinflip', 'dice', 'eightball'];
+  }
+
+  // ── Discord-Kanal-Browser für Mapping-Übernahme ──────────────────────────
+  let _existingCategoryData = [];
+  let _existingUncategorized = [];
+
+  function _renderExistingChannelSelect() {
+    const categoryEl = document.getElementById('cfgExistingCategorySelect');
+    const channelEl = document.getElementById('cfgExistingChannelSelect');
+    if (!categoryEl || !channelEl) return;
+
+    const selectedCategoryId = categoryEl.value || '__uncategorized__';
+    let channels = [];
+
+    if (selectedCategoryId === '__uncategorized__') {
+      channels = _existingUncategorized;
+    } else {
+      channels = (_existingCategoryData.find(c => c.id === selectedCategoryId)?.channels) || [];
+    }
+
+    channelEl.innerHTML = '<option value="">Kanal auswählen…</option>';
+    channels.forEach((ch) => {
+      const opt = document.createElement('option');
+      opt.value = ch.id;
+      opt.textContent = `# ${ch.name}`;
+      channelEl.appendChild(opt);
+    });
+  }
+
+  async function loadExistingGuildChannels() {
+    const btn = document.getElementById('btnLoadExistingChannels');
+    const state = document.getElementById('cfgExistingChannelState');
+    const categoryEl = document.getElementById('cfgExistingCategorySelect');
+
+    const serviceGuild = (document.getElementById('cfgServiceGuildId')?.value || '').trim();
+    const defaultGuild = (document.getElementById('cfgGuildId')?.value || '').trim();
+    const guildId = serviceGuild || defaultGuild;
+
+    if (!guildId) {
+      if (state) state.textContent = 'Bitte zuerst SERVICE_GUILD_ID oder GUILD_ID setzen.';
+      toast('Guild-ID fehlt', 'warn');
+      return;
+    }
+
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ Lade…'; }
+    if (state) state.textContent = 'Lade Kategorien und Kanäle aus Discord…';
+
+    try {
+      const d = await fetch(`/api/discord-channel-browser?guildId=${encodeURIComponent(guildId)}`).then(r => r.json());
+      if (!d.ok) {
+        if (state) state.textContent = 'Fehler: ' + (d.error || 'Unbekannt');
+        toast('Discord-Kanäle laden fehlgeschlagen', 'err');
+        return;
+      }
+
+      _existingCategoryData = d.categories || [];
+      _existingUncategorized = d.uncategorized || [];
+
+      categoryEl.innerHTML = '<option value="">Kategorie auswählen…</option>';
+      _existingCategoryData.forEach((cat) => {
+        const opt = document.createElement('option');
+        opt.value = cat.id;
+        opt.textContent = `${cat.name} (${cat.channels?.length || 0})`;
+        categoryEl.appendChild(opt);
+      });
+      if (_existingUncategorized.length) {
+        const opt = document.createElement('option');
+        opt.value = '__uncategorized__';
+        opt.textContent = `Ohne Kategorie (${_existingUncategorized.length})`;
+        categoryEl.appendChild(opt);
+      }
+
+      categoryEl.onchange = _renderExistingChannelSelect;
+      _renderExistingChannelSelect();
+
+      if (state) state.textContent = `Geladen: ${d.guild?.name || guildId} · ${_existingCategoryData.length} Kategorien`;
+      toast('Kategorien/Kanäle geladen', 'ok');
+    } catch (e) {
+      if (state) state.textContent = 'Verbindungsfehler: ' + e.message;
+      toast('Verbindungsfehler beim Laden', 'err');
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = '🔎 Aus Discord laden'; }
+    }
+  }
+
+  function addSelectedChannelToMap() {
+    const monitorEl = document.getElementById('cfgExistingMonitorName');
+    const channelEl = document.getElementById('cfgExistingChannelSelect');
+    const mapEl = document.getElementById('cfgServiceChannelMap');
+    const state = document.getElementById('cfgExistingChannelState');
+
+    const monitorName = String(monitorEl?.value || '').trim();
+    const channelId = String(channelEl?.value || '').trim();
+    if (!monitorName) {
+      toast('Monitorname fehlt', 'warn');
+      return;
+    }
+    if (!channelId) {
+      toast('Kanal fehlt', 'warn');
+      return;
+    }
+
+    const current = String(mapEl?.value || '').trim();
+    const entries = current ? current.split(';').map(s => s.trim()).filter(Boolean) : [];
+    const normalizedMonitor = monitorName.toLowerCase();
+
+    const filtered = entries.filter((entry) => {
+      const idx = entry.lastIndexOf('=');
+      if (idx <= 0) return true;
+      const left = entry.slice(0, idx).trim().toLowerCase();
+      return left !== normalizedMonitor;
+    });
+
+    filtered.push(`${monitorName}=${channelId}`);
+    mapEl.value = filtered.join(';');
+
+    if (state) state.textContent = `Mapping aktualisiert: ${monitorName} → ${channelId}`;
+    toast('Kanal ins Mapping übernommen', 'ok');
   }
 
   function applyEnabledCommandsToCheckboxes(value) {
