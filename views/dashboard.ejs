@@ -153,7 +153,6 @@
     }
     .card.dragging { opacity: 0.5; will-change: opacity; }
     .card.drag-over { border-color: var(--blue); box-shadow: 0 0 0 2px rgba(56,139,253,.2); }
-    .dashboard-grid.dragging { pointer-events: none; }
     .drop-placeholder {
       min-height: 96px;
       border: 2px dashed rgba(56,139,253,.75);
@@ -2408,7 +2407,6 @@
   const STORAGE_KEY_ORDER    = 'dashboard-card-order';
   const STORAGE_KEY_SPAN     = 'dashboard-card-span';
 
-  let dragSrc = null;
   let dropPlaceholder = null;
   let dragSrc = null;
   let lastDragOverCard = null;
