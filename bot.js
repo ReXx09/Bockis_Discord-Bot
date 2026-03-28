@@ -1672,6 +1672,52 @@ async function applyConfiguredBotName() {
   }
 }
 
+let _presenceTimer = null;
+let _presenceIndex = 0;
+
+function getConfiguredPresenceEntries() {
+  const raw = String(config.get('discord.presenceText') || '').trim();
+  const entries = raw
+    .split(';')
+    .map(s => s.trim())
+    .filter(Boolean)
+    .slice(0, 15);
+  return entries.length ? entries : ['Service Health'];
+}
+
+function getPresenceRotateIntervalMs() {
+  const raw = Number(config.get('discord.presenceRotateMs'));
+  if (!Number.isFinite(raw)) return 90000;
+  return Math.max(15000, Math.min(raw, 3600000));
+}
+
+function applyConfiguredPresenceNow() {
+  if (!client.user) return;
+  const entries = getConfiguredPresenceEntries();
+  const text = entries[_presenceIndex % entries.length] || 'Service Health';
+  _presenceIndex = (_presenceIndex + 1) % entries.length;
+  client.user.setActivity(text, { type: ActivityType.Watching });
+}
+
+function startPresenceRotation() {
+  if (_presenceTimer) {
+    clearInterval(_presenceTimer);
+    _presenceTimer = null;
+  }
+
+  _presenceIndex = 0;
+  applyConfiguredPresenceNow();
+
+  const intervalMs = getPresenceRotateIntervalMs();
+  _presenceTimer = setInterval(() => {
+    try {
+      applyConfiguredPresenceNow();
+    } catch (err) {
+      logger.warn(`Discord Presence-Rotation fehlgeschlagen: ${err.message}`);
+    }
+  }, intervalMs);
+}
+
 // #region 21. SLASH-COMMAND HANDLER
 client.on('interactionCreate', async interaction => {
   if (!interaction.isChatInputCommand()) return;
@@ -1826,7 +1872,7 @@ initializeDatabase().then(() => { _httpServer = startWebServer(_webDeps); }).cat
 client.once('ready', async () => {
   logger.info(`Bot eingeloggt als ${client.user.tag}`);
   await applyConfiguredBotName();
-  client.user.setActivity('Service Health', { type: ActivityType.Watching });
+  startPresenceRotation();
   await registerSlashCommands();
   initializeUpdateCycle();
 });

@@ -68,6 +68,18 @@ const config = convict({
       default: '',
       env: 'DISCORD_BOT_NAME'
     },
+    presenceText: {
+      doc: 'Discord "Schaut zu" Texte, getrennt mit ; (z.B. Service Health;den Serverstatus;neue Releases)',
+      format: String,
+      default: 'Service Health',
+      env: 'DISCORD_PRESENCE_TEXT'
+    },
+    presenceRotateMs: {
+      doc: 'Intervall in ms fuer Rotation der "Schaut zu" Texte (min. 15000)',
+      format: 'int',
+      default: 90000,
+      env: 'DISCORD_PRESENCE_ROTATE_MS'
+    },
     enabledCommands: {
       doc: 'Aktive Slash-Commands als Komma-Liste (status,uptime,refresh,help,coinflip,dice,eightball)',
       format: String,

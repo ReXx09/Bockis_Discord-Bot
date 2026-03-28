@@ -1098,6 +1098,8 @@ module.exports = function startWebServer({
         ok: true,
         DISCORD_TOKEN:                maskSecret(token),
         DISCORD_BOT_NAME:             get('DISCORD_BOT_NAME') || '',
+        DISCORD_PRESENCE_TEXT:        get('DISCORD_PRESENCE_TEXT') || 'Service Health',
+        DISCORD_PRESENCE_ROTATE_MS:   get('DISCORD_PRESENCE_ROTATE_MS') || '90000',
         DISCORD_ENABLED_COMMANDS:     get('DISCORD_ENABLED_COMMANDS') || 'status,uptime,refresh,help,coinflip,dice,eightball',
         STATUS_CHANNEL_ID:            get('STATUS_CHANNEL_ID'),
         DISCORD_NOTIFICATION_CHANNEL: get('DISCORD_NOTIFICATION_CHANNEL'),
@@ -1138,6 +1140,8 @@ module.exports = function startWebServer({
     const ALLOWED_CFG = [
       'DISCORD_TOKEN',
       'DISCORD_BOT_NAME',
+      'DISCORD_PRESENCE_TEXT',
+      'DISCORD_PRESENCE_ROTATE_MS',
       'DISCORD_ENABLED_COMMANDS',
       'STATUS_CHANNEL_ID',
       'DISCORD_NOTIFICATION_CHANNEL',
@@ -1168,6 +1172,7 @@ module.exports = function startWebServer({
       'DB_STORAGE'
     ];
     const CLEARABLE_CFG = new Set([
+      'DISCORD_PRESENCE_TEXT',
       'DISCORD_STATUS_MESSAGE_TITLE',
       'DISCORD_STATUS_BUTTON_LABEL',
       'DISCORD_WEBUI_BUTTON_LABEL',
@@ -1202,6 +1207,15 @@ module.exports = function startWebServer({
       if (key === 'DISCORD_BOT_NAME') {
         if (/[\n\r]/.test(val)) return res.json({ ok: false, error: 'DISCORD_BOT_NAME darf keine Zeilenumbrüche enthalten' });
         if (val.length > 32) return res.json({ ok: false, error: 'DISCORD_BOT_NAME darf maximal 32 Zeichen enthalten' });
+      }
+      if (key === 'DISCORD_PRESENCE_TEXT') {
+        if (/[\n\r]/.test(val)) return res.json({ ok: false, error: 'DISCORD_PRESENCE_TEXT darf keine Zeilenumbrueche enthalten' });
+        if (val.length > 300) return res.json({ ok: false, error: 'DISCORD_PRESENCE_TEXT darf maximal 300 Zeichen enthalten' });
+      }
+      if (key === 'DISCORD_PRESENCE_ROTATE_MS') {
+        const n = parseInt(val, 10);
+        if (!Number.isFinite(n) || n < 15000 || n > 3600000)
+          return res.json({ ok: false, error: 'DISCORD_PRESENCE_ROTATE_MS muss zwischen 15000 und 3600000 liegen' });
       }
       if (key === 'DISCORD_ENABLED_COMMANDS') {
         const allowedCommands = new Set(['status', 'uptime', 'refresh', 'help', 'coinflip', 'dice', 'eightball']);
