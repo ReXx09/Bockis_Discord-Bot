@@ -114,6 +114,7 @@
       gap: 16px;
     }
     .dashboard-grid > .card {
+      min-width: 0;
       grid-column: span 12;
     }
     .dashboard-grid > .card[data-span="6"]  { grid-column: span 6; }
@@ -208,6 +209,7 @@
     .btn-collapse:hover { color: var(--text); }
     
     .card-content {
+      min-width: 0;
       overflow: hidden;
       transition: max-height .25s ease, opacity .25s ease;
       max-height: 2000px;
@@ -224,13 +226,22 @@
       display: flex;
       justify-content: space-between;
       align-items: center;
+      gap: 12px;
+      min-width: 0;
       padding: 7px 0;
       border-bottom: 1px solid var(--border);
       font-size: 13px;
     }
     .row:last-child { border-bottom: none; }
-    .row-label { color: var(--muted); }
-    .row-value { font-weight: 500; font-family: 'SFMono-Regular', Consolas, monospace; }
+    .row-label { color: var(--muted); flex: 0 0 auto; }
+    .row-value {
+      min-width: 0;
+      text-align: right;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+      font-weight: 500;
+      font-family: 'SFMono-Regular', Consolas, monospace;
+    }
 
     /* BADGE */
     .badge {
