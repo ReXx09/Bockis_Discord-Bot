@@ -499,19 +499,68 @@
 
     /* CONFIG FORM */
     .cfg-form { margin-top: 4px; }
-    .cfg-module-grid {
+    .cfg-layout {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      grid-template-columns: 260px minmax(0, 1fr);
       gap: 12px;
       margin-bottom: 10px;
+      align-items: start;
     }
-    .cfg-module {
+    .cfg-sidebar {
+      border: 1px solid var(--border);
+      background: linear-gradient(180deg, rgba(17,23,33,.9), rgba(17,23,33,.72));
+      border-radius: 10px;
+      padding: 10px;
+      position: sticky;
+      top: 18px;
+    }
+    .cfg-sidebar-title {
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      color: var(--blue);
+      margin-bottom: 8px;
+      border-bottom: 1px solid rgba(255,255,255,.06);
+      padding-bottom: 6px;
+    }
+    .cfg-nav {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .cfg-nav-btn {
+      text-align: left;
+      padding: 9px 10px;
+      border: 1px solid var(--border);
+      background: var(--surface2);
+      color: var(--muted);
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: .02em;
+      transition: all .15s;
+    }
+    .cfg-nav-btn:hover { color: var(--text); border-color: var(--blue); }
+    .cfg-nav-btn.active {
+      color: #c8e1ff;
+      border-color: rgba(56,139,253,.75);
+      background: rgba(56,139,253,.16);
+      box-shadow: inset 0 0 0 1px rgba(56,139,253,.2);
+    }
+    .cfg-panels {
+      display: grid;
+      gap: 12px;
+    }
+    .cfg-pane-card {
       border: 1px solid var(--border);
       background: linear-gradient(180deg, rgba(17,23,33,.9), rgba(17,23,33,.72));
       border-radius: 10px;
       padding: 12px;
     }
-    .cfg-module-title {
+    .cfg-pane-card.hidden { display: none; }
+    .cfg-pane-title {
       font-size: 12px;
       font-weight: 700;
       text-transform: uppercase;
@@ -520,6 +569,11 @@
       margin-bottom: 10px;
       border-bottom: 1px solid rgba(255,255,255,.06);
       padding-bottom: 6px;
+    }
+    @media (max-width: 980px) {
+      .cfg-layout { grid-template-columns: 1fr; }
+      .cfg-sidebar { position: static; }
+      .cfg-nav { flex-direction: row; flex-wrap: wrap; }
     }
     .cfg-field { margin-bottom: 14px; }
     .cfg-label {
@@ -636,9 +690,21 @@
 <div class="card" id="cfgCard" data-span="12" data-pane="settings">
   <div class="card-title">⚙️ Einstellungen</div>
   <div class="cfg-form">
-    <div class="cfg-module-grid">
-      <div class="cfg-module">
-        <div class="cfg-module-title">🤖 Bot</div>
+    <div class="cfg-layout">
+      <div class="cfg-sidebar">
+        <div class="cfg-sidebar-title">Einstellungs-Menü</div>
+        <div class="cfg-nav">
+          <button class="cfg-nav-btn active" data-cfg-pane-btn="bot" onclick="setActiveSettingsPane('bot')">🤖 Bot & IDs</button>
+          <button class="cfg-nav-btn" data-cfg-pane-btn="channels" onclick="setActiveSettingsPane('channels')">🧩 Dienst-Kanäle</button>
+          <button class="cfg-nav-btn" data-cfg-pane-btn="renderer" onclick="setActiveSettingsPane('renderer')">📡 Discord Renderer</button>
+          <button class="cfg-nav-btn" data-cfg-pane-btn="security" onclick="setActiveSettingsPane('security')">🗂 Sicherheit & API</button>
+          <button class="cfg-nav-btn" data-cfg-pane-btn="raspi" onclick="setActiveSettingsPane('raspi')">🍓 Raspi & Web</button>
+        </div>
+      </div>
+
+      <div class="cfg-panels">
+      <div class="cfg-pane-card" data-cfg-pane="bot">
+        <div class="cfg-pane-title">🤖 Bot & IDs</div>
         <div class="cfg-field">
           <label class="cfg-label" for="cfgToken">Discord Bot Token</label>
           <input class="cfg-input" id="cfgToken" type="password" autocomplete="off"
@@ -660,6 +726,10 @@
           <input class="cfg-input" id="cfgGuildId" type="text" autocomplete="off"
                  placeholder="z. B. 123456789012345678">
         </div>
+      </div>
+
+      <div class="cfg-pane-card hidden" data-cfg-pane="channels">
+        <div class="cfg-pane-title">🧩 Dienst-Kanäle</div>
         <div class="cfg-field">
           <label class="cfg-label" for="cfgMonitoredServices">Monitored Services</label>
           <input class="cfg-input" id="cfgMonitoredServices" type="text" autocomplete="off"
@@ -682,8 +752,8 @@
         </div>
       </div>
 
-      <div class="cfg-module">
-        <div class="cfg-module-title">📡 Discord-Status-Renderer</div>
+      <div class="cfg-pane-card hidden" data-cfg-pane="renderer">
+        <div class="cfg-pane-title">📡 Discord-Status-Renderer</div>
         <div class="cfg-field">
           <label class="cfg-label" for="cfgRenderMode">Discord Status Renderer</label>
           <div style="display:flex;gap:8px;align-items:end;">
@@ -735,8 +805,8 @@
         </div>
       </div>
 
-      <div class="cfg-module">
-        <div class="cfg-module-title">🗂 .env / Sicherheit</div>
+      <div class="cfg-pane-card hidden" data-cfg-pane="security">
+        <div class="cfg-pane-title">🗂 .env / Sicherheit</div>
         <div class="cfg-field">
           <label class="cfg-label" for="cfgKumaUrl">Uptime Kuma URL</label>
           <input class="cfg-input" id="cfgKumaUrl" type="text" autocomplete="off"
@@ -759,8 +829,8 @@
         </div>
       </div>
 
-      <div class="cfg-module">
-        <div class="cfg-module-title">🍓 Raspi / Web</div>
+      <div class="cfg-pane-card hidden" data-cfg-pane="raspi">
+        <div class="cfg-pane-title">🍓 Raspi / Web</div>
         <div class="cfg-field">
           <label class="cfg-label" for="cfgServiceCategory">Service Kategorie-Name</label>
           <input class="cfg-input" id="cfgServiceCategory" type="text" autocomplete="off"
@@ -781,6 +851,8 @@
           </div>
           <div class="cfg-hint">Bei Statuswechsel wird z.B. aus <code>dienste-status</code> → <code>🟢dienste-status</code> (max. 2× / 10 min)</div>
         </div>
+      </div>
+
       </div>
     </div>
 
@@ -1651,6 +1723,15 @@
     body[key] = value;
   }
 
+  function setActiveSettingsPane(pane) {
+    document.querySelectorAll('[data-cfg-pane-btn]').forEach((btn) => {
+      btn.classList.toggle('active', btn.dataset.cfgPaneBtn === pane);
+    });
+    document.querySelectorAll('[data-cfg-pane]').forEach((card) => {
+      card.classList.toggle('hidden', card.dataset.cfgPane !== pane);
+    });
+  }
+
   // ── Config laden ─────────────────────────────────────
   async function loadConfig() {
     try {
@@ -1853,6 +1934,7 @@
 
   // Config beim Start laden
   loadConfig();
+  setActiveSettingsPane('bot');
 
   // Live-Vorschau für den Dienst-Kanalnamen
   document.getElementById('cfgMonitoredServices')?.addEventListener('input', updateChannelNamePreview);
