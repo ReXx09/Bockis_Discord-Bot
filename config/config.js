@@ -123,6 +123,12 @@ const config = convict({
       default: '📊 Service Status',
       env: 'SERVICE_CATEGORY_NAME'
     },
+    serviceChannelNameMode: {
+      doc: 'Namensmodus für automatisch erzeugte Service-Kanäle: strict_slug (Discord-sicher, klein) oder pretty (Groß/Klein/Emoji soweit Discord akzeptiert)',
+      format: ['strict_slug', 'pretty'],
+      default: 'strict_slug',
+      env: 'SERVICE_CHANNEL_NAME_MODE'
+    },
     monitoredServices: {
       doc: 'Kommagetrennte Liste der Dienste, die als eigene Kanäle angezeigt werden (leer = alle aktiven)',
       format: String,

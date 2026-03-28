@@ -62,6 +62,7 @@ CHANNEL_STATUS_INDICATOR=true
 GUILD_ID=123456789012345678
 SERVICE_CATEGORY_NAME=Service Status
 MONITORED_SERVICES=Ark-ASA Svartaltheim,Next-Cloud,Pi-VPN,VPN-Mutti,VPN-Andy,VPN-Thomas
+SERVICE_CHANNEL_NAME_MODE=strict_slug
 ```
 
 ## 4. Bedeutung der wichtigsten Variablen
@@ -82,6 +83,12 @@ MONITORED_SERVICES=Ark-ASA Svartaltheim,Next-Cloud,Pi-VPN,VPN-Mutti,VPN-Andy,VPN
 5. `MONITORED_SERVICES`
    Kommagetrennte Whitelist mit exakten Uptime-Dienstnamen.
    Nur diese Dienste werden als eigene Kanaele erstellt/aktualisiert.
+
+6. `SERVICE_CHANNEL_NAME_MODE`
+   Steuerung der Kanalnamen fuer Dienst-Kanaele:
+   - `strict_slug`: Discord-sicher, kleingeschrieben/slug (Standard)
+   - `pretty`: versucht Gross/Kleinschreibung und Emoji aus dem Dienstnamen zu uebernehmen
+   Wenn Discord einen `pretty`-Namen ablehnt, faellt der Bot automatisch auf `strict_slug` zurueck.
 
 ## 5. Was der Bot automatisch macht
 

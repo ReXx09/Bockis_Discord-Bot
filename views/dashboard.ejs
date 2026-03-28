@@ -666,6 +666,14 @@
                  placeholder="Kommagetrennt, z. B. website,api,database">
           <div class="cfg-hint">Leer = alle aktiven Monitore.</div>
         </div>
+        <div class="cfg-field">
+          <label class="cfg-label" for="cfgServiceChannelNameMode">Dienst-Kanalname Modus</label>
+          <select class="cfg-input" id="cfgServiceChannelNameMode">
+            <option value="strict_slug">Strict (Discord-sicher: klein + slug)</option>
+            <option value="pretty">Pretty (versucht Großschrift/Emoji aus Dienstnamen)</option>
+          </select>
+          <div class="cfg-hint">Bei <code>pretty</code> wird bei Discord-Ablehnung automatisch auf den sicheren Slug zurückgefallen.</div>
+        </div>
         <div class="cfg-field" style="margin-bottom:0">
           <label class="cfg-label" for="cfgUpdateInterval">Update Intervall (ms)</label>
           <input class="cfg-input" id="cfgUpdateInterval" type="number" min="10000" step="1000"
@@ -1626,6 +1634,7 @@
       setFieldValue('cfgGuildId', d.GUILD_ID || '');
       setFieldValue('cfgServiceCategory', d.SERVICE_CATEGORY_NAME || '');
       setFieldValue('cfgMonitoredServices', d.MONITORED_SERVICES || '');
+      setFieldValue('cfgServiceChannelNameMode', d.SERVICE_CHANNEL_NAME_MODE || 'strict_slug');
       setFieldValue('cfgUpdateInterval', d.UPDATE_INTERVAL || '300000');
       setFieldValue('cfgWebPort', d.WEB_PORT || '3000');
       setFieldValue('cfgDbStorage', d.DB_STORAGE || './data/status.db');
@@ -1678,6 +1687,7 @@
     maybeSetChanged(body, 'GUILD_ID', 'cfgGuildId');
     maybeSetChanged(body, 'SERVICE_CATEGORY_NAME', 'cfgServiceCategory');
     maybeSetChanged(body, 'MONITORED_SERVICES', 'cfgMonitoredServices', { allowEmpty: true });
+    maybeSetChanged(body, 'SERVICE_CHANNEL_NAME_MODE', 'cfgServiceChannelNameMode');
     maybeSetChanged(body, 'UPDATE_INTERVAL', 'cfgUpdateInterval');
     maybeSetChanged(body, 'WEB_PORT', 'cfgWebPort');
     maybeSetChanged(body, 'DASHBOARD_PASSWORD', 'cfgDashPassword', { allowEmpty: true });

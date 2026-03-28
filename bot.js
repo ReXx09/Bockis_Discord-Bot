@@ -1238,20 +1238,39 @@ async function updateStatusMessage() {
  * Discord Rate-Limit: max. 2 Umbenennungen pro Kanal / 10 Minuten.
  * Der Cooldown von 6 Minuten (MIN_CHANNEL_RENAME_MS) wird auch hier eingehalten.
  */
-function _serviceChannelName(monitorName, status) {
+function _serviceChannelName(monitorName, status, mode = 'strict_slug') {
   const dot  = status === 1 ? '🟢' : status === 0 ? '🔴' : '🟡';
-  const slug = monitorName
+
+  if (mode === 'pretty') {
+    // "pretty" versucht Groß/Kleinschreibung und Emoji beizubehalten.
+    // Falls Discord den Namen ablehnt, wird in syncServiceChannels auf strict_slug zurückgefallen.
+    const pretty = String(monitorName || 'service')
+      .trim()
+      .replace(/[\u0000-\u001F\u007F]/g, '')
+      .replace(/[\n\r\t]+/g, ' ')
+      .replace(/\s+/g, '-')
+      .replace(/#+/g, '-')
+      .replace(/:+/g, '-')
+      .replace(/@+/g, '-')
+      .replace(/\/+|\\+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 90);
+    return `${dot}-${pretty || 'service'}`;
+  }
+
+  const slug = String(monitorName || 'service')
     .toLowerCase()
     .replace(/[äöüß]/g, c => ({ ä: 'ae', ö: 'oe', ü: 'ue', ß: 'ss' })[c] ?? c)
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
     .slice(0, 94);
-  return `${dot}-${slug}`;
+  return `${dot}-${slug || 'service'}`;
 }
 
 async function syncServiceChannels(monitors) {
   const guildId = config.get('discord.guildId');
   if (!guildId) return;  // Feature nicht konfiguriert
+  const namingMode = config.get('discord.serviceChannelNameMode') || 'strict_slug';
 
   const guild = client.guilds.cache.get(guildId);
   if (!guild) {
@@ -1303,7 +1322,8 @@ async function syncServiceChannels(monitors) {
   let stateChanged = false;
 
   for (const monitor of targets) {
-    const desiredName = _serviceChannelName(monitor.name, monitor.status);
+    const desiredName = _serviceChannelName(monitor.name, monitor.status, namingMode);
+    const fallbackName = _serviceChannelName(monitor.name, monitor.status, 'strict_slug');
     const topic       = `📈 Uptime: ${monitor.uptime ?? '–'}%  ⏱ Ping: ${monitor.ping != null ? monitor.ping + 'ms' : '–'}`;
     let channelId     = serviceChannels[monitor.name];
     let channel       = channelId ? guild.channels.cache.get(channelId) : null;
@@ -1324,8 +1344,28 @@ async function syncServiceChannels(monitors) {
         stateChanged = true;
         logger.info(`Service-Kanal-Manager: Kanal "${desiredName}" erstellt`);
       } catch (err) {
-        logger.error(`Service-Kanal-Manager: Kanal für "${monitor.name}" fehlgeschlagen: ${err.message}`);
-        continue;
+        if (namingMode !== 'strict_slug' && fallbackName !== desiredName) {
+          try {
+            channel = await guild.channels.create({
+              name:   fallbackName,
+              type:   ChannelType.GuildText,
+              parent: category.id,
+              topic,
+              permissionOverwrites: [
+                { id: guild.roles.everyone, deny: [PermissionFlagsBits.SendMessages] }
+              ]
+            });
+            serviceChannels[monitor.name] = channel.id;
+            stateChanged = true;
+            logger.warn(`Service-Kanal-Manager: Pretty-Name abgelehnt, Fallback auf "${fallbackName}" für "${monitor.name}"`);
+          } catch (fallbackErr) {
+            logger.error(`Service-Kanal-Manager: Kanal für "${monitor.name}" fehlgeschlagen: ${fallbackErr.message}`);
+            continue;
+          }
+        } else {
+          logger.error(`Service-Kanal-Manager: Kanal für "${monitor.name}" fehlgeschlagen: ${err.message}`);
+          continue;
+        }
       }
     }
 
@@ -1342,7 +1382,17 @@ async function syncServiceChannels(monitors) {
         _svcRenameMs[channel.id] = now;
         logger.info(`Service-Kanal-Manager: "${channel.name}" → "${desiredName}"`);
       } catch (err) {
-        logger.error(`Service-Kanal-Manager: Umbenennen "${monitor.name}" fehlgeschlagen: ${err.message}`);
+        if (namingMode !== 'strict_slug' && fallbackName !== desiredName) {
+          try {
+            await channel.edit({ name: fallbackName, topic });
+            _svcRenameMs[channel.id] = now;
+            logger.warn(`Service-Kanal-Manager: Pretty-Umbenennung abgelehnt, Fallback auf "${fallbackName}" für "${monitor.name}"`);
+          } catch (fallbackErr) {
+            logger.error(`Service-Kanal-Manager: Umbenennen "${monitor.name}" fehlgeschlagen: ${fallbackErr.message}`);
+          }
+        } else {
+          logger.error(`Service-Kanal-Manager: Umbenennen "${monitor.name}" fehlgeschlagen: ${err.message}`);
+        }
       }
     }
   }

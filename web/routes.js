@@ -628,6 +628,7 @@ module.exports = function startWebServer({
         CHANNEL_STATUS_INDICATOR:     get('CHANNEL_STATUS_INDICATOR') || 'true',
         GUILD_ID:                     get('GUILD_ID'),
         SERVICE_CATEGORY_NAME:        get('SERVICE_CATEGORY_NAME'),
+        SERVICE_CHANNEL_NAME_MODE:    get('SERVICE_CHANNEL_NAME_MODE') || 'strict_slug',
         MONITORED_SERVICES:           get('MONITORED_SERVICES'),
         UPDATE_INTERVAL:              get('UPDATE_INTERVAL') || '300000',
         WEB_PORT:                     get('WEB_PORT') || '3000',
@@ -660,6 +661,7 @@ module.exports = function startWebServer({
       'CHANNEL_STATUS_INDICATOR',
       'GUILD_ID',
       'SERVICE_CATEGORY_NAME',
+      'SERVICE_CHANNEL_NAME_MODE',
       'MONITORED_SERVICES',
       'UPDATE_INTERVAL',
       'WEB_PORT',
@@ -715,6 +717,8 @@ module.exports = function startWebServer({
         return res.json({ ok: false, error: 'CHANNEL_STATUS_INDICATOR muss true oder false sein' });
       if (key === 'GUILD_ID' && val && !/^\d+$/.test(val))
         return res.json({ ok: false, error: 'GUILD_ID: Nur Zahlen erlaubt (Discord ID)' });
+      if (key === 'SERVICE_CHANNEL_NAME_MODE' && !['strict_slug', 'pretty'].includes(val))
+        return res.json({ ok: false, error: 'SERVICE_CHANNEL_NAME_MODE muss strict_slug oder pretty sein' });
       if (key === 'UPDATE_INTERVAL') {
         const n = parseInt(val, 10);
         if (!Number.isFinite(n) || n < 10000)
