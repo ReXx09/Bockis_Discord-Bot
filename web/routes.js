@@ -863,22 +863,6 @@ module.exports = function startWebServer({
 
       // Robust gegen npm-Notices/Warnungen: parseable statt JSON nutzen.
       // Damit vermeiden wir JSON.parse auf gemischter CLI-Ausgabe komplett.
-      const normalizePkgVersion = (rawValue, depName = '') => {
-        const raw = String(rawValue ?? '').trim();
-        if (!raw) return null;
-
-        // npm parseable liefert oft "paket@version".
-        if (depName && raw.toLowerCase().startsWith(`${depName.toLowerCase()}@`)) {
-          return raw.slice(depName.length + 1) || null;
-        }
-
-        // Fallback: letztes semver-artiges Segment extrahieren.
-        const semverMatch = raw.match(/(\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?)$/);
-        if (semverMatch) return semverMatch[1];
-
-        return raw;
-      };
-
       let outdated = {};
       await new Promise((resolve) => {
         let rawOut = '';
@@ -896,9 +880,9 @@ module.exports = function startWebServer({
               if (idx === -1) continue;
               const cols = line.slice(idx + marker.length).split(':');
               outdated[depName] = {
-                current: normalizePkgVersion(cols[0], depName),
-                wanted : normalizePkgVersion(cols[1], depName),
-                latest : normalizePkgVersion(cols[2], depName),
+                current: cols[0] || null,
+                wanted : cols[1] || null,
+                latest : cols[2] || null,
               };
               break;
             }
@@ -920,22 +904,17 @@ module.exports = function startWebServer({
       const packages = Object.entries(allDeps).map(([name, info]) => {
         const od = outdated[name];
         const installed = od?.current ?? getInstalled(name);
-        const wanted = od?.wanted ?? null;
-        const latest = od?.latest ?? null;
-
-        const curMajor = parseInt(String(installed || '0').split('.')[0], 10);
-        const latMajor = parseInt(String(latest || '0').split('.')[0], 10);
-        const isOutdated = Boolean(latest && installed && latest !== installed);
-
+        const curMajor = od ? parseInt((od.current || '0').split('.')[0], 10) : 0;
+        const latMajor = od ? parseInt((od.latest  || '0').split('.')[0], 10) : 0;
         return {
           name,
           required : info.required,
           type     : info.type,
           current  : installed,
-          wanted,
-          latest,
-          outdated : isOutdated,
-          majorBump: isOutdated && Number.isFinite(curMajor) && Number.isFinite(latMajor) ? (latMajor > curMajor) : false,
+          wanted   : od?.wanted  ?? null,
+          latest   : od?.latest  ?? null,
+          outdated : !!od,
+          majorBump: od ? (latMajor > curMajor) : false,
         };
       });
 
@@ -1121,9 +1100,9 @@ module.exports = function startWebServer({
         DISCORD_BOT_NAME:             get('DISCORD_BOT_NAME') || '',
         DISCORD_PRESENCE_TEXT:        get('DISCORD_PRESENCE_TEXT') || 'Service Health',
         DISCORD_PRESENCE_ROTATE_MS:   get('DISCORD_PRESENCE_ROTATE_MS') || '90000',
-        DISCORD_AUTO_REACT_ENABLED:   get('DISCORD_AUTO_REACT_ENABLED') || 'false',
-        DISCORD_AUTO_REACT_EMOJIS:    get('DISCORD_AUTO_REACT_EMOJIS') || '👍',
-        DISCORD_AUTO_REACT_CHANNEL_IDS: get('DISCORD_AUTO_REACT_CHANNEL_IDS') || '',
+        DISCORD_AUTO_REACTION_ENABLED:get('DISCORD_AUTO_REACTION_ENABLED') || 'false',
+        DISCORD_AUTO_REACTION_EMOJIS: get('DISCORD_AUTO_REACTION_EMOJIS') || '👍',
+        DISCORD_AUTO_REACTION_CHANNEL_IDS: get('DISCORD_AUTO_REACTION_CHANNEL_IDS') || '',
         DISCORD_ENABLED_COMMANDS:     get('DISCORD_ENABLED_COMMANDS') || 'status,uptime,refresh,help,coinflip,dice,eightball',
         STATUS_CHANNEL_ID:            get('STATUS_CHANNEL_ID'),
         DISCORD_NOTIFICATION_CHANNEL: get('DISCORD_NOTIFICATION_CHANNEL'),
@@ -1166,9 +1145,9 @@ module.exports = function startWebServer({
       'DISCORD_BOT_NAME',
       'DISCORD_PRESENCE_TEXT',
       'DISCORD_PRESENCE_ROTATE_MS',
-      'DISCORD_AUTO_REACT_ENABLED',
-      'DISCORD_AUTO_REACT_EMOJIS',
-      'DISCORD_AUTO_REACT_CHANNEL_IDS',
+      'DISCORD_AUTO_REACTION_ENABLED',
+      'DISCORD_AUTO_REACTION_EMOJIS',
+      'DISCORD_AUTO_REACTION_CHANNEL_IDS',
       'DISCORD_ENABLED_COMMANDS',
       'STATUS_CHANNEL_ID',
       'DISCORD_NOTIFICATION_CHANNEL',
@@ -1200,8 +1179,8 @@ module.exports = function startWebServer({
     ];
     const CLEARABLE_CFG = new Set([
       'DISCORD_PRESENCE_TEXT',
-      'DISCORD_AUTO_REACT_EMOJIS',
-      'DISCORD_AUTO_REACT_CHANNEL_IDS',
+      'DISCORD_AUTO_REACTION_EMOJIS',
+      'DISCORD_AUTO_REACTION_CHANNEL_IDS',
       'DISCORD_STATUS_MESSAGE_TITLE',
       'DISCORD_STATUS_BUTTON_LABEL',
       'DISCORD_WEBUI_BUTTON_LABEL',
@@ -1246,17 +1225,18 @@ module.exports = function startWebServer({
         if (!Number.isFinite(n) || n < 15000 || n > 3600000)
           return res.json({ ok: false, error: 'DISCORD_PRESENCE_ROTATE_MS muss zwischen 15000 und 3600000 liegen' });
       }
-      if (key === 'DISCORD_AUTO_REACT_ENABLED' && !['true', 'false'].includes(val))
-        return res.json({ ok: false, error: 'DISCORD_AUTO_REACT_ENABLED muss true oder false sein' });
-      if (key === 'DISCORD_AUTO_REACT_EMOJIS') {
-        if (/[\n\r]/.test(val)) return res.json({ ok: false, error: 'DISCORD_AUTO_REACT_EMOJIS darf keine Zeilenumbrueche enthalten' });
-        if (val.length > 120) return res.json({ ok: false, error: 'DISCORD_AUTO_REACT_EMOJIS darf maximal 120 Zeichen enthalten' });
+      if (key === 'DISCORD_AUTO_REACTION_ENABLED' && !['true', 'false'].includes(val))
+        return res.json({ ok: false, error: 'DISCORD_AUTO_REACTION_ENABLED muss true oder false sein' });
+      if (key === 'DISCORD_AUTO_REACTION_EMOJIS') {
+        if (/[\n\r]/.test(val)) return res.json({ ok: false, error: 'DISCORD_AUTO_REACTION_EMOJIS darf keine Zeilenumbrueche enthalten' });
+        const entries = val.split(/[;,]/).map(s => s.trim()).filter(Boolean);
+        if (!entries.length) return res.json({ ok: false, error: 'DISCORD_AUTO_REACTION_EMOJIS muss mindestens ein Emoji enthalten' });
+        if (entries.length > 5) return res.json({ ok: false, error: 'DISCORD_AUTO_REACTION_EMOJIS erlaubt maximal 5 Emojis' });
       }
-      if (key === 'DISCORD_AUTO_REACT_CHANNEL_IDS') {
-        const ids = val.split(',').map(s => s.trim()).filter(Boolean);
-        if (ids.some(id => !/^\d+$/.test(id))) {
-          return res.json({ ok: false, error: 'DISCORD_AUTO_REACT_CHANNEL_IDS darf nur kommagetrennte Discord-Channel-IDs enthalten' });
-        }
+      if (key === 'DISCORD_AUTO_REACTION_CHANNEL_IDS') {
+        const entries = val.split(/[;,]/).map(s => s.trim()).filter(Boolean);
+        const invalid = entries.filter(id => !/^\d+$/.test(id));
+        if (invalid.length) return res.json({ ok: false, error: `DISCORD_AUTO_REACTION_CHANNEL_IDS ungueltig: ${invalid.join(', ')}` });
       }
       if (key === 'DISCORD_ENABLED_COMMANDS') {
         const allowedCommands = new Set(['status', 'uptime', 'refresh', 'help', 'coinflip', 'dice', 'eightball']);

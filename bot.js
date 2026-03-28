@@ -1691,6 +1691,29 @@ function getPresenceRotateIntervalMs() {
   return Math.max(15000, Math.min(raw, 3600000));
 }
 
+function isAutoReactionEnabled() {
+  return config.get('discord.autoReactionEnabled') === true;
+}
+
+function getConfiguredAutoReactionEmojis() {
+  const raw = String(config.get('discord.autoReactionEmojis') || '').trim();
+  const entries = raw
+    .split(/[;,]/)
+    .map(s => s.trim())
+    .filter(Boolean);
+  return Array.from(new Set(entries)).slice(0, 5);
+}
+
+function getConfiguredAutoReactionChannelIds() {
+  const raw = String(config.get('discord.autoReactionChannelIds') || '').trim();
+  if (!raw) return [];
+  return Array.from(new Set(
+    raw.split(/[;,]/)
+      .map(s => s.trim())
+      .filter(id => /^\d+$/.test(id))
+  ));
+}
+
 function applyConfiguredPresenceNow() {
   if (!client.user) return;
   const entries = getConfiguredPresenceEntries();
@@ -1716,36 +1739,6 @@ function startPresenceRotation() {
       logger.warn(`Discord Presence-Rotation fehlgeschlagen: ${err.message}`);
     }
   }, intervalMs);
-}
-
-function getConfiguredAutoReactionEmojis() {
-  const raw = String(config.get('discord.autoReactEmojis') || '').trim();
-  const entries = raw
-    .split(/[;,]/)
-    .map(s => s.trim())
-    .filter(Boolean)
-    .slice(0, 5);
-  return entries.length ? entries : ['👍'];
-}
-
-function getConfiguredAutoReactionChannelIds() {
-  return new Set(
-    String(config.get('discord.autoReactChannelIds') || '')
-      .split(',')
-      .map(s => s.trim())
-      .filter(Boolean)
-  );
-}
-
-function normalizeReactionEmoji(token) {
-  const raw = String(token || '').trim();
-  if (!raw) return null;
-
-  const customMatch = raw.match(/^<a?:[^:>]+:(\d+)>$/);
-  if (customMatch) return customMatch[1];
-
-  if (/^\d+$/.test(raw)) return raw;
-  return raw;
 }
 
 // #region 21. SLASH-COMMAND HANDLER
@@ -1877,32 +1870,27 @@ client.on('interactionCreate', async interaction => {
 });
 // #endregion
 
-// #region 21b. AUTO-REACTIONS
 client.on('messageCreate', async (message) => {
-  try {
-    if (!config.get('discord.autoReactEnabled')) return;
-    if (!message.inGuild()) return;
-    if (message.author?.bot) return;
-    if (message.system) return;
+  if (!isAutoReactionEnabled()) return;
+  if (!message.inGuild()) return;
+  if (message.author?.bot) return;
+  if (message.system) return;
+  if (!message.channel || message.channel.type !== ChannelType.GuildText) return;
 
-    const allowedChannelIds = getConfiguredAutoReactionChannelIds();
-    if (allowedChannelIds.size > 0 && !allowedChannelIds.has(message.channelId)) return;
+  const allowedChannelIds = getConfiguredAutoReactionChannelIds();
+  if (allowedChannelIds.length && !allowedChannelIds.includes(message.channelId)) return;
 
-    const emojis = getConfiguredAutoReactionEmojis();
-    for (const entry of emojis) {
-      const emoji = normalizeReactionEmoji(entry);
-      if (!emoji) continue;
-      try {
-        await message.react(emoji);
-      } catch (err) {
-        logger.warn(`Auto-Reaktion fehlgeschlagen in Kanal ${message.channelId} mit "${entry}": ${err.message}`);
-      }
+  const emojis = getConfiguredAutoReactionEmojis();
+  if (!emojis.length) return;
+
+  for (const emoji of emojis) {
+    try {
+      await message.react(emoji);
+    } catch (err) {
+      logger.warn(`Auto-Reaction fehlgeschlagen in #${message.channel?.name || message.channelId} mit ${emoji}: ${err.message}`);
     }
-  } catch (err) {
-    logger.warn(`Auto-Reaktions-Handler Fehler: ${err.message}`);
   }
 });
-// #endregion
 
 // #region 22. UPDATE-ZYKLUS
 function initializeUpdateCycle() {

@@ -732,26 +732,38 @@
                  placeholder="90000">
           <div class="cfg-hint">Wie oft der nächste Text aktiv wird (15s bis 60min).</div>
         </div>
-        <div class="cfg-field">
-          <label class="cfg-label">Automatische Reaktionen auf Nachrichten</label>
-          <div style="display:flex;align-items:center;gap:12px;margin-top:2px">
+        <div class="cfg-field" style="border:1px solid var(--border);border-radius:8px;padding:12px;background:rgba(255,255,255,.01)">
+          <label class="cfg-label">Automatische Reaktionen auf neue Nachrichten</label>
+          <div style="display:flex;align-items:center;gap:12px;margin-top:2px;flex-wrap:wrap">
             <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px">
-              <input type="checkbox" id="cfgAutoReactEnabled" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
-              <span>Neue Nachrichten automatisch mit Emojis versehen</span>
+              <input type="checkbox" id="cfgAutoReactionEnabled" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
+              <span>Für neue Guild-Nachrichten automatisch Emojis setzen</span>
             </label>
           </div>
-        </div>
-        <div class="cfg-field">
-          <label class="cfg-label" for="cfgAutoReactEmojis">Auto-Reaktions-Emojis</label>
-          <input class="cfg-input" id="cfgAutoReactEmojis" type="text" autocomplete="off"
-                 placeholder="👍;🔥;😂">
-          <div class="cfg-hint">Mit <code>;</code> oder <code>,</code> trennen. Unicode und Custom-Emoji-Formate wie <code>&lt;:name:id&gt;</code> funktionieren.</div>
-        </div>
-        <div class="cfg-field">
-          <label class="cfg-label" for="cfgAutoReactChannelIds">Nur diese Channel IDs (optional)</label>
-          <input class="cfg-input" id="cfgAutoReactChannelIds" type="text" autocomplete="off"
-                 placeholder="123456789012345678,234567890123456789">
-          <div class="cfg-hint">Leer = auf alle normalen Nachrichten reagieren. Mit Komma trennen, um die Funktion auf bestimmte Kanäle zu beschränken.</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+            <input class="cfg-input" id="cfgAutoReactionEmojis" type="text" autocomplete="off" style="min-width:260px;flex:2"
+                   placeholder="👍;🔥;😂">
+            <select class="cfg-input" id="cfgAutoReactionPreset" style="min-width:220px;flex:1">
+              <option value="">Emoji-Vorlage wählen…</option>
+              <option value="👍">👍 Zustimmung</option>
+              <option value="🔥">🔥 Hype</option>
+              <option value="😂">😂 Lustig</option>
+              <option value="🎉">🎉 Feiern</option>
+              <option value="👀">👀 Beobachten</option>
+              <option value="🤖">🤖 Bot</option>
+              <option value="❤️">❤️ Herz</option>
+              <option value="✅">✅ Erledigt</option>
+              <option value="🚀">🚀 Rocket</option>
+              <option value="<a:partyblob:ID>">Custom Emoji Muster</option>
+            </select>
+            <button class="btn" onclick="appendAutoReactionEmoji()">➕ Emoji übernehmen</button>
+          </div>
+          <div class="cfg-hint">Trenne mehrere Emojis mit <code>;</code> oder <code>,</code>. Maximal 5 Emojis. Unicode und Custom-Emoji-Strings sind möglich.</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+            <input class="cfg-input" id="cfgAutoReactionChannelIds" type="text" autocomplete="off" style="min-width:260px;flex:1"
+                   placeholder="Optional: 123456789012345678,234567890123456789">
+          </div>
+          <div class="cfg-hint">Optional nur bestimmte Textkanäle per Channel-ID. Leer = in allen Guild-Textkanälen.</div>
         </div>
         <div class="cfg-field">
           <label class="cfg-label" for="cfgStatusCh">Status-Channel ID</label>
@@ -2165,6 +2177,21 @@
     body[key] = value;
   }
 
+  function appendAutoReactionEmoji() {
+    const presetEl = document.getElementById('cfgAutoReactionPreset');
+    const inputEl = document.getElementById('cfgAutoReactionEmojis');
+    const value = String(presetEl?.value || '').trim();
+    if (!value || !inputEl) return;
+
+    const existing = String(inputEl.value || '')
+      .split(/[;,]/)
+      .map(s => s.trim())
+      .filter(Boolean);
+    if (!existing.includes(value)) existing.push(value);
+    inputEl.value = existing.slice(0, 5).join(';');
+    presetEl.value = '';
+  }
+
   function _parseEnabledCommands(value) {
     const allowed = ['status', 'uptime', 'refresh', 'help', 'coinflip', 'dice', 'eightball'];
     const entries = String(value || '')
@@ -2439,8 +2466,8 @@
       setFieldValue('cfgBotName', d.DISCORD_BOT_NAME || '');
       setFieldValue('cfgPresenceText', d.DISCORD_PRESENCE_TEXT || 'Service Health');
       setFieldValue('cfgPresenceRotateMs', d.DISCORD_PRESENCE_ROTATE_MS || '90000');
-      setFieldValue('cfgAutoReactEmojis', d.DISCORD_AUTO_REACT_EMOJIS || '👍');
-      setFieldValue('cfgAutoReactChannelIds', d.DISCORD_AUTO_REACT_CHANNEL_IDS || '');
+      setFieldValue('cfgAutoReactionEmojis', d.DISCORD_AUTO_REACTION_EMOJIS || '👍');
+      setFieldValue('cfgAutoReactionChannelIds', d.DISCORD_AUTO_REACTION_CHANNEL_IDS || '');
       setFieldValue('cfgEnabledCommands', d.DISCORD_ENABLED_COMMANDS || 'status,uptime,refresh,help,coinflip,dice,eightball');
       applyEnabledCommandsToCheckboxes(d.DISCORD_ENABLED_COMMANDS || 'status,uptime,refresh,help,coinflip,dice,eightball');
       setFieldValue('cfgNotifCh', d.DISCORD_NOTIFICATION_CHANNEL || '');
@@ -2489,9 +2516,9 @@
       autoQuietEl.checked = (d.SERVICE_CHANNEL_AUTO_QUIET || 'true') !== 'false';
       autoQuietEl.dataset.initialValue = autoQuietEl.checked ? 'true' : 'false';
 
-      const autoReactEl = document.getElementById('cfgAutoReactEnabled');
-      autoReactEl.checked = (d.DISCORD_AUTO_REACT_ENABLED || 'false') === 'true';
-      autoReactEl.dataset.initialValue = autoReactEl.checked ? 'true' : 'false';
+      const autoReactionEl = document.getElementById('cfgAutoReactionEnabled');
+      autoReactionEl.checked = (d.DISCORD_AUTO_REACTION_ENABLED || 'false') === 'true';
+      autoReactionEl.dataset.initialValue = autoReactionEl.checked ? 'true' : 'false';
     } catch (e) {
       document.getElementById('cfgStatus').textContent = 'Ladefehler: ' + e.message;
       document.getElementById('cfgStatus').className = 'err';
@@ -2519,8 +2546,8 @@
     maybeSetChanged(body, 'DISCORD_BOT_NAME', 'cfgBotName', { allowEmpty: true });
     maybeSetChanged(body, 'DISCORD_PRESENCE_TEXT', 'cfgPresenceText', { allowEmpty: true });
     maybeSetChanged(body, 'DISCORD_PRESENCE_ROTATE_MS', 'cfgPresenceRotateMs');
-    maybeSetChanged(body, 'DISCORD_AUTO_REACT_EMOJIS', 'cfgAutoReactEmojis', { allowEmpty: true });
-    maybeSetChanged(body, 'DISCORD_AUTO_REACT_CHANNEL_IDS', 'cfgAutoReactChannelIds', { allowEmpty: true });
+    maybeSetChanged(body, 'DISCORD_AUTO_REACTION_EMOJIS', 'cfgAutoReactionEmojis', { allowEmpty: true });
+    maybeSetChanged(body, 'DISCORD_AUTO_REACTION_CHANNEL_IDS', 'cfgAutoReactionChannelIds', { allowEmpty: true });
     maybeSetChanged(body, 'DISCORD_ENABLED_COMMANDS', 'cfgEnabledCommands');
     maybeSetChanged(body, 'STATUS_CHANNEL_ID', 'cfgStatusCh');
     maybeSetChanged(body, 'DISCORD_NOTIFICATION_CHANNEL', 'cfgNotifCh');
@@ -2552,18 +2579,18 @@
       body.CHANNEL_STATUS_INDICATOR = currentIndicator;
     }
 
+    const autoReactionEl = document.getElementById('cfgAutoReactionEnabled');
+    const currentAutoReaction = autoReactionEl.checked ? 'true' : 'false';
+    const initialAutoReaction = autoReactionEl.dataset.initialValue || 'false';
+    if (currentAutoReaction !== initialAutoReaction) {
+      body.DISCORD_AUTO_REACTION_ENABLED = currentAutoReaction;
+    }
+
     const autoCreateEl = document.getElementById('cfgServiceAutoCreate');
     const currentAutoCreate = autoCreateEl.checked ? 'true' : 'false';
     const initialAutoCreate = autoCreateEl.dataset.initialValue || 'true';
     if (currentAutoCreate !== initialAutoCreate) {
       body.SERVICE_CHANNEL_AUTO_CREATE = currentAutoCreate;
-    }
-
-    const autoReactEl = document.getElementById('cfgAutoReactEnabled');
-    const currentAutoReact = autoReactEl.checked ? 'true' : 'false';
-    const initialAutoReact = autoReactEl.dataset.initialValue || 'false';
-    if (currentAutoReact !== initialAutoReact) {
-      body.DISCORD_AUTO_REACT_ENABLED = currentAutoReact;
     }
 
     const autoQuietEl = document.getElementById('cfgServiceAutoQuiet');

@@ -80,23 +80,23 @@ const config = convict({
       default: 90000,
       env: 'DISCORD_PRESENCE_ROTATE_MS'
     },
-    autoReactEnabled: {
-      doc: 'Automatische Reaktionen auf neue Nachrichten aktivieren',
+    autoReactionEnabled: {
+      doc: 'Automatische Reaktionen fuer neue Nachrichten aktivieren',
       format: Boolean,
       default: false,
-      env: 'DISCORD_AUTO_REACT_ENABLED'
+      env: 'DISCORD_AUTO_REACTION_ENABLED'
     },
-    autoReactEmojis: {
-      doc: 'Emoji-Liste fuer automatische Reaktionen, getrennt mit ; oder , (z.B. 👍;🔥;😂)',
+    autoReactionEmojis: {
+      doc: 'Automatische Reaktions-Emojis, getrennt mit ; oder , (z.B. 👍;🔥;😂)',
       format: String,
       default: '👍',
-      env: 'DISCORD_AUTO_REACT_EMOJIS'
+      env: 'DISCORD_AUTO_REACTION_EMOJIS'
     },
-    autoReactChannelIds: {
-      doc: 'Optionale Channel-IDs fuer Auto-Reaktionen, getrennt mit Komma (leer = alle Kanaele)',
+    autoReactionChannelIds: {
+      doc: 'Optionale Channel-IDs fuer automatische Reaktionen, getrennt mit , oder ; (leer = alle Guild-Textkanaele)',
       format: String,
       default: '',
-      env: 'DISCORD_AUTO_REACT_CHANNEL_IDS'
+      env: 'DISCORD_AUTO_REACTION_CHANNEL_IDS'
     },
     enabledCommands: {
       doc: 'Aktive Slash-Commands als Komma-Liste (status,uptime,refresh,help,coinflip,dice,eightball)',
