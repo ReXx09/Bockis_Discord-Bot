@@ -69,9 +69,9 @@ const config = convict({
       env: 'DISCORD_BOT_NAME'
     },
     enabledCommands: {
-      doc: 'Aktive Slash-Commands als Komma-Liste (status,uptime,refresh)',
+      doc: 'Aktive Slash-Commands als Komma-Liste (status,uptime,refresh,help,coinflip,dice,eightball)',
       format: String,
-      default: 'status,uptime,refresh',
+      default: 'status,uptime,refresh,help,coinflip,dice,eightball',
       env: 'DISCORD_ENABLED_COMMANDS'
     },
     statusChannelId: {

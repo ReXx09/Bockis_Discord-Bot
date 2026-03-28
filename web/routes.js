@@ -1038,7 +1038,7 @@ module.exports = function startWebServer({
         ok: true,
         DISCORD_TOKEN:                maskSecret(token),
         DISCORD_BOT_NAME:             get('DISCORD_BOT_NAME') || '',
-        DISCORD_ENABLED_COMMANDS:     get('DISCORD_ENABLED_COMMANDS') || 'status,uptime,refresh',
+        DISCORD_ENABLED_COMMANDS:     get('DISCORD_ENABLED_COMMANDS') || 'status,uptime,refresh,help,coinflip,dice,eightball',
         STATUS_CHANNEL_ID:            get('STATUS_CHANNEL_ID'),
         DISCORD_NOTIFICATION_CHANNEL: get('DISCORD_NOTIFICATION_CHANNEL'),
         DISCORD_STATUS_RENDER_MODE:   get('DISCORD_STATUS_RENDER_MODE') || 'auto',
@@ -1144,7 +1144,7 @@ module.exports = function startWebServer({
         if (val.length > 32) return res.json({ ok: false, error: 'DISCORD_BOT_NAME darf maximal 32 Zeichen enthalten' });
       }
       if (key === 'DISCORD_ENABLED_COMMANDS') {
-        const allowedCommands = new Set(['status', 'uptime', 'refresh']);
+        const allowedCommands = new Set(['status', 'uptime', 'refresh', 'help', 'coinflip', 'dice', 'eightball']);
         const entries = val.split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
         const uniqueEntries = Array.from(new Set(entries));
         if (!uniqueEntries.length) {

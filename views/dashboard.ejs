@@ -819,8 +819,24 @@
               <input type="checkbox" id="cfgCmdRefresh" data-cmd="refresh" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
               <span><code>/refresh</code> - manueller Refresh (ManageGuild)</span>
             </label>
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px">
+              <input type="checkbox" id="cfgCmdHelp" data-cmd="help" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
+              <span><code>/help</code> - Übersicht aller Bot-Kommandos</span>
+            </label>
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px">
+              <input type="checkbox" id="cfgCmdCoinflip" data-cmd="coinflip" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
+              <span><code>/coinflip</code> - Münzwurf (Kopf/Zahl)</span>
+            </label>
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px">
+              <input type="checkbox" id="cfgCmdDice" data-cmd="dice" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
+              <span><code>/dice</code> - Würfel mit frei wählbaren Seiten</span>
+            </label>
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px">
+              <input type="checkbox" id="cfgCmdEightball" data-cmd="eightball" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
+              <span><code>/eightball</code> - magische 8-Ball Antwort</span>
+            </label>
           </div>
-          <input type="hidden" id="cfgEnabledCommands" value="status,uptime,refresh">
+          <input type="hidden" id="cfgEnabledCommands" value="status,uptime,refresh,help,coinflip,dice,eightball">
           <div class="cfg-hint">Mindestens ein Kommando muss aktiv bleiben. Änderungen werden beim Neustart neu registriert.</div>
         </div>
       </div>
@@ -2033,13 +2049,13 @@
   }
 
   function _parseEnabledCommands(value) {
-    const allowed = ['status', 'uptime', 'refresh'];
+    const allowed = ['status', 'uptime', 'refresh', 'help', 'coinflip', 'dice', 'eightball'];
     const entries = String(value || '')
       .split(',')
       .map(s => s.trim().toLowerCase())
       .filter(Boolean);
     const unique = Array.from(new Set(entries)).filter(cmd => allowed.includes(cmd));
-    return unique.length ? unique : ['status', 'uptime', 'refresh'];
+    return unique.length ? unique : ['status', 'uptime', 'refresh', 'help', 'coinflip', 'dice', 'eightball'];
   }
 
   function applyEnabledCommandsToCheckboxes(value) {
@@ -2186,8 +2202,8 @@
 
       setFieldValue('cfgStatusCh', d.STATUS_CHANNEL_ID || '');
       setFieldValue('cfgBotName', d.DISCORD_BOT_NAME || '');
-      setFieldValue('cfgEnabledCommands', d.DISCORD_ENABLED_COMMANDS || 'status,uptime,refresh');
-      applyEnabledCommandsToCheckboxes(d.DISCORD_ENABLED_COMMANDS || 'status,uptime,refresh');
+      setFieldValue('cfgEnabledCommands', d.DISCORD_ENABLED_COMMANDS || 'status,uptime,refresh,help,coinflip,dice,eightball');
+      applyEnabledCommandsToCheckboxes(d.DISCORD_ENABLED_COMMANDS || 'status,uptime,refresh,help,coinflip,dice,eightball');
       setFieldValue('cfgNotifCh', d.DISCORD_NOTIFICATION_CHANNEL || '');
       setFieldValue('cfgKumaUrl', d.UPTIME_KUMA_URL || '');
       setFieldValue('cfgRenderMode', d.DISCORD_STATUS_RENDER_MODE || 'auto');

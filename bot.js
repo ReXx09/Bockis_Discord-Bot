@@ -1556,7 +1556,7 @@ async function calculateUptimeMetrics() {
 // #endregion
 
 // #region 20. SLASH-COMMANDS REGISTRIEREN
-const AVAILABLE_SLASH_COMMANDS = ['status', 'uptime', 'refresh'];
+const AVAILABLE_SLASH_COMMANDS = ['status', 'uptime', 'refresh', 'help', 'coinflip', 'dice', 'eightball'];
 
 function getEnabledSlashCommands() {
   const raw = String(config.get('discord.enabledCommands') || '').trim();
@@ -1595,6 +1595,54 @@ async function registerSlashCommands() {
       new SlashCommandBuilder()
         .setName('refresh')
         .setDescription('Erzwingt einen sofortigen Status-Refresh (nur Admins)')
+        .toJSON()
+    );
+  }
+
+  if (enabled.has('help')) {
+    commands.push(
+      new SlashCommandBuilder()
+        .setName('help')
+        .setDescription('Zeigt alle verfügbaren Bot-Kommandos')
+        .toJSON()
+    );
+  }
+
+  if (enabled.has('coinflip')) {
+    commands.push(
+      new SlashCommandBuilder()
+        .setName('coinflip')
+        .setDescription('Wirft eine Münze (Kopf oder Zahl)')
+        .toJSON()
+    );
+  }
+
+  if (enabled.has('dice')) {
+    commands.push(
+      new SlashCommandBuilder()
+        .setName('dice')
+        .setDescription('Würfelt eine Zahl mit frei wählbaren Seiten')
+        .addIntegerOption(opt =>
+          opt.setName('seiten')
+            .setDescription('Anzahl Seiten (2-100, Standard: 6)')
+            .setMinValue(2)
+            .setMaxValue(100)
+            .setRequired(false)
+        )
+        .toJSON()
+    );
+  }
+
+  if (enabled.has('eightball')) {
+    commands.push(
+      new SlashCommandBuilder()
+        .setName('eightball')
+        .setDescription('Magische 8-Ball Antwort auf deine Frage')
+        .addStringOption(opt =>
+          opt.setName('frage')
+            .setDescription('Deine Frage an den 8-Ball')
+            .setRequired(true)
+        )
         .toJSON()
     );
   }
@@ -1687,6 +1735,68 @@ client.on('interactionCreate', async interaction => {
     await interaction.reply({ content: '\uD83D\uDD04 Starte manuellen Refresh...', ephemeral: true });
     await updateStatusMessage();
     await interaction.editReply('\u2705 Status-Nachricht wurde aktualisiert.');
+  }
+
+  if (interaction.commandName === 'help') {
+    const enabled = getEnabledSlashCommands().map(cmd => `\`/${cmd}\``).join(', ');
+    return interaction.reply({
+      ephemeral: true,
+      embeds: [{
+        color: 0x5865F2,
+        title: '\u2139\uFE0F Bot-Kommandos',
+        description: [
+          '**Info**',
+          '`/status` - aktueller Service-Status',
+          '`/uptime` - Gesamt-Uptime',
+          '`/refresh` - manueller Refresh (ManageGuild)',
+          '',
+          '**Fun & Gadgets**',
+          '`/coinflip` - Münzwurf',
+          '`/dice [seiten]` - Würfel',
+          '`/eightball <frage>` - magische Antwort',
+          '',
+          `**Aktiv:** ${enabled}`,
+        ].join('\n'),
+        timestamp: new Date().toISOString()
+      }]
+    });
+  }
+
+  if (interaction.commandName === 'coinflip') {
+    const result = Math.random() < 0.5 ? 'Kopf \uD83E\uDE99' : 'Zahl \uD83D\uDCB0';
+    return interaction.reply({ content: `\uD83E\uDE99 Münzwurf: **${result}**`, ephemeral: true });
+  }
+
+  if (interaction.commandName === 'dice') {
+    const sides = interaction.options.getInteger('seiten') || 6;
+    const roll = Math.floor(Math.random() * sides) + 1;
+    return interaction.reply({ content: `\uD83C\uDFB2 d${sides}: **${roll}**`, ephemeral: true });
+  }
+
+  if (interaction.commandName === 'eightball') {
+    const question = interaction.options.getString('frage', true);
+    const answers = [
+      'Ja, eindeutig.',
+      'Sieht gut aus.',
+      'Sehr wahrscheinlich.',
+      'Antwort unklar, frag später nochmal.',
+      'Lieber nicht.',
+      'Eher nein.',
+      'Auf keinen Fall.',
+      'Die Sterne sagen: vielleicht.',
+    ];
+    const answer = answers[Math.floor(Math.random() * answers.length)];
+    return interaction.reply({
+      ephemeral: true,
+      embeds: [{
+        color: 0x9B59B6,
+        title: '\uD83C\uDFB1 Magischer 8-Ball',
+        fields: [
+          { name: 'Frage', value: question.slice(0, 1024) },
+          { name: 'Antwort', value: answer },
+        ],
+      }]
+    });
   }
 });
 // #endregion
