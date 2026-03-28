@@ -4,6 +4,11 @@ Stand: 28.03.2026
 
 ## Kurzantwort
 
+Ja, dein gewünschtes Setup ist möglich:
+- Eine Kategorie für Uptime-Dienste
+- Ein eigener Kanal pro Dienst
+- Sichtbarer Live-Status pro Dienst direkt in der Kanalleiste (über Emoji im Kanalnamen)
+
 Nein, du musst die einzelnen Service-Kanäle nicht manuell vorbereiten.
 Der Bot kann die Service-Kategorie und die einzelnen Dienst-Kanäle selbst erstellen und später automatisch umbenennen.
 
@@ -11,6 +16,11 @@ Was du manuell setzen musst:
 - Einen bestehenden Status-Channel für `STATUS_CHANNEL_ID`
 - Korrekte Rechte für den Bot auf dem Server
 - Die Konfiguration in `.env` (insbesondere `GUILD_ID` und `MONITORED_SERVICES`)
+
+Pflichtbedingungen für die automatische Dienst-Kanal-Funktion:
+- `GUILD_ID` muss gesetzt und korrekt sein
+- `MONITORED_SERVICES` muss aktuell befüllt sein (Whitelist)
+- Bot braucht `Manage Channels`
 
 ## Geprüfte Bot-Integration
 
@@ -39,10 +49,11 @@ Was du manuell setzen musst:
 Wichtig:
 - Der Bot verarbeitet hier nur Dienste aus `MONITORED_SERVICES` (Whitelist).
 - Wenn `MONITORED_SERVICES` leer ist, wird das Feature aktuell deaktiviert.
+- Hinweis: In der Config-Beschreibung steht zwar "leer = alle aktiven", der aktuelle Bot-Code deaktiviert das Feature bei leerer Liste.
 
 ## Was du auf Discord vorbereiten solltest
 
-## A) Bot-Rechte
+### A) Bot-Rechte
 
 Der Bot braucht mindestens:
 - View Channels
@@ -55,19 +66,19 @@ Der Bot braucht mindestens:
 Empfohlen zusätzlich:
 - Manage Messages (falls Aufräumen im Status-Channel nötig)
 
-## B) Kanal/Server IDs
+### B) Kanal/Server IDs
 
 In Developer Mode in Discord kopieren:
 - Server-ID -> `GUILD_ID`
 - Status-Kanal-ID -> `STATUS_CHANNEL_ID`
 
-## C) Uptime-Monitorliste
+### C) Uptime-Monitorliste
 
 `MONITORED_SERVICES` muss zu den exakten Uptime-Namen passen (kommagetrennt), z. B.:
 
 `MONITORED_SERVICES=Ark-ASA Svartaltheim,Next-Cloud,Pi-VPN,VPN-Mutti,VPN-Andy,VPN-Thomas`
 
-## D) Beispiel `.env`-Block
+### D) Beispiel `.env`-Block
 
 ```env
 STATUS_CHANNEL_ID=123456789012345678
