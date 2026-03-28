@@ -1006,15 +1006,29 @@ async function buildSvgAttachmentPayload(monitors, statusPageUrl = null) {
   if (title) payload.content = `🌐 **${title}**`;
 
   // Optionaler Link-Button statt roher URL im Content (verhindert Discord-Autounfurl-Button).
-  if (statusPageUrl && buttonLabel) {
-    payload.components = [
-      new ActionRowBuilder().addComponents(
+  const webUiButtonLabel = String(config.get('discord.statusWebUiButtonLabel') || '').trim().slice(0, 80);
+  const webUiUrl = getWebUrl();
+  const showWebUiButton = Boolean(webUiButtonLabel && webUiUrl && webUiUrl.startsWith('https://'));
+
+  if ((statusPageUrl && buttonLabel) || showWebUiButton) {
+    const row = new ActionRowBuilder();
+    if (statusPageUrl && buttonLabel) {
+      row.addComponents(
         new ButtonBuilder()
           .setStyle(ButtonStyle.Link)
           .setLabel(buttonLabel)
           .setURL(statusPageUrl)
-      )
-    ];
+      );
+    }
+    if (showWebUiButton) {
+      row.addComponents(
+        new ButtonBuilder()
+          .setStyle(ButtonStyle.Link)
+          .setLabel(webUiButtonLabel)
+          .setURL(webUiUrl)
+      );
+    }
+    payload.components = [row];
   }
 
   return payload;

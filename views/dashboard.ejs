@@ -703,6 +703,12 @@
           <div class="cfg-hint">Leer entfernt den Button unterhalb der Grafik.</div>
         </div>
         <div class="cfg-field">
+          <label class="cfg-label" for="cfgWebuiButtonLabel">SVG Modus: Web-UI-Button Beschriftung</label>
+          <input class="cfg-input" id="cfgWebuiButtonLabel" type="text" autocomplete="off"
+                 placeholder="z. B. Dashboard öffnen (leer = kein Button)">
+          <div class="cfg-hint">Zweiter Button neben dem Statusseite-Button. Nur aktiv wenn <code>CLOUDFLARE_PUBLIC_URL</code> gesetzt ist (https).</div>
+        </div>
+        <div class="cfg-field">
           <label class="cfg-label" for="cfgSlug">Status-Page Slug</label>
           <input class="cfg-input" id="cfgSlug" type="text" autocomplete="off"
                  placeholder="z. B. dienste">
@@ -1566,6 +1572,7 @@
       setFieldValue('cfgRenderMode', d.DISCORD_STATUS_RENDER_MODE || 'auto');
       setFieldValue('cfgStatusTitle', d.DISCORD_STATUS_MESSAGE_TITLE || '');
       setFieldValue('cfgStatusButtonLabel', d.DISCORD_STATUS_BUTTON_LABEL || 'Statusseite öffnen');
+      setFieldValue('cfgWebuiButtonLabel', d.DISCORD_WEBUI_BUTTON_LABEL || '');
       setFieldValue('cfgSlug', d.STATUS_PAGE_SLUG || 'dienste');
       setFieldValue('cfgCloudflareUrl', d.CLOUDFLARE_PUBLIC_URL || '');
       setFieldValue('cfgGuildId', d.GUILD_ID || '');
@@ -1615,6 +1622,7 @@
     maybeSetChanged(body, 'DISCORD_STATUS_RENDER_MODE', 'cfgRenderMode');
     maybeSetChanged(body, 'DISCORD_STATUS_MESSAGE_TITLE', 'cfgStatusTitle', { allowEmpty: true });
     maybeSetChanged(body, 'DISCORD_STATUS_BUTTON_LABEL', 'cfgStatusButtonLabel', { allowEmpty: true });
+    maybeSetChanged(body, 'DISCORD_WEBUI_BUTTON_LABEL', 'cfgWebuiButtonLabel', { allowEmpty: true });
     maybeSetChanged(body, 'STATUS_PAGE_SLUG', 'cfgSlug');
     maybeSetChanged(body, 'CLOUDFLARE_PUBLIC_URL', 'cfgCloudflareUrl', { allowEmpty: true });
     maybeSetChanged(body, 'UPTIME_KUMA_API_KEY', 'cfgApiKey', { allowEmpty: true });

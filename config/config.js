@@ -92,6 +92,12 @@ const config = convict({
       default: 'Statusseite öffnen',
       env: 'DISCORD_STATUS_BUTTON_LABEL'
     },
+    statusWebUiButtonLabel: {
+      doc: 'Beschriftung des Web-UI-Buttons neben dem Statusseite-Button (leer = kein Button)',
+      format: String,
+      default: '',
+      env: 'DISCORD_WEBUI_BUTTON_LABEL'
+    },
     statusWebhookUrl: {
       doc: 'Optionaler Discord Webhook für Status-Nachrichten (nur für webhook_ascii Modus)',
       format: String,
