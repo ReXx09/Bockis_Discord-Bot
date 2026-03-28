@@ -863,6 +863,22 @@ module.exports = function startWebServer({
 
       // Robust gegen npm-Notices/Warnungen: parseable statt JSON nutzen.
       // Damit vermeiden wir JSON.parse auf gemischter CLI-Ausgabe komplett.
+      const normalizePkgVersion = (rawValue, depName = '') => {
+        const raw = String(rawValue ?? '').trim();
+        if (!raw) return null;
+
+        // npm parseable liefert oft "paket@version".
+        if (depName && raw.toLowerCase().startsWith(`${depName.toLowerCase()}@`)) {
+          return raw.slice(depName.length + 1) || null;
+        }
+
+        // Fallback: letztes semver-artiges Segment extrahieren.
+        const semverMatch = raw.match(/(\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?)$/);
+        if (semverMatch) return semverMatch[1];
+
+        return raw;
+      };
+
       let outdated = {};
       await new Promise((resolve) => {
         let rawOut = '';
@@ -880,9 +896,9 @@ module.exports = function startWebServer({
               if (idx === -1) continue;
               const cols = line.slice(idx + marker.length).split(':');
               outdated[depName] = {
-                current: cols[0] || null,
-                wanted : cols[1] || null,
-                latest : cols[2] || null,
+                current: normalizePkgVersion(cols[0], depName),
+                wanted : normalizePkgVersion(cols[1], depName),
+                latest : normalizePkgVersion(cols[2], depName),
               };
               break;
             }
@@ -904,17 +920,22 @@ module.exports = function startWebServer({
       const packages = Object.entries(allDeps).map(([name, info]) => {
         const od = outdated[name];
         const installed = od?.current ?? getInstalled(name);
-        const curMajor = od ? parseInt((od.current || '0').split('.')[0], 10) : 0;
-        const latMajor = od ? parseInt((od.latest  || '0').split('.')[0], 10) : 0;
+        const wanted = od?.wanted ?? null;
+        const latest = od?.latest ?? null;
+
+        const curMajor = parseInt(String(installed || '0').split('.')[0], 10);
+        const latMajor = parseInt(String(latest || '0').split('.')[0], 10);
+        const isOutdated = Boolean(latest && installed && latest !== installed);
+
         return {
           name,
           required : info.required,
           type     : info.type,
           current  : installed,
-          wanted   : od?.wanted  ?? null,
-          latest   : od?.latest  ?? null,
-          outdated : !!od,
-          majorBump: od ? (latMajor > curMajor) : false,
+          wanted,
+          latest,
+          outdated : isOutdated,
+          majorBump: isOutdated && Number.isFinite(curMajor) && Number.isFinite(latMajor) ? (latMajor > curMajor) : false,
         };
       });
 
