@@ -1293,10 +1293,25 @@ async function syncServiceChannels(monitors) {
   const fixedCategoryId = String(config.get('discord.serviceCategoryId') || '').trim();
   const manualChannelMap = _parseServiceChannelMap(config.get('discord.serviceChannelMap') || '');
 
-  const guild = client.guilds.cache.get(guildId);
+  let guild = client.guilds.cache.get(guildId);
   if (!guild) {
-    logger.warn(`Service-Kanal-Manager: Guild "${guildId}" nicht im Cache – Bot auf dem Server?`);
-    return;
+    try {
+      guild = await client.guilds.fetch(guildId);
+    } catch {
+      logger.warn(`Service-Kanal-Manager: Guild "${guildId}" nicht gefunden – stimmt GUILD_ID und ist der Bot auf dem Server?`);
+      return;
+    }
+  }
+
+  // Ohne ManageChannels kann der Bot weder Kategorie/Kanal erstellen noch umbenennen.
+  try {
+    const me = guild.members.me || await guild.members.fetchMe();
+    if (!me.permissions.has(PermissionFlagsBits.ManageChannels)) {
+      logger.warn('Service-Kanal-Manager: Fehlende Berechtigung "Manage Channels". Kategorie/Kanal-Änderungen übersprungen.');
+      return;
+    }
+  } catch {
+    logger.warn('Service-Kanal-Manager: Bot-Mitgliedsdaten konnten nicht geladen werden (Berechtigungen nicht prüfbar).');
   }
 
   // Whitelist filtern (oder alle aktiven Dienste wenn leer)
