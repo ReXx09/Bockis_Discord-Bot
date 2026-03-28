@@ -940,7 +940,7 @@
 
     <div class="cfg-actions">
       <button class="btn btn-green" id="btnCfgSave" onclick="saveConfig()">💾 Speichern &amp; Neu starten</button>
-      <button class="btn" onclick="loadConfig()">↺ Zurücksetzen</button>
+      <button class="btn" onclick="confirmResetConfig()" title="Lädt alle Eingaben aus der gespeicherten Konfiguration neu">↺ Zurücksetzen</button>
       <span id="cfgStatus"></span>
     </div>
   </div>
@@ -1991,6 +1991,12 @@
       document.getElementById('cfgStatus').textContent = 'Ladefehler: ' + e.message;
       document.getElementById('cfgStatus').className = 'err';
     }
+  }
+
+  function confirmResetConfig() {
+    const ok = window.confirm('Zurücksetzen lädt alle Einstellungsfelder aus der gespeicherten Konfiguration neu. Nicht gespeicherte Änderungen gehen verloren. Fortfahren?');
+    if (!ok) return;
+    loadConfig();
   }
 
   // ── Config speichern mit Polling nach Restart ──────
