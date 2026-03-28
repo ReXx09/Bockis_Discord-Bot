@@ -596,7 +596,7 @@
   </div>
   <div style="display:flex;gap:8px;flex-wrap:wrap">
     <button class="btn" onclick="toggleUpdateSection()">Details anzeigen ↓</button>
-    <button class="btn btn-green" id="btnUpdateRun" onclick="runUpdate()">▶ Update jetzt starten</button>
+    <button class="btn btn-green" id="btnUpdateRun" onclick="runUpdate(null, 'git', 'btnUpdateRun')">▶ Git Pull starten</button>
   </div>
 </div>
 
@@ -859,13 +859,9 @@
       <option value="native">Native</option>
       <option value="docker">Docker</option>
     </select>
-    <label class="muted" for="updateTask">Aktion:</label>
-    <select class="cfg-input" id="updateTask" style="max-width:210px;height:34px;padding:6px 8px">
-      <option value="full" selected>Vollständig</option>
-      <option value="git">Nur git pull</option>
-      <option value="npm">Nur npm</option>
-    </select>
-    <button class="btn btn-green" id="btnUpdateRunPane" onclick="runUpdate(null, 'btnUpdateRunPane')">▶ Update starten</button>
+    <button class="btn btn-green" id="btnUpdateGitPane" onclick="runUpdate(null, 'git', 'btnUpdateGitPane')">▶ Git Pull</button>
+    <button class="btn" id="btnUpdateNpmPane" onclick="runUpdate(null, 'npm', 'btnUpdateNpmPane')">📦 npm</button>
+    <button class="btn" id="btnUpdateFullPane" onclick="runUpdate(null, 'full', 'btnUpdateFullPane')">🛠 Vollupdate</button>
     <span class="muted" id="updateState">Noch nicht geprüft</span>
   </div>
   <div id="commitList" class="commit-list"></div>
@@ -1428,19 +1424,28 @@
     }
   }
 
-  async function runUpdate(modeOverride = null, sourceBtnId = 'btnUpdateRun') {
+  function getUpdateButtonLabel(task, isBanner = false) {
+    if (task === 'git') return isBanner ? '▶ Git Pull starten' : '▶ Git Pull';
+    if (task === 'npm') return '📦 npm';
+    return '🛠 Vollupdate';
+  }
+
+  async function runUpdate(modeOverride = null, taskOverride = 'git', sourceBtnId = 'btnUpdateRun') {
     const btn = document.getElementById(sourceBtnId) || document.getElementById('btnUpdateRun');
     const bannerBtn = document.getElementById('btnUpdateRun');
-    const paneBtn = document.getElementById('btnUpdateRunPane');
+    const paneBtns = [
+      document.getElementById('btnUpdateGitPane'),
+      document.getElementById('btnUpdateNpmPane'),
+      document.getElementById('btnUpdateFullPane'),
+    ].filter(Boolean);
     const modeSelect = document.getElementById('updateMode');
-    const taskSelect = document.getElementById('updateTask');
     const selectedMode = modeOverride || (modeSelect ? modeSelect.value : 'auto');
-    const selectedTask = taskSelect ? taskSelect.value : 'full';
+    const selectedTask = taskOverride || 'git';
 
     btn.disabled = true;
     btn.textContent = '⏳ Update läuft…';
     if (bannerBtn && bannerBtn !== btn) bannerBtn.disabled = true;
-    if (paneBtn && paneBtn !== btn) paneBtn.disabled = true;
+    paneBtns.forEach(paneBtn => { if (paneBtn !== btn) paneBtn.disabled = true; });
 
     const log  = document.getElementById('updateLog');
     const state = document.getElementById('updateState');
@@ -1505,19 +1510,17 @@
       if (state) state.textContent = 'Verbindungsfehler beim Update';
     } finally {
       btn.disabled = false;
-      if (sourceBtnId === 'btnUpdateRunPane') {
-        btn.textContent = '▶ Update starten';
-        if (bannerBtn) {
-          bannerBtn.disabled = false;
-          bannerBtn.textContent = '▶ Update jetzt starten';
-        }
-      } else {
-        btn.textContent = '▶ Update jetzt starten';
-        if (paneBtn) {
-          paneBtn.disabled = false;
-          paneBtn.textContent = '▶ Update starten';
-        }
+      btn.textContent = getUpdateButtonLabel(selectedTask, sourceBtnId === 'btnUpdateRun');
+      if (bannerBtn) {
+        bannerBtn.disabled = false;
+        bannerBtn.textContent = getUpdateButtonLabel('git', true);
       }
+      paneBtns.forEach(paneBtn => {
+        paneBtn.disabled = false;
+        if (paneBtn.id === 'btnUpdateGitPane') paneBtn.textContent = getUpdateButtonLabel('git');
+        if (paneBtn.id === 'btnUpdateNpmPane') paneBtn.textContent = getUpdateButtonLabel('npm');
+        if (paneBtn.id === 'btnUpdateFullPane') paneBtn.textContent = getUpdateButtonLabel('full');
+      });
       checkUpdate(false);
     }
   }
