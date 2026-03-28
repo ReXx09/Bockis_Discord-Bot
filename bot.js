@@ -1311,8 +1311,35 @@ async function syncServiceChannels(monitors) {
   if (!guildId) return;  // Feature nicht konfiguriert
   const namingMode = config.get('discord.serviceChannelNameMode') || 'strict_slug';
   const autoCreate = config.get('discord.serviceChannelAutoCreate') !== false;
+  const autoQuiet = config.get('discord.serviceChannelAutoQuiet') !== false;
   const fixedCategoryId = String(config.get('discord.serviceCategoryId') || '').trim();
   const manualChannelMap = _parseServiceChannelMap(config.get('discord.serviceChannelMap') || '');
+
+  const quietDenyPerms = [
+    PermissionFlagsBits.SendMessages,
+    PermissionFlagsBits.AddReactions,
+    PermissionFlagsBits.CreatePublicThreads,
+    PermissionFlagsBits.CreatePrivateThreads,
+    PermissionFlagsBits.SendMessagesInThreads,
+  ];
+
+  const ensureQuietPermissions = async (channel) => {
+    if (!autoQuiet || !channel || channel.type !== ChannelType.GuildText) return;
+    try {
+      const overwrite = channel.permissionOverwrites.cache.get(guild.roles.everyone.id);
+      const missing = quietDenyPerms.filter((perm) => !overwrite?.deny?.has(perm));
+      if (!missing.length) return;
+      await channel.permissionOverwrites.edit(guild.roles.everyone, {
+        SendMessages: false,
+        AddReactions: false,
+        CreatePublicThreads: false,
+        CreatePrivateThreads: false,
+        SendMessagesInThreads: false,
+      });
+    } catch (err) {
+      logger.warn(`Service-Kanal-Manager: Ruhigstellen für "${channel.name}" fehlgeschlagen: ${err.message}`);
+    }
+  };
 
   let guild = client.guilds.cache.get(guildId);
   if (!guild) {
@@ -1433,9 +1460,9 @@ async function syncServiceChannels(monitors) {
           type:   ChannelType.GuildText,
           parent: category.id,
           topic,
-          permissionOverwrites: [
-            { id: guild.roles.everyone, deny: [PermissionFlagsBits.SendMessages] }
-          ]
+          permissionOverwrites: autoQuiet
+            ? [{ id: guild.roles.everyone, deny: quietDenyPerms }]
+            : [{ id: guild.roles.everyone, deny: [PermissionFlagsBits.SendMessages] }]
         });
         serviceChannels[monitor.name] = channel.id;
         stateChanged = true;
@@ -1448,9 +1475,9 @@ async function syncServiceChannels(monitors) {
               type:   ChannelType.GuildText,
               parent: category.id,
               topic,
-              permissionOverwrites: [
-                { id: guild.roles.everyone, deny: [PermissionFlagsBits.SendMessages] }
-              ]
+              permissionOverwrites: autoQuiet
+                ? [{ id: guild.roles.everyone, deny: quietDenyPerms }]
+                : [{ id: guild.roles.everyone, deny: [PermissionFlagsBits.SendMessages] }]
             });
             serviceChannels[monitor.name] = channel.id;
             stateChanged = true;
@@ -1470,6 +1497,8 @@ async function syncServiceChannels(monitors) {
       logger.warn(`Service-Kanal-Manager: Kanal für "${monitor.name}" ist kein Textkanal (${channel.type})`);
       continue;
     }
+
+    await ensureQuietPermissions(channel);
 
     // Kanal umbenennen wenn Status sich geändert hat
     if (channel.name !== desiredName) {

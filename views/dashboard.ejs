@@ -778,6 +778,15 @@
           </div>
         </div>
         <div class="cfg-field">
+          <label class="cfg-label">Service-Kanäle automatisch ruhig stellen</label>
+          <div style="display:flex;align-items:center;gap:12px;margin-top:2px">
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px">
+              <input type="checkbox" id="cfgServiceAutoQuiet" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
+              <span>Automatisch Schreiben/Reaktionen/Threads für @everyone sperren</span>
+            </label>
+          </div>
+        </div>
+        <div class="cfg-field">
           <label class="cfg-label" for="cfgServiceChannelNameMode">Dienst-Kanalname Modus</label>
           <select class="cfg-input" id="cfgServiceChannelNameMode">
             <option value="strict_slug">Strict (Discord-sicher: klein + slug)</option>
@@ -2220,6 +2229,10 @@
       const autoCreateEl = document.getElementById('cfgServiceAutoCreate');
       autoCreateEl.checked = (d.SERVICE_CHANNEL_AUTO_CREATE || 'true') !== 'false';
       autoCreateEl.dataset.initialValue = autoCreateEl.checked ? 'true' : 'false';
+
+      const autoQuietEl = document.getElementById('cfgServiceAutoQuiet');
+      autoQuietEl.checked = (d.SERVICE_CHANNEL_AUTO_QUIET || 'true') !== 'false';
+      autoQuietEl.dataset.initialValue = autoQuietEl.checked ? 'true' : 'false';
     } catch (e) {
       document.getElementById('cfgStatus').textContent = 'Ladefehler: ' + e.message;
       document.getElementById('cfgStatus').className = 'err';
@@ -2281,6 +2294,13 @@
     const initialAutoCreate = autoCreateEl.dataset.initialValue || 'true';
     if (currentAutoCreate !== initialAutoCreate) {
       body.SERVICE_CHANNEL_AUTO_CREATE = currentAutoCreate;
+    }
+
+    const autoQuietEl = document.getElementById('cfgServiceAutoQuiet');
+    const currentAutoQuiet = autoQuietEl.checked ? 'true' : 'false';
+    const initialAutoQuiet = autoQuietEl.dataset.initialValue || 'true';
+    if (currentAutoQuiet !== initialAutoQuiet) {
+      body.SERVICE_CHANNEL_AUTO_QUIET = currentAutoQuiet;
     }
 
     if (Object.keys(body).length === 0) {

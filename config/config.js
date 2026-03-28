@@ -159,6 +159,12 @@ const config = convict({
       default: true,
       env: 'SERVICE_CHANNEL_AUTO_CREATE'
     },
+    serviceChannelAutoQuiet: {
+      doc: 'Service-Kanäle automatisch ruhig halten (kein Schreiben, keine Reaktionen, keine Threads für @everyone)',
+      format: Boolean,
+      default: true,
+      env: 'SERVICE_CHANNEL_AUTO_QUIET'
+    },
     serviceChannelMap: {
       doc: 'Optionale Zuordnung Monitor=ChannelID, getrennt mit ; (z.B. Next-Cloud=123;Pi-VPN=456)',
       format: String,

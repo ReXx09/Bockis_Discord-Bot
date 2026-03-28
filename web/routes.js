@@ -1057,6 +1057,7 @@ module.exports = function startWebServer({
         SERVICE_CATEGORY_ID:          get('SERVICE_CATEGORY_ID'),
         SERVICE_CHANNEL_NAME_MODE:    get('SERVICE_CHANNEL_NAME_MODE') || 'strict_slug',
         SERVICE_CHANNEL_AUTO_CREATE:  get('SERVICE_CHANNEL_AUTO_CREATE') || 'true',
+        SERVICE_CHANNEL_AUTO_QUIET:   get('SERVICE_CHANNEL_AUTO_QUIET') || 'true',
         SERVICE_CHANNEL_MAP:          get('SERVICE_CHANNEL_MAP') || '',
         MONITORED_SERVICES:           get('MONITORED_SERVICES'),
         UPDATE_INTERVAL:              get('UPDATE_INTERVAL') || '300000',
@@ -1097,6 +1098,7 @@ module.exports = function startWebServer({
       'SERVICE_CATEGORY_ID',
       'SERVICE_CHANNEL_NAME_MODE',
       'SERVICE_CHANNEL_AUTO_CREATE',
+      'SERVICE_CHANNEL_AUTO_QUIET',
       'SERVICE_CHANNEL_MAP',
       'MONITORED_SERVICES',
       'UPDATE_INTERVAL',
@@ -1181,6 +1183,8 @@ module.exports = function startWebServer({
         return res.json({ ok: false, error: 'SERVICE_CHANNEL_NAME_MODE muss strict_slug oder pretty sein' });
       if (key === 'SERVICE_CHANNEL_AUTO_CREATE' && !['true', 'false'].includes(val))
         return res.json({ ok: false, error: 'SERVICE_CHANNEL_AUTO_CREATE muss true oder false sein' });
+      if (key === 'SERVICE_CHANNEL_AUTO_QUIET' && !['true', 'false'].includes(val))
+        return res.json({ ok: false, error: 'SERVICE_CHANNEL_AUTO_QUIET muss true oder false sein' });
       if (key === 'SERVICE_CHANNEL_MAP') {
         const entries = val.split(';').map(s => s.trim()).filter(Boolean);
         for (const entry of entries) {
