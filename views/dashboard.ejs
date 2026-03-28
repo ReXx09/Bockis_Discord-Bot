@@ -748,13 +748,13 @@
           <label class="cfg-label" for="cfgServiceCategory">Service Kategorie-Name</label>
           <input class="cfg-input" id="cfgServiceCategory" type="text" autocomplete="off"
                  placeholder="z. B. 📊 Service Status">
-          <div class="cfg-hint">Wird für Auto-Erstellung genutzt, wenn keine feste Kategorie-ID gesetzt ist.</div>
+             <div class="cfg-hint">Wird für Auto-Erstellung genutzt. Wenn keine feste Kategorie-ID gesetzt ist, legt der Bot diese Kategorie bei Bedarf selbst an.</div>
         </div>
         <div class="cfg-field">
-          <label class="cfg-label" for="cfgServiceCategoryId">Feste Kategorie-ID (optional)</label>
+             <label class="cfg-label" for="cfgServiceCategoryId">Bestehende Kategorie-ID verwenden (optional)</label>
           <input class="cfg-input" id="cfgServiceCategoryId" type="text" autocomplete="off"
                  placeholder="z. B. 123456789012345678">
-          <div class="cfg-hint">Wenn gesetzt, nutzt der Bot genau diese Kategorie und erstellt keine neue per Name.</div>
+             <div class="cfg-hint">Nur für eine bereits vorhandene Discord-Kategorie. Wenn leer, kann der Bot die Kategorie stattdessen per Namen selbst erstellen.</div>
         </div>
         <div class="cfg-field">
           <label class="cfg-label" for="cfgMonitoredServices">Monitored Services</label>
@@ -763,17 +763,17 @@
           <div class="cfg-hint">Kommagetrennte Whitelist. Wenn leer, werden Einträge aus Kanal-Mapping verwendet.</div>
         </div>
         <div class="cfg-field">
-          <label class="cfg-label" for="cfgServiceChannelMap">Manuelle Kanal-Zuordnung (optional)</label>
+          <label class="cfg-label" for="cfgServiceChannelMap">Bestehende Kanäle manuell zuordnen (optional)</label>
           <input class="cfg-input" id="cfgServiceChannelMap" type="text" autocomplete="off"
                  placeholder="Next-Cloud=123456789012345678;Pi-VPN=234567890123456789">
-          <div class="cfg-hint">Format: <code>Monitorname=ChannelID;Anderer Monitor=ChannelID</code>. Diese Zuordnung hat Vorrang.</div>
+          <div class="cfg-hint">Format: <code>Monitorname=ChannelID;Anderer Monitor=ChannelID</code>. Die Channel-ID muss zu einem bereits vorhandenen Kanal gehören. Wenn leer, kann der Bot fehlende Kanäle automatisch selbst erstellen.</div>
         </div>
         <div class="cfg-field">
           <label class="cfg-label">Fehlende Kanäle automatisch erstellen</label>
           <div style="display:flex;align-items:center;gap:12px;margin-top:2px">
             <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px">
               <input type="checkbox" id="cfgServiceAutoCreate" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
-              <span>Auto-Erstellung aktiv (falls kein Mapping-Kanal vorhanden)</span>
+              <span>Auto-Erstellung aktiv, wenn keine bestehende Kanal-ID zugeordnet ist</span>
             </label>
           </div>
         </div>
