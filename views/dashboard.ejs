@@ -854,9 +854,9 @@
           <label class="cfg-label" for="cfgServiceChannelNameMode">Dienst-Kanalname Modus</label>
           <select class="cfg-input" id="cfgServiceChannelNameMode">
             <option value="strict_slug">Strict (Discord-sicher: klein + slug)</option>
-            <option value="pretty">Pretty (versucht Großschrift/Emoji aus Dienstnamen)</option>
+            <option value="pretty">Pretty (Lesbarkeit + Emoji, Großschrift nur wenn Discord es zulässt)</option>
           </select>
-          <div class="cfg-hint">Bei <code>pretty</code> wird bei Discord-Ablehnung automatisch auf den sicheren Slug zurückgefallen. Discord-Textkanäle unterstützen Großschreibung nur eingeschränkt.</div>
+          <div class="cfg-hint">Bei <code>pretty</code> bleibt der Name so lesbar wie möglich. Wichtig: Discord normalisiert Textkanalnamen oft selbst auf Kleinbuchstaben. Bei Ablehnung wird automatisch auf den sicheren Slug zurückgefallen.</div>
           <div class="cfg-hint" id="cfgChannelNamePreview" style="margin-top:6px"></div>
         </div>
         <div class="cfg-field" style="margin-bottom:0">
