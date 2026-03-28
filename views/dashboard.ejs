@@ -724,6 +724,20 @@
           <label class="cfg-label" for="cfgPresenceText">Discord "Schaut zu" Texte</label>
           <input class="cfg-input" id="cfgPresenceText" type="text" autocomplete="off"
                  placeholder="Service Health;den Serverstatus;neue Updates">
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+            <select class="cfg-input" id="cfgPresencePreset" style="min-width:220px;flex:1">
+              <option value="">Lustige Vorlage wählen…</option>
+              <option value="den Kühlschrankstatus 🧊">den Kühlschrankstatus 🧊</option>
+              <option value="ob der Kaffee schon fertig ist ☕">ob der Kaffee schon fertig ist ☕</option>
+              <option value="Memes in Produktion 😂">Memes in Produktion 😂</option>
+              <option value="die Uptime tanzen 💃">die Uptime tanzen 💃</option>
+              <option value="den Server beim Atmen 🫁">den Server beim Atmen 🫁</option>
+              <option value="Updates mit Popcorn 🍿">Updates mit Popcorn 🍿</option>
+              <option value="dem Chaos beim Skalieren 📈">dem Chaos beim Skalieren 📈</option>
+              <option value="den Logs beim Leuchten ✨">den Logs beim Leuchten ✨</option>
+            </select>
+            <button class="btn" onclick="appendPresencePreset()">➕ Vorlage übernehmen</button>
+          </div>
           <div class="cfg-hint">Mehrere lustige Texte mit <code>;</code> trennen. Der Bot rotiert diese automatisch im Profil.</div>
         </div>
         <div class="cfg-field">
@@ -2189,6 +2203,22 @@
       .filter(Boolean);
     if (!existing.includes(value)) existing.push(value);
     inputEl.value = existing.slice(0, 5).join(';');
+    presetEl.value = '';
+  }
+
+  function appendPresencePreset() {
+    const presetEl = document.getElementById('cfgPresencePreset');
+    const inputEl = document.getElementById('cfgPresenceText');
+    const value = String(presetEl?.value || '').trim();
+    if (!value || !inputEl) return;
+
+    const existing = String(inputEl.value || '')
+      .split(';')
+      .map(s => s.trim())
+      .filter(Boolean);
+
+    if (!existing.includes(value)) existing.push(value);
+    inputEl.value = existing.slice(0, 15).join(';');
     presetEl.value = '';
   }
 
