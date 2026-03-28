@@ -117,9 +117,15 @@
       grid-column: span 12;
     }
     .dashboard-grid > .card[data-span="6"]  { grid-column: span 6; }
+    .dashboard-grid > .card[data-span="9"]  { grid-column: span 9; }
     .dashboard-grid > .card[data-span="4"]  { grid-column: span 4; }
     .dashboard-grid > .card[data-span="3"]  { grid-column: span 3; }
     .dashboard-grid > .card[data-span="12"] { grid-column: span 12; }
+    .dashboard-grid > .drop-placeholder[data-span="6"]  { grid-column: span 6; }
+    .dashboard-grid > .drop-placeholder[data-span="9"]  { grid-column: span 9; }
+    .dashboard-grid > .drop-placeholder[data-span="4"]  { grid-column: span 4; }
+    .dashboard-grid > .drop-placeholder[data-span="3"]  { grid-column: span 3; }
+    .dashboard-grid > .drop-placeholder[data-span="12"] { grid-column: span 12; }
     @media (max-width: 900px) { .dashboard-grid > .card { grid-column: span 12 !important; } }
 
     /* CARD WIDTH BUTTONS */
@@ -1856,6 +1862,7 @@
     header.appendChild(left);
 
     const SPANS = [
+      { label: '⅓', span: '4',  title: 'Ein Drittel Breite' },
       { label: '½', span: '6',  title: 'Halbe Breite' },
       { label: '¾', span: '9',  title: 'Dreiviertel Breite' },
       { label: '↔', span: '12', title: 'Volle Breite' },
@@ -1868,6 +1875,7 @@
       wb.className = 'btn-width' + (span === currentSpan ? ' active' : '');
       wb.textContent = label;
       wb.title = title;
+      wb.dataset.spanValue = span;
       wb.addEventListener('click', (e) => {
         e.stopPropagation();
         card.dataset.span = span;
@@ -1926,9 +1934,7 @@
       if (!span) return;
       card.dataset.span = span;
       card.querySelectorAll('.btn-width').forEach(wb => {
-        wb.classList.toggle('active', wb.title.startsWith(
-          span === '6' ? 'Halbe' : span === '9' ? 'Dreiviertel' : 'Volle'
-        ));
+        wb.classList.toggle('active', wb.dataset.spanValue === span);
       });
     });
   }
