@@ -44,10 +44,29 @@ if (missingEnv.length) {
 // #endregion
 
 // #region 2. LOGGER MIT LOG-ROTATION
+const LOG_TIMEZONE = process.env.LOG_TIMEZONE || process.env.TZ || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+const LOG_TS_FORMATTER = new Intl.DateTimeFormat('sv-SE', {
+  timeZone: LOG_TIMEZONE,
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+  hour12: false
+});
+
+function formatLogTimestamp() {
+  const now = new Date();
+  const base = LOG_TS_FORMATTER.format(now).replace(',', '');
+  const ms = String(now.getMilliseconds()).padStart(3, '0');
+  return `${base}.${ms} ${LOG_TIMEZONE}`;
+}
+
 const logger = winston.createLogger({
   level: 'info',
   format: winston.format.combine(
-    winston.format.timestamp(),
+    winston.format.timestamp({ format: formatLogTimestamp }),
     winston.format.printf(
       ({ timestamp, level, message }) => `[${timestamp}] ${level.toUpperCase()}: ${message}`
     )
