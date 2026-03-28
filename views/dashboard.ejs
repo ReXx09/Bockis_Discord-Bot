@@ -645,13 +645,14 @@
   <div class="ub-left">
     <span class="ub-icon">⚠️</span>
     <div>
-      <div class="ub-title">Update verfügbar</div>
+      <div class="ub-title" id="ubTitle">Update verfügbar</div>
       <div class="ub-sub" id="ubSub">Neue Version auf GitHub gefunden</div>
     </div>
   </div>
   <div style="display:flex;gap:8px;flex-wrap:wrap">
     <button class="btn" onclick="toggleUpdateSection()">Details anzeigen ↓</button>
     <button class="btn btn-green" id="btnUpdateRun" onclick="runUpdate(null, 'git', 'btnUpdateRun')">▶ Git Pull starten</button>
+    <button class="btn btn-green hidden" id="btnBannerNpm" onclick="runUpdate(null, 'npm', 'btnBannerNpm')">📦 npm Updates installieren</button>
   </div>
 </div>
 
@@ -1576,6 +1577,55 @@
 
   // ── Update Check ─────────────────────────────────────
   let _updateData = null;
+  let _depsBannerData = null;
+
+  function refreshUpdateBanner() {
+    const banner = document.getElementById('updateBanner');
+    const titleEl = document.getElementById('ubTitle');
+    const subEl = document.getElementById('ubSub');
+    const gitBtn = document.getElementById('btnUpdateRun');
+    const npmBtn = document.getElementById('btnBannerNpm');
+    if (!banner || !titleEl || !subEl || !gitBtn || !npmBtn) return;
+
+    const hasGitUpdate = Boolean(_updateData?.updateAvailable);
+    const behind = Number(_updateData?.behind || 0);
+    const local = _updateData?.local || '–';
+    const remote = _updateData?.remote || '–';
+
+    const npmOutdated = Number(_depsBannerData?.outdatedCount || 0);
+    const npmTotal = Number(_depsBannerData?.total || 0);
+    const hasNpmUpdates = npmOutdated > 0;
+
+    const sysRequiredMissing = Number(_depsBannerData?.systemRequiredMissingCount || 0);
+    const hasRequiredSysMissing = sysRequiredMissing > 0;
+
+    if (!hasGitUpdate && !hasNpmUpdates && !hasRequiredSysMissing) {
+      banner.classList.add('hidden');
+      gitBtn.classList.add('hidden');
+      npmBtn.classList.add('hidden');
+      return;
+    }
+
+    banner.classList.remove('hidden');
+    gitBtn.classList.toggle('hidden', !hasGitUpdate);
+    npmBtn.classList.toggle('hidden', !hasNpmUpdates);
+
+    if (hasGitUpdate && hasNpmUpdates) {
+      titleEl.textContent = 'Updates verfügbar';
+    } else if (hasGitUpdate) {
+      titleEl.textContent = 'Git-Update verfügbar';
+    } else if (hasNpmUpdates) {
+      titleEl.textContent = 'npm-Updates verfügbar';
+    } else {
+      titleEl.textContent = 'Pflicht-Abhängigkeiten fehlen';
+    }
+
+    const details = [];
+    if (hasGitUpdate) details.push(`${behind} Commit${behind > 1 ? 's' : ''} verfügbar · lokal: ${local} · remote: ${remote}`);
+    if (hasNpmUpdates) details.push(`${npmOutdated} von ${npmTotal} npm-Paket(en) veraltet`);
+    if (hasRequiredSysMissing) details.push(`${sysRequiredMissing} Pflicht-System-Abhängigkeit(en) fehlen`);
+    subEl.textContent = details.join(' · ');
+  }
 
   async function checkUpdate(showToast = false) {
     try {
@@ -1583,32 +1633,34 @@
       const state = document.getElementById('updateState');
 
       if (!d.ok) {
+        _updateData = null;
+        refreshUpdateBanner();
         if (state) state.textContent = 'Fehler: ' + (d.error || 'Update-Prüfung fehlgeschlagen');
         if (showToast) toast('Update-Prüfung fehlgeschlagen: ' + (d.error || 'Unbekannt'), 'err');
         return;
       }
 
       if (!d.hasGit) {
+        _updateData = null;
+        refreshUpdateBanner();
         if (state) state.textContent = 'Kein Git-Repository erkannt';
         if (showToast) toast('Kein Git-Repository erkannt', 'warn');
         return;
       }
 
       if (d.fetchFailed) {
+        _updateData = null;
+        refreshUpdateBanner();
         if (state) state.textContent = 'Git Fetch fehlgeschlagen';
         if (showToast) toast('Git Fetch fehlgeschlagen', 'warn');
         return;
       }
 
       _updateData = d;
-
-      const banner = document.getElementById('updateBanner');
-      const sub    = document.getElementById('ubSub');
+      refreshUpdateBanner();
 
       if (d.updateAvailable) {
         if (state) state.textContent = `${d.behind} Commit${d.behind > 1 ? 's' : ''} verfügbar`;
-        sub.textContent = `${d.behind} neuer Commit${d.behind > 1 ? 's' : ''} verfügbar · lokal: ${d.local} · remote: ${d.remote}`;
-        banner.classList.remove('hidden');
         renderCommits(d.commits);
         if (showToast) toast(`Update verfügbar: ${d.behind} Commit${d.behind > 1 ? 's' : ''}`, 'warn');
       } else {
@@ -1620,6 +1672,8 @@
         if (showToast) toast('Kein Update verfügbar', 'ok');
       }
     } catch (e) {
+      _updateData = null;
+      refreshUpdateBanner();
       const state = document.getElementById('updateState');
       if (state) state.textContent = 'Verbindungsfehler beim Prüfen';
       if (showToast) toast('Netzwerkfehler: ' + e.message, 'err');
@@ -1665,6 +1719,8 @@
       const d = await fetch('/api/deps-check').then(r => r.json());
 
       if (!d.ok) {
+        _depsBannerData = null;
+        refreshUpdateBanner();
         if (state)    state.textContent    = 'Fehler: ' + (d.error || 'Unbekannt');
         if (sysState) sysState.textContent = 'Fehler: ' + (d.error || 'Unbekannt');
         if (showToast) toast('Fehler beim Abhängigkeitscheck', 'err');
@@ -1754,11 +1810,21 @@
         : 'Alle vorhanden';
       if (sysState) sysState.textContent = sysTxt;
 
+      _depsBannerData = {
+        outdatedCount: d.outdatedCount || 0,
+        total: d.total || 0,
+        systemMissingCount: d.systemMissingCount || 0,
+        systemRequiredMissingCount: d.systemRequiredMissingCount || 0,
+      };
+      refreshUpdateBanner();
+
       if (showToast) {
         const allOk = d.outdatedCount === 0 && sysRequiredMissing === 0;
         toast(`npm: ${npmTxt} · System: ${sysTxt}`, allOk ? 'ok' : 'err');
       }
     } catch (e) {
+      _depsBannerData = null;
+      refreshUpdateBanner();
       if (state)    state.textContent    = 'Verbindungsfehler';
       if (sysState) sysState.textContent = 'Verbindungsfehler';
       if (showToast) toast('Fehler: ' + e.message, 'err');
