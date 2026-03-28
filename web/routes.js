@@ -701,6 +701,118 @@ module.exports = function startWebServer({
     });
   });
 
+  // ── API: Status-Unfurl-Proxy (für direct render mode) ─────────────────────
+  // Discord-Crawler ruft diese URL ab und bekommt eine HTML-Seite mit injizierten
+  // OG-Metadaten: aktueller Servicestatus als og:title, og:description, og:image.
+
+  app.get('/api/status-unfurl', async (req, res) => {
+    try {
+      const monitors = await getMonitorData();
+      const active   = (monitors || []).filter(m => m.active !== false);
+      const up       = active.filter(m => m.status === 1).length;
+      const total    = active.length;
+      const anyDown    = active.some(m => m.status === 0);
+      const anyPending = active.some(m => m.status === 2);
+
+      const statusEmoji = anyDown ? '🔴' : anyPending ? '🟡' : '🟢';
+      const statusText  = anyDown ? 'OUTAGE' : anyPending ? 'PENDING' : 'All systems operational';
+      const ogTitle     = `${statusEmoji} Service Status — ${statusText}`;
+      const ogDesc      = `${up}/${total} Dienste online · ${new Date().toLocaleString('de-DE', { hour12: false })}`;
+
+      const canonicalUrl = getPublicStatusUrl() || config.get('uptimeKuma.url') || '';
+      const pubBase      = (config.get('cloudflare.publicUrl') || '').replace(/\/+$/, '')
+                        || `http://localhost:${config.get('webPort')}`;
+      const badgeUrl     = `${pubBase}/api/badge/summary`;
+
+      // Escape HTML-Sonderzeichen damit kein XSS in Attributwerten möglich ist
+      const esc = s => String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+
+      const html = `<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Service Status">
+  <meta property="og:title" content="${esc(ogTitle)}">
+  <meta property="og:description" content="${esc(ogDesc)}">
+  <meta property="og:image" content="${esc(badgeUrl)}">
+  <meta property="og:url" content="${esc(canonicalUrl)}">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="${esc(ogTitle)}">
+  <meta name="twitter:description" content="${esc(ogDesc)}">
+  <meta name="twitter:image" content="${esc(badgeUrl)}">
+  <meta http-equiv="refresh" content="0; url=${esc(canonicalUrl)}">
+  <title>${esc(ogTitle)}</title>
+</head>
+<body>
+  <p>Weiterleitung zur <a href="${esc(canonicalUrl)}">Statusseite</a>…</p>
+</body>
+</html>`;
+
+      res.set('Content-Type', 'text/html; charset=utf-8');
+      res.set('Cache-Control', 'public, max-age=270'); // ~5-Minuten-Bucket passend zum Poll-Interval
+      res.send(html);
+    } catch (err) {
+      logger.error(`/api/status-unfurl Fehler: ${err.message}`);
+      res.status(500).send('Internal Server Error');
+    }
+  });
+
+  // ── API: Status-Badge SVG (für graphical render mode / og:image) ───────────
+  // Gibt ein Shield.io-kompatibles SVG-Badge zurück, das den aktuellen
+  // Service-Gesamtstatus ("X/Y up") als farbigen Badge darstellt.
+
+  app.get('/api/badge/summary', async (req, res) => {
+    try {
+      const monitors = await getMonitorData();
+      const active   = (monitors || []).filter(m => m.active !== false);
+      const up       = active.filter(m => m.status === 1).length;
+      const total    = active.length;
+      const anyDown    = active.some(m => m.status === 0);
+      const anyPending = active.some(m => m.status === 2);
+
+      const label = 'services';
+      const value = total > 0 ? `${up}/${total} up` : 'unknown';
+      const color = anyDown ? '#e05252' : anyPending ? '#e09b42' : '#3fb950';
+
+      const lw = 70;  // Breite Label-Block (px)
+      const vw = 62;  // Breite Value-Block (px)
+      const tw = lw + vw;
+      const h  = 20;
+
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${tw}" height="${h}" role="img" aria-label="${label}: ${value}">
+  <title>${label}: ${value}</title>
+  <linearGradient id="s" x2="0" y2="100%">
+    <stop offset="0"  stop-color="#bbb" stop-opacity=".1"/>
+    <stop offset="1"  stop-opacity=".1"/>
+  </linearGradient>
+  <clipPath id="r"><rect width="${tw}" height="${h}" rx="3" fill="#fff"/></clipPath>
+  <g clip-path="url(#r)">
+    <rect width="${lw}" height="${h}" fill="#555"/>
+    <rect x="${lw}" width="${vw}" height="${h}" fill="${color}"/>
+    <rect width="${tw}" height="${h}" fill="url(#s)"/>
+  </g>
+  <g fill="#fff" text-anchor="middle" font-family="DejaVu Sans,Verdana,Geneva,sans-serif" font-size="11">
+    <text x="${lw / 2}" y="14" fill="#010101" fill-opacity=".3">${label}</text>
+    <text x="${lw / 2}" y="13">${label}</text>
+    <text x="${lw + vw / 2}" y="14" fill="#010101" fill-opacity=".3">${value}</text>
+    <text x="${lw + vw / 2}" y="13">${value}</text>
+  </g>
+</svg>`;
+
+      res.set('Content-Type', 'image/svg+xml');
+      res.set('Cache-Control', 'public, max-age=270');
+      res.send(svg);
+    } catch (err) {
+      logger.error(`/api/badge/summary Fehler: ${err.message}`);
+      res.status(500).end();
+    }
+  });
+
   // ── HTTP-Server starten ─────────────────────────────────────────────────────
   const port   = config.get('webPort');
   const ifaces = os.networkInterfaces();
