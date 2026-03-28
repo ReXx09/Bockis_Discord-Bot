@@ -1069,7 +1069,7 @@
 
 <!-- ── DEPS KACHEL ──────────────────────────────────── -->
 <div class="card" id="depsCard" data-span="12" data-pane="updates">
-  <div class="card-title">📦 npm Abhängigkeiten</div>
+  <div class="card-title">📦 Abhängigkeiten (npm + System)</div>
   <div class="mb12" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px">
     <button class="btn" id="btnDepsCheck" onclick="checkDeps(true)">🔎 Abhängigkeiten prüfen</button>
     <span class="muted" id="depsState">Noch nicht geprüft</span>
@@ -1596,7 +1596,7 @@
 
     btn.disabled = true;
     btn.textContent = '⏳ Prüfe…';
-    if (state) state.textContent = 'Prüfe npm-Pakete…';
+    if (state) state.textContent = 'Prüfe npm- und System-Abhängigkeiten…';
 
     try {
       const d = await fetch('/api/deps-check').then(r => r.json());
@@ -1623,19 +1623,62 @@
         </tr>`;
       }).join('');
 
-      list.innerHTML = `
+      const systemRows = (d.systemDeps || []).map(dep => {
+        const badge = dep.installed
+          ? `<span class="dep-badge dep-ok-badge">✓ installiert</span>`
+          : dep.required
+            ? `<span class="dep-badge dep-crit-badge">✗ fehlt (Pflicht)</span>`
+            : `<span class="dep-badge dep-warn-badge">○ optional</span>`;
+
+        const installHint = dep.installable
+          ? `<code>${escapeHtml(dep.installCommand)}</code>`
+          : '<span class="muted">manuell installieren</span>';
+
+        return `<tr>
+          <td><span class="dep-name">${escapeHtml(dep.name)}</span></td>
+          <td>${dep.required ? 'Pflicht' : 'Optional'}</td>
+          <td class="dep-ver">${escapeHtml(dep.version || '–')}</td>
+          <td>${escapeHtml(dep.requiredBy || '–')}</td>
+          <td>${dep.installed ? '–' : installHint}</td>
+          <td>${badge}</td>
+        </tr>`;
+      }).join('');
+
+      const npmTable = `
+        <div class="muted" style="margin:10px 0 6px 0;font-size:12px;letter-spacing:.08em;text-transform:uppercase">npm Pakete</div>
         <table class="deps-table">
           <thead><tr>
             <th>Paket</th><th>Erwartet</th><th>Installiert</th><th>Kompatibel</th><th>Neuest</th><th>Status</th>
           </tr></thead>
-          <tbody>${rows}</tbody>
+          <tbody>${rows || '<tr><td colspan="6" class="muted">Keine npm-Pakete gefunden.</td></tr>'}</tbody>
         </table>`;
 
-      const txt = d.outdatedCount > 0
-        ? `${d.outdatedCount} von ${d.total} Paket(en) veraltet`
-        : `Alle ${d.total} Pakete aktuell`;
+      const systemTable = `
+        <div class="muted" style="margin:14px 0 6px 0;font-size:12px;letter-spacing:.08em;text-transform:uppercase">System-Abhängigkeiten</div>
+        <table class="deps-table">
+          <thead><tr>
+            <th>Tool</th><th>Typ</th><th>Version</th><th>Verwendet für</th><th>Installieren</th><th>Status</th>
+          </tr></thead>
+          <tbody>${systemRows || '<tr><td colspan="6" class="muted">Keine System-Abhängigkeiten definiert.</td></tr>'}</tbody>
+        </table>`;
+
+      const aptHint = d.aptAvailable
+        ? ''
+        : '<div class="muted" style="margin-top:8px">Hinweis: apt-get nicht verfügbar, daher keine Auto-Install-Befehle.</div>';
+
+      list.innerHTML = npmTable + systemTable + aptHint;
+
+      const npmTxt = d.outdatedCount > 0
+        ? `${d.outdatedCount} von ${d.total} npm-Paket(en) veraltet`
+        : `npm aktuell (${d.total} Pakete)`;
+      const sysMissing = d.systemMissingCount || 0;
+      const sysRequiredMissing = d.systemRequiredMissingCount || 0;
+      const sysTxt = sysMissing > 0
+        ? `System: ${sysMissing} fehlen${sysRequiredMissing > 0 ? ` (${sysRequiredMissing} Pflicht)` : ''}`
+        : 'System: alle vorhanden';
+      const txt = `${npmTxt} · ${sysTxt}`;
       if (state) state.textContent = txt;
-      if (showToast) toast(txt, d.outdatedCount > 0 ? 'err' : 'ok');
+      if (showToast) toast(txt, (d.outdatedCount > 0 || sysRequiredMissing > 0) ? 'err' : 'ok');
     } catch (e) {
       if (state) state.textContent = 'Verbindungsfehler';
       if (showToast) toast('Fehler: ' + e.message, 'err');

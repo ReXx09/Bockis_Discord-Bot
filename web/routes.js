@@ -689,12 +689,145 @@ module.exports = function startWebServer({
     }
   });
 
-  // ── API: npm Abhängigkeiten prüfen ──────────────────────────────────────────
+  // ── API: npm + System-Abhängigkeiten prüfen ─────────────────────────────────
 
   app.get('/api/deps-check', dashboardAuth, async (req, res) => {
     try {
+      const checkCommand = (cmd, args = ['--version']) => {
+        try {
+          const out = execFileSync(cmd, args, { timeout: 4000 }).toString().trim();
+          const line = out.split(/\r?\n/).find(Boolean) || out;
+          return { installed: true, version: line || 'vorhanden' };
+        } catch {
+          return { installed: false, version: null };
+        }
+      };
+
+      const aptAvailable = (() => {
+        try {
+          execFileSync('apt-get', ['--version'], { timeout: 3000, stdio: 'ignore' });
+          return true;
+        } catch {
+          return false;
+        }
+      })();
+
+      const dockerComposeState = (() => {
+        try {
+          const out = execSync('docker compose version', { timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+          const line = out.split(/\r?\n/).find(Boolean) || out;
+          return { installed: true, version: line || 'vorhanden' };
+        } catch {
+          return { installed: false, version: null };
+        }
+      })();
+
+      const systemDependencySpecs = [
+        {
+          key: 'git',
+          name: 'git',
+          required: true,
+          requiredBy: 'Update-Workflow (git pull)',
+          aptPackage: 'git',
+          state: checkCommand('git')
+        },
+        {
+          key: 'curl',
+          name: 'curl',
+          required: true,
+          requiredBy: 'Updater / Netzwerk-Checks',
+          aptPackage: 'curl',
+          state: checkCommand('curl')
+        },
+        {
+          key: 'wget',
+          name: 'wget',
+          required: false,
+          requiredBy: 'Healthcheck & Diagnose (optional)',
+          aptPackage: 'wget',
+          state: checkCommand('wget')
+        },
+        {
+          key: 'node',
+          name: 'node',
+          required: true,
+          requiredBy: 'Bot-Laufzeit',
+          aptPackage: 'nodejs npm',
+          state: checkCommand('node')
+        },
+        {
+          key: 'npm',
+          name: 'npm',
+          required: true,
+          requiredBy: 'npm install / npm ci',
+          aptPackage: 'npm',
+          state: checkCommand('npm')
+        },
+        {
+          key: 'rsvg-convert',
+          name: 'rsvg-convert',
+          required: false,
+          requiredBy: 'Discord SVG-Renderer (svg_attachment)',
+          aptPackage: 'librsvg2-bin',
+          state: checkCommand('rsvg-convert')
+        },
+        {
+          key: 'cloudflared',
+          name: 'cloudflared',
+          required: false,
+          requiredBy: 'Cloudflare Tunnel',
+          aptPackage: 'cloudflared',
+          state: checkCommand('cloudflared')
+        },
+        {
+          key: 'docker',
+          name: 'docker',
+          required: false,
+          requiredBy: 'Docker-Modus',
+          aptPackage: 'docker.io',
+          state: checkCommand('docker')
+        },
+        {
+          key: 'docker-compose-plugin',
+          name: 'docker compose',
+          required: false,
+          requiredBy: 'Docker-Modus (compose)',
+          aptPackage: 'docker-compose-plugin',
+          state: dockerComposeState
+        }
+      ];
+
+      const systemDeps = systemDependencySpecs.map((dep) => {
+        const installCmd = (!dep.state.installed && aptAvailable && dep.aptPackage)
+          ? `sudo apt-get install -y ${dep.aptPackage}`
+          : '';
+        return {
+          key: dep.key,
+          name: dep.name,
+          required: dep.required,
+          requiredBy: dep.requiredBy,
+          installed: dep.state.installed,
+          version: dep.state.version,
+          aptPackage: dep.aptPackage || '',
+          installCommand: installCmd,
+          installable: Boolean(installCmd),
+        };
+      });
+
       const pkgPath = path.join(rootDir, 'package.json');
-      if (!fs.existsSync(pkgPath)) return res.json({ ok: false, error: 'package.json nicht gefunden' });
+      if (!fs.existsSync(pkgPath)) {
+        return res.json({
+          ok: true,
+          packages: [],
+          outdatedCount: 0,
+          total: 0,
+          warning: 'package.json nicht gefunden',
+          systemDeps,
+          systemMissingCount: systemDeps.filter(d => !d.installed).length,
+          systemRequiredMissingCount: systemDeps.filter(d => d.required && !d.installed).length,
+          aptAvailable,
+        });
+      }
 
       const safeParseJson = (raw, fallback = {}) => {
         try {
@@ -714,7 +847,17 @@ module.exports = function startWebServer({
       };
 
       if (Object.keys(allDeps).length === 0) {
-        return res.json({ ok: true, packages: [], outdatedCount: 0, total: 0, warning: 'Keine Abhängigkeiten gefunden oder package.json nicht lesbar' });
+        return res.json({
+          ok: true,
+          packages: [],
+          outdatedCount: 0,
+          total: 0,
+          warning: 'Keine npm-Abhängigkeiten gefunden oder package.json nicht lesbar',
+          systemDeps,
+          systemMissingCount: systemDeps.filter(d => !d.installed).length,
+          systemRequiredMissingCount: systemDeps.filter(d => d.required && !d.installed).length,
+          aptAvailable,
+        });
       }
 
       // Robust gegen npm-Notices/Warnungen: parseable statt JSON nutzen.
@@ -776,7 +919,16 @@ module.exports = function startWebServer({
 
       packages.sort((a, b) => (b.outdated - a.outdated) || a.name.localeCompare(b.name));
       const outdatedCount = packages.filter(p => p.outdated).length;
-      res.json({ ok: true, packages, outdatedCount, total: packages.length });
+      res.json({
+        ok: true,
+        packages,
+        outdatedCount,
+        total: packages.length,
+        systemDeps,
+        systemMissingCount: systemDeps.filter(d => !d.installed).length,
+        systemRequiredMissingCount: systemDeps.filter(d => d.required && !d.installed).length,
+        aptAvailable,
+      });
     } catch (err) {
       logger.error(`/api/deps-check Fehler: ${err.message}`);
       res.json({ ok: false, error: err.message });
