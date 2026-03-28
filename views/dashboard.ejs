@@ -853,10 +853,22 @@
           <div class="cfg-hint">Wird per <code>timedatectl set-time</code> gesetzt.</div>
         </div>
         <div class="cfg-field">
-          <label class="cfg-label" for="cfgKeyboardLayout">Tastaturlayout (Raspberry Pi)</label>
-          <input class="cfg-input" id="cfgKeyboardLayout" type="text" autocomplete="off"
-                 placeholder="z. B. de oder us">
-          <div class="cfg-hint">Wird per <code>localectl set-keymap</code> gesetzt (falls verfügbar).</div>
+          <label class="cfg-label" for="cfgSystemLocale">Sprache (System-Locale)</label>
+          <select class="cfg-input" id="cfgSystemLocale">
+            <option value="">Bitte wählen…</option>
+            <option value="de_DE.UTF-8">Deutsch (Deutschland)</option>
+            <option value="en_GB.UTF-8">English (UK)</option>
+            <option value="en_US.UTF-8">English (US)</option>
+            <option value="fr_FR.UTF-8">Français (France)</option>
+            <option value="es_ES.UTF-8">Español (España)</option>
+            <option value="it_IT.UTF-8">Italiano (Italia)</option>
+            <option value="nl_NL.UTF-8">Nederlands (Nederland)</option>
+            <option value="pl_PL.UTF-8">Polski (Polska)</option>
+            <option value="pt_PT.UTF-8">Português (Portugal)</option>
+            <option value="tr_TR.UTF-8">Türkçe (Türkiye)</option>
+            <option value="ru_RU.UTF-8">Русский (Россия)</option>
+          </select>
+          <div class="cfg-hint">Wird per <code>localectl set-locale LANG=…</code> gesetzt (Fallback: <code>update-locale</code>).</div>
         </div>
         <div class="cfg-actions" style="margin:2px 0 12px 0">
           <button class="btn" id="btnLocaleReload" onclick="loadSystemLocalization()">↺ Werte laden</button>
@@ -1764,12 +1776,24 @@
       if (!d.ok) throw new Error(d.error || 'Laden fehlgeschlagen');
       const tz = document.getElementById('cfgTimezone');
       const dt = document.getElementById('cfgDateTimeLocal');
-      const kb = document.getElementById('cfgKeyboardLayout');
+      const locale = document.getElementById('cfgSystemLocale');
       if (tz) tz.value = d.timezone || '';
       if (dt) dt.value = d.dateTimeLocal || '';
-      if (kb) kb.value = d.keyboardLayout || '';
+      if (locale) {
+        if (Array.isArray(d.localeOptions) && d.localeOptions.length) {
+          const existingValues = new Set(Array.from(locale.options).map(o => o.value));
+          d.localeOptions.forEach((opt) => {
+            if (!opt?.value || existingValues.has(opt.value)) return;
+            const o = document.createElement('option');
+            o.value = opt.value;
+            o.textContent = opt.label || opt.value;
+            locale.appendChild(o);
+          });
+        }
+        locale.value = d.systemLocale || '';
+      }
       if (statusEl) {
-        statusEl.textContent = `Aktuell: ${d.localDate || '-'} ${d.localTime || '-'} | TZ: ${d.timezone || '-'} | Keymap: ${d.keyboardLayout || '-'}`;
+        statusEl.textContent = `Aktuell: ${d.localDate || '-'} ${d.localTime || '-'} | TZ: ${d.timezone || '-'} | Sprache: ${d.systemLocale || '-'}`;
         statusEl.className = 'muted';
       }
     } catch (e) {
@@ -1785,9 +1809,9 @@
     const body = {
       timezone: document.getElementById('cfgTimezone')?.value.trim() || '',
       datetimeLocal: document.getElementById('cfgDateTimeLocal')?.value || '',
-      keyboardLayout: document.getElementById('cfgKeyboardLayout')?.value.trim() || ''
+      systemLocale: document.getElementById('cfgSystemLocale')?.value.trim() || ''
     };
-    if (!body.timezone && !body.datetimeLocal && !body.keyboardLayout) {
+    if (!body.timezone && !body.datetimeLocal && !body.systemLocale) {
       if (statusEl) { statusEl.textContent = 'Keine Werte gesetzt'; statusEl.className = 'warn'; }
       return;
     }

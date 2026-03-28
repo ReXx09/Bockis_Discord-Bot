@@ -274,11 +274,25 @@ module.exports = function startWebServer({
     }
   });
 
-  // ── API: Lokalisierung (Zeitzone / Datum-Uhrzeit / Tastaturlayout) ───────
+  // ── API: Lokalisierung (Zeitzone / Datum-Uhrzeit / Sprache/Locale) ───────
 
   app.get('/api/system-localization', dashboardAuth, (req, res) => {
     let timezone = '';
-    let keyboardLayout = '';
+    let systemLocale = '';
+
+    const localeOptions = [
+      { value: 'de_DE.UTF-8', label: 'Deutsch (Deutschland)' },
+      { value: 'en_GB.UTF-8', label: 'English (UK)' },
+      { value: 'en_US.UTF-8', label: 'English (US)' },
+      { value: 'fr_FR.UTF-8', label: 'Français (France)' },
+      { value: 'es_ES.UTF-8', label: 'Español (España)' },
+      { value: 'it_IT.UTF-8', label: 'Italiano (Italia)' },
+      { value: 'nl_NL.UTF-8', label: 'Nederlands (Nederland)' },
+      { value: 'pl_PL.UTF-8', label: 'Polski (Polska)' },
+      { value: 'pt_PT.UTF-8', label: 'Português (Portugal)' },
+      { value: 'tr_TR.UTF-8', label: 'Türkçe (Türkiye)' },
+      { value: 'ru_RU.UTF-8', label: 'Русский (Россия)' }
+    ];
 
     try {
       timezone = execFileSync('timedatectl', ['show', '-p', 'Timezone', '--value'], { timeout: 2500 })
@@ -287,20 +301,27 @@ module.exports = function startWebServer({
 
     try {
       const localectlOut = execFileSync('localectl', ['status'], { timeout: 2500 }).toString();
-      const m = localectlOut.match(/^\s*VC Keymap:\s*(.+)$/mi);
-      if (m?.[1]) keyboardLayout = m[1].trim();
+      const m = localectlOut.match(/^\s*System Locale:\s*(.+)$/mi);
+      if (m?.[1]) {
+        const langMatch = m[1].match(/(?:^|\s)LANG=([^\s]+)/i);
+        if (langMatch?.[1]) systemLocale = langMatch[1].trim();
+      }
     } catch { /* ignore */ }
 
     // Fallback für Raspberry Pi Setups ohne localectl
-    if (!keyboardLayout) {
+    if (!systemLocale) {
       try {
-        const kbFile = '/etc/default/keyboard';
-        if (fs.existsSync(kbFile)) {
-          const raw = fs.readFileSync(kbFile, 'utf8');
-          const m = raw.match(/^XKBLAYOUT=(.*)$/m);
-          keyboardLayout = (m?.[1] || '').trim().replace(/^['"]|['"]$/g, '');
+        const localeFile = '/etc/default/locale';
+        if (fs.existsSync(localeFile)) {
+          const raw = fs.readFileSync(localeFile, 'utf8');
+          const m = raw.match(/^LANG=(.*)$/m);
+          systemLocale = (m?.[1] || '').trim().replace(/^['"]|['"]$/g, '');
         }
       } catch { /* ignore */ }
+    }
+
+    if (!systemLocale && process.env.LANG) {
+      systemLocale = process.env.LANG;
     }
 
     const now = new Date();
@@ -311,7 +332,8 @@ module.exports = function startWebServer({
     return res.json({
       ok: true,
       timezone,
-      keyboardLayout,
+      systemLocale,
+      localeOptions,
       localDate,
       localTime,
       dateTimeLocal,
@@ -321,9 +343,9 @@ module.exports = function startWebServer({
   app.post('/api/system-localization', dashboardAuth, async (req, res) => {
     const timezone = String(req.body?.timezone || '').trim();
     const datetimeLocal = String(req.body?.datetimeLocal || '').trim();
-    const keyboardLayout = String(req.body?.keyboardLayout || '').trim();
+    const systemLocale = String(req.body?.systemLocale || '').trim();
 
-    if (!timezone && !datetimeLocal && !keyboardLayout) {
+    if (!timezone && !datetimeLocal && !systemLocale) {
       return res.status(400).json({ ok: false, error: 'Keine Änderungen übergeben' });
     }
 
@@ -335,8 +357,8 @@ module.exports = function startWebServer({
       return res.status(400).json({ ok: false, error: 'Ungültiges Datum/Uhrzeit-Format' });
     }
 
-    if (keyboardLayout && !/^[A-Za-z0-9,_+-]{2,32}$/.test(keyboardLayout)) {
-      return res.status(400).json({ ok: false, error: 'Ungültiges Tastaturlayout (z. B. de, us, de,nodeadkeys)' });
+    if (systemLocale && !/^[A-Za-z]{2}_[A-Za-z]{2}\.UTF-8$/.test(systemLocale)) {
+      return res.status(400).json({ ok: false, error: 'Ungültige Sprache/Locale (z. B. de_DE.UTF-8)' });
     }
 
     const applied = [];
@@ -353,18 +375,14 @@ module.exports = function startWebServer({
         applied.push(`Datum/Uhrzeit=${datetimeLocal}`);
       }
 
-      if (keyboardLayout) {
+      if (systemLocale) {
         try {
-          await execFilePromise('sudo', ['localectl', 'set-keymap', keyboardLayout], { timeout: 10_000 });
+          await execFilePromise('sudo', ['localectl', 'set-locale', `LANG=${systemLocale}`], { timeout: 10_000 });
         } catch (err) {
-          const details = `${err.stderr || ''}${err.stdout || ''}${err.message || ''}`;
-          return res.status(500).json({
-            ok: false,
-            error: 'Tastaturlayout konnte nicht gesetzt werden (localectl). Prüfe ob localectl/localed auf dem System verfügbar ist.',
-            details: String(details).trim()
-          });
+          // Fallback für Systeme ohne localectl/localed
+          await execFilePromise('sudo', ['update-locale', `LANG=${systemLocale}`], { timeout: 10_000 });
         }
-        applied.push(`Keymap=${keyboardLayout}`);
+        applied.push(`Sprache=${systemLocale}`);
       }
 
       logger.info(`/api/system-localization gesetzt: ${applied.join(', ')}`);
