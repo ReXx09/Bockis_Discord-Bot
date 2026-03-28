@@ -422,9 +422,7 @@
     .ub-title { font-size: 14px; font-weight: 600; color: var(--yellow); }
     .ub-sub   { font-size: 12px; color: var(--muted); margin-top: 2px; }
 
-    /* UPDATE SECTION */
-    #updateSection { display: none; margin-bottom: 24px; }
-    #updateSection.visible { display: block; }
+
     .commit-list { margin-top: 10px; }
     .commit {
       display: flex; gap: 12px; align-items: baseline;
@@ -503,40 +501,6 @@
 <body>
 
 <!-- ── UPDATE BANNER (wird per JS eingeblendet) ─────── -->
-<div id="updateBanner" class="hidden" data-pane="updates">
-  <div class="ub-left">
-    <span class="ub-icon">⚠️</span>
-    <div>
-      <div class="ub-title">Update verfügbar</div>
-      <div class="ub-sub" id="ubSub">Neue Version auf GitHub gefunden</div>
-    </div>
-  </div>
-  <div style="display:flex;gap:8px;flex-wrap:wrap">
-    <button class="btn" onclick="toggleUpdateSection()">Details anzeigen ↓</button>
-    <button class="btn btn-green" id="btnUpdateRun" onclick="runUpdate()">▶ Update jetzt starten</button>
-  </div>
-</div>
-
-<!-- ── UPDATE DETAIL SECTION ──────────────────────────── -->
-<div id="updateSection" data-pane="updates">
-  <div class="card" style="margin-bottom:16px">
-    <div class="card-title">Neue Commits auf GitHub</div>
-    <div class="mb12" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px">
-      <button class="btn" id="btnUpdateCheck" onclick="checkUpdate(true)">🔎 Update prüfen</button>
-      <label class="muted" for="updateMode">Modus:</label>
-      <select class="cfg-input" id="updateMode" style="max-width:190px;height:34px;padding:6px 8px">
-        <option value="auto" selected>Auto</option>
-        <option value="native">Native</option>
-        <option value="docker">Docker</option>
-      </select>
-      <button class="btn btn-green" id="btnUpdateRunPane" onclick="runUpdate(null, 'btnUpdateRunPane')">▶ Update starten</button>
-      <span class="muted" id="updateState">Noch nicht geprüft</span>
-    </div>
-    <div id="commitList" class="commit-list"></div>
-    <div id="updateLog"></div>
-  </div>
-</div>
-
 <!-- ── HEADER ─────────────────────────────────────────── -->
 <div class="header">
   <div>
@@ -560,7 +524,20 @@
   </div>
 </div>
 
-
+<!-- ── UPDATE BANNER ─────────────────────────────────── -->
+<div id="updateBanner" class="hidden" data-pane="updates">
+  <div class="ub-left">
+    <span class="ub-icon">⚠️</span>
+    <div>
+      <div class="ub-title">Update verfügbar</div>
+      <div class="ub-sub" id="ubSub">Neue Version auf GitHub gefunden</div>
+    </div>
+  </div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap">
+    <button class="btn" onclick="toggleUpdateSection()">Details anzeigen ↓</button>
+    <button class="btn btn-green" id="btnUpdateRun" onclick="runUpdate()">▶ Update jetzt starten</button>
+  </div>
+</div>
 
 <!-- ── DASHBOARD GRID ───────────────────────────────── -->
 <div class="dashboard-grid" id="dashboardGrid">
@@ -782,6 +759,24 @@
   <div class="diag-hints" id="diagHints"></div>
 </div>
 
+<!-- ── UPDATES KACHEL ────────────────────────────────── -->
+<div class="card" id="updateCard" data-span="12" data-pane="updates">
+  <div class="card-title">Neue Commits auf GitHub</div>
+  <div class="mb12" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px">
+    <button class="btn" id="btnUpdateCheck" onclick="checkUpdate(true)">🔎 Update prüfen</button>
+    <label class="muted" for="updateMode">Modus:</label>
+    <select class="cfg-input" id="updateMode" style="max-width:190px;height:34px;padding:6px 8px">
+      <option value="auto" selected>Auto</option>
+      <option value="native">Native</option>
+      <option value="docker">Docker</option>
+    </select>
+    <button class="btn btn-green" id="btnUpdateRunPane" onclick="runUpdate(null, 'btnUpdateRunPane')">▶ Update starten</button>
+    <span class="muted" id="updateState">Noch nicht geprüft</span>
+  </div>
+  <div id="commitList" class="commit-list"></div>
+  <div id="updateLog"></div>
+</div>
+
 </div><!-- /.dashboard-grid -->
 
 <!-- ── TOAST ──────────────────────────────────────────── -->
@@ -811,9 +806,7 @@
 
     localStorage.setItem(STORAGE_KEY_ACTIVE_PANE, pane);
 
-    const updateSection = document.getElementById('updateSection');
-    if (updateSection && pane === 'updates') {
-      updateSection.classList.add('visible');
+    if (pane === 'updates') {
       checkUpdate(false);
     }
 
@@ -1262,8 +1255,8 @@
   }
 
   function toggleUpdateSection() {
-    const s = document.getElementById('updateSection');
-    s.classList.toggle('visible');
+    const card = document.getElementById('updateCard');
+    if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   async function runUpdate(modeOverride = null, sourceBtnId = 'btnUpdateRun') {
@@ -1279,12 +1272,10 @@
     if (paneBtn && paneBtn !== btn) paneBtn.disabled = true;
 
     const log  = document.getElementById('updateLog');
-    const sect = document.getElementById('updateSection');
     const state = document.getElementById('updateState');
     if (state) state.textContent = `Update läuft (${selectedMode})…`;
     log.innerHTML = '';
     log.classList.add('visible');
-    sect.classList.add('visible');
     log.scrollTop = 0;
 
     const addLine = (text, cls = '') => {
