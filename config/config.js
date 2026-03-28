@@ -80,6 +80,18 @@ const config = convict({
       default: 'auto',
       env: 'DISCORD_STATUS_RENDER_MODE'
     },
+    statusMessageTitle: {
+      doc: 'Optionaler Titeltext oberhalb der SVG-Anhangs-Nachricht (leer = kein Text)',
+      format: String,
+      default: '',
+      env: 'DISCORD_STATUS_MESSAGE_TITLE'
+    },
+    statusButtonLabel: {
+      doc: 'Beschriftung des Link-Buttons unter der SVG-Grafik (leer = kein Button)',
+      format: String,
+      default: 'Statusseite öffnen',
+      env: 'DISCORD_STATUS_BUTTON_LABEL'
+    },
     statusWebhookUrl: {
       doc: 'Optionaler Discord Webhook für Status-Nachrichten (nur für webhook_ascii Modus)',
       format: String,

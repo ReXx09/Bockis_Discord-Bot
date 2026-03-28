@@ -635,6 +635,18 @@
       <div class="cfg-hint">Renderer wählen und mit "Jetzt testen" sofort einen Discord-Status-Update auslösen.</div>
     </div>
     <div class="cfg-field">
+      <label class="cfg-label" for="cfgStatusTitle">SVG Modus: Titel oberhalb der Grafik</label>
+      <input class="cfg-input" id="cfgStatusTitle" type="text" autocomplete="off"
+             placeholder="Leer lassen = keine zweite Überschrift">
+      <div class="cfg-hint">Nur für <code>svg_attachment</code>. Leer entfernt die doppelte Überschrift über dem Bild.</div>
+    </div>
+    <div class="cfg-field">
+      <label class="cfg-label" for="cfgStatusButtonLabel">SVG Modus: Link-Button Beschriftung</label>
+      <input class="cfg-input" id="cfgStatusButtonLabel" type="text" autocomplete="off"
+             placeholder="z. B. Statusseite öffnen (leer = kein Button)">
+      <div class="cfg-hint">Wenn gesetzt, wird unter dem Bild ein echter Discord-Link-Button angezeigt.</div>
+    </div>
+    <div class="cfg-field">
       <label class="cfg-label" for="cfgSlug">Status-Page Slug</label>
       <input class="cfg-input" id="cfgSlug" type="text" autocomplete="off"
              placeholder="z. B. dienste">
@@ -1482,6 +1494,8 @@
       setFieldValue('cfgNotifCh', d.DISCORD_NOTIFICATION_CHANNEL || '');
       setFieldValue('cfgKumaUrl', d.UPTIME_KUMA_URL || '');
       setFieldValue('cfgRenderMode', d.DISCORD_STATUS_RENDER_MODE || 'auto');
+      setFieldValue('cfgStatusTitle', d.DISCORD_STATUS_MESSAGE_TITLE || '');
+      setFieldValue('cfgStatusButtonLabel', d.DISCORD_STATUS_BUTTON_LABEL || 'Statusseite öffnen');
       setFieldValue('cfgSlug', d.STATUS_PAGE_SLUG || 'dienste');
       setFieldValue('cfgCloudflareUrl', d.CLOUDFLARE_PUBLIC_URL || '');
       setFieldValue('cfgGuildId', d.GUILD_ID || '');
@@ -1529,6 +1543,8 @@
     maybeSetChanged(body, 'DISCORD_NOTIFICATION_CHANNEL', 'cfgNotifCh');
     maybeSetChanged(body, 'UPTIME_KUMA_URL', 'cfgKumaUrl');
     maybeSetChanged(body, 'DISCORD_STATUS_RENDER_MODE', 'cfgRenderMode');
+    maybeSetChanged(body, 'DISCORD_STATUS_MESSAGE_TITLE', 'cfgStatusTitle', { allowEmpty: true });
+    maybeSetChanged(body, 'DISCORD_STATUS_BUTTON_LABEL', 'cfgStatusButtonLabel', { allowEmpty: true });
     maybeSetChanged(body, 'STATUS_PAGE_SLUG', 'cfgSlug');
     maybeSetChanged(body, 'CLOUDFLARE_PUBLIC_URL', 'cfgCloudflareUrl', { allowEmpty: true });
     maybeSetChanged(body, 'UPTIME_KUMA_API_KEY', 'cfgApiKey', { allowEmpty: true });

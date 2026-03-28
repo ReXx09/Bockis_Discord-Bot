@@ -8,7 +8,7 @@
  * SPDX-License-Identifier: MIT
  */
 
-const { Client, GatewayIntentBits, ActivityType, REST, Routes, SlashCommandBuilder, EmbedBuilder, ChannelType, PermissionFlagsBits, AttachmentBuilder } = require('discord.js');
+const { Client, GatewayIntentBits, ActivityType, REST, Routes, SlashCommandBuilder, EmbedBuilder, ChannelType, PermissionFlagsBits, AttachmentBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const axios = require('axios');
 const winston = require('winston');
 require('winston-daily-rotate-file');
@@ -994,13 +994,30 @@ async function buildSvgAttachmentPayload(monitors, statusPageUrl = null) {
   const pngBuffer = await convertSvgToPngBuffer(svg);
   const attachment = new AttachmentBuilder(pngBuffer, { name: 'status.png' });
 
-  return {
-    content: statusPageUrl
-      ? `🌐 **LIVE SERVICE STATUS**\n${statusPageUrl}`
-      : '🌐 **LIVE SERVICE STATUS**',
+  const title = String(config.get('discord.statusMessageTitle') || '').trim();
+  const buttonLabel = String(config.get('discord.statusButtonLabel') || '').trim().slice(0, 80);
+
+  const payload = {
     embeds: [],
     files: [attachment]
   };
+
+  // Optionaler Text oberhalb der Grafik (leer = keine doppelte Überschrift).
+  if (title) payload.content = `🌐 **${title}**`;
+
+  // Optionaler Link-Button statt roher URL im Content (verhindert Discord-Autounfurl-Button).
+  if (statusPageUrl && buttonLabel) {
+    payload.components = [
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setStyle(ButtonStyle.Link)
+          .setLabel(buttonLabel)
+          .setURL(statusPageUrl)
+      )
+    ];
+  }
+
+  return payload;
 }
 // #endregion
 

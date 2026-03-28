@@ -584,6 +584,8 @@ module.exports = function startWebServer({
         STATUS_CHANNEL_ID:            get('STATUS_CHANNEL_ID'),
         DISCORD_NOTIFICATION_CHANNEL: get('DISCORD_NOTIFICATION_CHANNEL'),
         DISCORD_STATUS_RENDER_MODE:   get('DISCORD_STATUS_RENDER_MODE') || 'auto',
+        DISCORD_STATUS_MESSAGE_TITLE: get('DISCORD_STATUS_MESSAGE_TITLE') || '',
+        DISCORD_STATUS_BUTTON_LABEL:  get('DISCORD_STATUS_BUTTON_LABEL') || 'Statusseite öffnen',
         DISCORD_STATUS_WEBHOOK_URL:   maskSecret(webhookUrl),
         UPTIME_KUMA_URL:              get('UPTIME_KUMA_URL'),
         UPTIME_KUMA_API_KEY:          maskSecret(apiKey),
@@ -613,6 +615,8 @@ module.exports = function startWebServer({
       'STATUS_CHANNEL_ID',
       'DISCORD_NOTIFICATION_CHANNEL',
       'DISCORD_STATUS_RENDER_MODE',
+      'DISCORD_STATUS_MESSAGE_TITLE',
+      'DISCORD_STATUS_BUTTON_LABEL',
       'DISCORD_STATUS_WEBHOOK_URL',
       'UPTIME_KUMA_URL',
       'UPTIME_KUMA_API_KEY',
@@ -629,6 +633,8 @@ module.exports = function startWebServer({
       'DB_STORAGE'
     ];
     const CLEARABLE_CFG = new Set([
+      'DISCORD_STATUS_MESSAGE_TITLE',
+      'DISCORD_STATUS_BUTTON_LABEL',
       'DISCORD_STATUS_WEBHOOK_URL',
       'UPTIME_KUMA_API_KEY',
       'CLOUDFLARE_PUBLIC_URL',
@@ -659,6 +665,10 @@ module.exports = function startWebServer({
         return res.json({ ok: false, error: `${key}: Nur Zahlen erlaubt (Discord ID)` });
       if (key === 'DISCORD_STATUS_RENDER_MODE' && !['auto', 'direct', 'graphical', 'svg_attachment', 'webhook_ascii', 'embed', 'link_preview'].includes(val))
         return res.json({ ok: false, error: 'DISCORD_STATUS_RENDER_MODE muss auto, direct, graphical, svg_attachment, webhook_ascii, embed oder link_preview sein' });
+      if ((key === 'DISCORD_STATUS_MESSAGE_TITLE' || key === 'DISCORD_STATUS_BUTTON_LABEL') && /[\n\r]/.test(val))
+        return res.json({ ok: false, error: `${key} darf keine Zeilenumbrüche enthalten` });
+      if (key === 'DISCORD_STATUS_BUTTON_LABEL' && val.length > 80)
+        return res.json({ ok: false, error: 'DISCORD_STATUS_BUTTON_LABEL darf maximal 80 Zeichen enthalten' });
       if ((key === 'DISCORD_STATUS_WEBHOOK_URL' || key === 'CLOUDFLARE_PUBLIC_URL') && val && !/^https?:\/\/.+/.test(val))
         return res.json({ ok: false, error: `${key} muss mit http:// oder https:// beginnen` });
       if (key === 'UPTIME_KUMA_URL' && !/^https?:\/\/.+/.test(val))
