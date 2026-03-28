@@ -482,6 +482,28 @@
 
     /* CONFIG FORM */
     .cfg-form { margin-top: 4px; }
+    .cfg-module-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+    .cfg-module {
+      border: 1px solid var(--border);
+      background: linear-gradient(180deg, rgba(17,23,33,.9), rgba(17,23,33,.72));
+      border-radius: 10px;
+      padding: 12px;
+    }
+    .cfg-module-title {
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      color: var(--blue);
+      margin-bottom: 10px;
+      border-bottom: 1px solid rgba(255,255,255,.06);
+      padding-bottom: 6px;
+    }
     .cfg-field { margin-bottom: 14px; }
     .cfg-label {
       display: block;
@@ -595,125 +617,141 @@
 
 <!-- ── ROW 1c: DISCORD KONFIGURATION ───────────────────── -->
 <div class="card" id="cfgCard" data-span="12" data-pane="settings">
-  <div class="card-title">⚙️ Discord-Konfiguration</div>
+  <div class="card-title">⚙️ Einstellungen</div>
   <div class="cfg-form">
-    <div class="cfg-field">
-      <label class="cfg-label" for="cfgToken">Discord Bot Token</label>
-      <input class="cfg-input" id="cfgToken" type="password" autocomplete="off"
-             placeholder="Neuen Token eingeben (leer lassen = unverändert)">
-      <div class="cfg-hint">Leer lassen, um den bestehenden Token zu behalten.</div>
-    </div>
-    <div class="cfg-field">
-      <label class="cfg-label" for="cfgStatusCh">Status-Channel ID</label>
-      <input class="cfg-input" id="cfgStatusCh" type="text" autocomplete="off"
-             placeholder="z. B. 123456789012345678">
-    </div>
-    <div class="cfg-field">
-      <label class="cfg-label" for="cfgNotifCh">Benachrichtigungs-Channel ID</label>
-      <input class="cfg-input" id="cfgNotifCh" type="text" autocomplete="off"
-             placeholder="z. B. 123456789012345678">
-    </div>
-    <div class="cfg-field">
-      <label class="cfg-label" for="cfgKumaUrl">Uptime Kuma URL</label>
-      <input class="cfg-input" id="cfgKumaUrl" type="text" autocomplete="off"
-             placeholder="http://192.168.x.x:3001">
-    </div>
-    <div class="cfg-field">
-      <label class="cfg-label" for="cfgRenderMode">Discord Status Renderer</label>
-      <div style="display:flex;gap:8px;align-items:end;">
-        <select class="cfg-input" id="cfgRenderMode" style="flex:1;">
-          <option value="auto">Auto (entscheidet automatisch)</option>
-          <option value="direct">Direct (OG-Proxy-URL)</option>
-          <option value="graphical">Graphical (Badge/Graphik-Link)</option>
-          <option value="svg_attachment">SVG Attachment (PNG aus SVG via rsvg-convert)</option>
-          <option value="webhook_ascii">Webhook ASCII (eigener Webhook)</option>
-          <option value="embed">Custom-Embed (fallback-fest)</option>
-          <option value="link_preview">Legacy Link-Preview</option>
-        </select>
-        <button class="btn btn-small" id="btnTestRender" onclick="testRendering()" style="padding:8px 12px;font-size:12px;white-space:nowrap;">🧪 Jetzt testen</button>
+    <div class="cfg-module-grid">
+      <div class="cfg-module">
+        <div class="cfg-module-title">🤖 Bot</div>
+        <div class="cfg-field">
+          <label class="cfg-label" for="cfgToken">Discord Bot Token</label>
+          <input class="cfg-input" id="cfgToken" type="password" autocomplete="off"
+                 placeholder="Neuen Token eingeben (leer lassen = unverändert)">
+          <div class="cfg-hint">Leer lassen, um den bestehenden Token zu behalten.</div>
+        </div>
+        <div class="cfg-field">
+          <label class="cfg-label" for="cfgStatusCh">Status-Channel ID</label>
+          <input class="cfg-input" id="cfgStatusCh" type="text" autocomplete="off"
+                 placeholder="z. B. 123456789012345678">
+        </div>
+        <div class="cfg-field">
+          <label class="cfg-label" for="cfgNotifCh">Benachrichtigungs-Channel ID</label>
+          <input class="cfg-input" id="cfgNotifCh" type="text" autocomplete="off"
+                 placeholder="z. B. 123456789012345678">
+        </div>
+        <div class="cfg-field">
+          <label class="cfg-label" for="cfgGuildId">Guild ID</label>
+          <input class="cfg-input" id="cfgGuildId" type="text" autocomplete="off"
+                 placeholder="z. B. 123456789012345678">
+        </div>
+        <div class="cfg-field">
+          <label class="cfg-label" for="cfgMonitoredServices">Monitored Services</label>
+          <input class="cfg-input" id="cfgMonitoredServices" type="text" autocomplete="off"
+                 placeholder="Kommagetrennt, z. B. website,api,database">
+          <div class="cfg-hint">Leer = alle aktiven Monitore.</div>
+        </div>
+        <div class="cfg-field" style="margin-bottom:0">
+          <label class="cfg-label" for="cfgUpdateInterval">Update Intervall (ms)</label>
+          <input class="cfg-input" id="cfgUpdateInterval" type="number" min="10000" step="1000"
+                 placeholder="300000">
+        </div>
       </div>
-      <div class="cfg-hint">Renderer wählen und mit "Jetzt testen" sofort einen Discord-Status-Update auslösen.</div>
-    </div>
-    <div class="cfg-field">
-      <label class="cfg-label" for="cfgStatusTitle">SVG Modus: Titel oberhalb der Grafik</label>
-      <input class="cfg-input" id="cfgStatusTitle" type="text" autocomplete="off"
-             placeholder="Leer lassen = keine zweite Überschrift">
-      <div class="cfg-hint">Nur für <code>svg_attachment</code>. Leer entfernt die doppelte Überschrift über dem Bild.</div>
-    </div>
-    <div class="cfg-field">
-      <label class="cfg-label" for="cfgStatusButtonLabel">SVG Modus: Link-Button Beschriftung</label>
-      <input class="cfg-input" id="cfgStatusButtonLabel" type="text" autocomplete="off"
-             placeholder="z. B. Statusseite öffnen (leer = kein Button)">
-      <div class="cfg-hint">Wenn gesetzt, wird unter dem Bild ein echter Discord-Link-Button angezeigt.</div>
-    </div>
-    <div class="cfg-field">
-      <label class="cfg-label" for="cfgSlug">Status-Page Slug</label>
-      <input class="cfg-input" id="cfgSlug" type="text" autocomplete="off"
-             placeholder="z. B. dienste">
-      <div class="cfg-hint">URL-Teil nach <code>/status/</code> in Uptime Kuma.</div>
-    </div>
-    <div class="cfg-field">
-      <label class="cfg-label" for="cfgCloudflareUrl">Cloudflare Public URL</label>
-      <input class="cfg-input" id="cfgCloudflareUrl" type="text" autocomplete="off"
-             placeholder="https://status.deinedomain.de">
-      <div class="cfg-hint">Optional. Wenn gesetzt, nutzt der Bot diese URL für Link-Preview.</div>
-    </div>
-    <div class="cfg-field">
-      <label class="cfg-label" for="cfgApiKey">Uptime Kuma API Key</label>
-      <input class="cfg-input" id="cfgApiKey" type="password" autocomplete="off"
-             placeholder="Neuen API Key eingeben (leer lassen = unverändert)">
-    </div>
-    <div class="cfg-field">
-      <label class="cfg-label" for="cfgWebhookUrl">Discord Status Webhook URL</label>
-      <input class="cfg-input" id="cfgWebhookUrl" type="password" autocomplete="off"
-             placeholder="Nur für webhook_ascii (leer lassen = unverändert)">
-    </div>
-    <div class="cfg-field">
-      <label class="cfg-label" for="cfgGuildId">Guild ID</label>
-      <input class="cfg-input" id="cfgGuildId" type="text" autocomplete="off"
-             placeholder="z. B. 123456789012345678">
-    </div>
-    <div class="cfg-field">
-      <label class="cfg-label" for="cfgServiceCategory">Service Kategorie-Name</label>
-      <input class="cfg-input" id="cfgServiceCategory" type="text" autocomplete="off"
-             placeholder="z. B. 📊 Service Status">
-    </div>
-    <div class="cfg-field">
-      <label class="cfg-label" for="cfgMonitoredServices">Monitored Services</label>
-      <input class="cfg-input" id="cfgMonitoredServices" type="text" autocomplete="off"
-             placeholder="Kommagetrennt, z. B. website,api,database">
-      <div class="cfg-hint">Leer = alle aktiven Monitore.</div>
-    </div>
-    <div class="cfg-field">
-      <label class="cfg-label" for="cfgUpdateInterval">Update Intervall (ms)</label>
-      <input class="cfg-input" id="cfgUpdateInterval" type="number" min="10000" step="1000"
-             placeholder="300000">
-    </div>
-    <div class="cfg-field">
-      <label class="cfg-label" for="cfgWebPort">Web Port</label>
-      <input class="cfg-input" id="cfgWebPort" type="number" min="1" max="65535"
-             placeholder="3000">
-    </div>
-    <div class="cfg-field">
-      <label class="cfg-label" for="cfgDashPassword">Dashboard Passwort</label>
-      <input class="cfg-input" id="cfgDashPassword" type="password" autocomplete="off"
-             placeholder="Neues Passwort eingeben (leer lassen = unverändert)">
-    </div>
-    <div class="cfg-field">
-      <label class="cfg-label" for="cfgDbStorage">DB Storage Pfad</label>
-      <input class="cfg-input" id="cfgDbStorage" type="text" autocomplete="off"
-             placeholder="./data/status.db">
-    </div>
-    <div class="cfg-field">
-      <label class="cfg-label">Channel-Status-Indikator</label>
-      <div style="display:flex;align-items:center;gap:12px;margin-top:2px">
-        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px">
-          <input type="checkbox" id="cfgChannelIndicator" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
-          <span>Channel-Name und Topic automatisch mit 🟢 / 🟡 / 🔴 aktualisieren</span>
-        </label>
+
+      <div class="cfg-module">
+        <div class="cfg-module-title">📡 Discord-Status-Renderer</div>
+        <div class="cfg-field">
+          <label class="cfg-label" for="cfgRenderMode">Discord Status Renderer</label>
+          <div style="display:flex;gap:8px;align-items:end;">
+            <select class="cfg-input" id="cfgRenderMode" style="flex:1;">
+              <option value="auto">Auto (entscheidet automatisch)</option>
+              <option value="direct">Direct (OG-Proxy-URL)</option>
+              <option value="graphical">Graphical (Badge/Graphik-Link)</option>
+              <option value="svg_attachment">SVG Attachment (PNG aus SVG via rsvg-convert)</option>
+              <option value="webhook_ascii">Webhook ASCII (eigener Webhook)</option>
+              <option value="embed">Custom-Embed (fallback-fest)</option>
+              <option value="link_preview">Legacy Link-Preview</option>
+            </select>
+            <button class="btn btn-small" id="btnTestRender" onclick="testRendering()" style="padding:8px 12px;font-size:12px;white-space:nowrap;">🧪 Jetzt testen</button>
+          </div>
+          <div class="cfg-hint">Renderer wählen und mit "Jetzt testen" sofort einen Discord-Status-Update auslösen.</div>
+        </div>
+        <div class="cfg-field">
+          <label class="cfg-label" for="cfgStatusTitle">SVG Modus: Titel oberhalb der Grafik</label>
+          <input class="cfg-input" id="cfgStatusTitle" type="text" autocomplete="off"
+                 placeholder="Leer lassen = keine zweite Überschrift">
+        </div>
+        <div class="cfg-field">
+          <label class="cfg-label" for="cfgStatusButtonLabel">SVG Modus: Link-Button Beschriftung</label>
+          <input class="cfg-input" id="cfgStatusButtonLabel" type="text" autocomplete="off"
+                 placeholder="z. B. Statusseite öffnen (leer = kein Button)">
+          <div class="cfg-hint">Leer entfernt den Button unterhalb der Grafik.</div>
+        </div>
+        <div class="cfg-field">
+          <label class="cfg-label" for="cfgSlug">Status-Page Slug</label>
+          <input class="cfg-input" id="cfgSlug" type="text" autocomplete="off"
+                 placeholder="z. B. dienste">
+          <div class="cfg-hint">URL-Teil nach <code>/status/</code> in Uptime Kuma.</div>
+        </div>
+        <div class="cfg-field">
+          <label class="cfg-label" for="cfgCloudflareUrl">Cloudflare Public URL</label>
+          <input class="cfg-input" id="cfgCloudflareUrl" type="text" autocomplete="off"
+                 placeholder="https://status.deinedomain.de">
+        </div>
+        <div class="cfg-field" style="margin-bottom:0">
+          <label class="cfg-label" for="cfgWebhookUrl">Discord Status Webhook URL</label>
+          <input class="cfg-input" id="cfgWebhookUrl" type="password" autocomplete="off"
+                 placeholder="Nur für webhook_ascii (leer lassen = unverändert)">
+        </div>
       </div>
-      <div class="cfg-hint">Bei Statuswechsel wird z.B. aus <code>dienste-status</code> → <code>🟢dienste-status</code> (max. 2× / 10 min)</div>
+
+      <div class="cfg-module">
+        <div class="cfg-module-title">🗂 .env / Sicherheit</div>
+        <div class="cfg-field">
+          <label class="cfg-label" for="cfgKumaUrl">Uptime Kuma URL</label>
+          <input class="cfg-input" id="cfgKumaUrl" type="text" autocomplete="off"
+                 placeholder="http://192.168.x.x:3001">
+        </div>
+        <div class="cfg-field">
+          <label class="cfg-label" for="cfgApiKey">Uptime Kuma API Key</label>
+          <input class="cfg-input" id="cfgApiKey" type="password" autocomplete="off"
+                 placeholder="Neuen API Key eingeben (leer lassen = unverändert)">
+        </div>
+        <div class="cfg-field">
+          <label class="cfg-label" for="cfgDashPassword">Dashboard Passwort</label>
+          <input class="cfg-input" id="cfgDashPassword" type="password" autocomplete="off"
+                 placeholder="Neues Passwort eingeben (leer lassen = unverändert)">
+        </div>
+        <div class="cfg-field" style="margin-bottom:0">
+          <label class="cfg-label" for="cfgDbStorage">DB Storage Pfad</label>
+          <input class="cfg-input" id="cfgDbStorage" type="text" autocomplete="off"
+                 placeholder="./data/status.db">
+        </div>
+      </div>
+
+      <div class="cfg-module">
+        <div class="cfg-module-title">🍓 Raspi / Web</div>
+        <div class="cfg-field">
+          <label class="cfg-label" for="cfgServiceCategory">Service Kategorie-Name</label>
+          <input class="cfg-input" id="cfgServiceCategory" type="text" autocomplete="off"
+                 placeholder="z. B. 📊 Service Status">
+        </div>
+        <div class="cfg-field">
+          <label class="cfg-label" for="cfgWebPort">Web Port</label>
+          <input class="cfg-input" id="cfgWebPort" type="number" min="1" max="65535"
+                 placeholder="3000">
+        </div>
+        <div class="cfg-field" style="margin-bottom:0">
+          <label class="cfg-label">Channel-Status-Indikator</label>
+          <div style="display:flex;align-items:center;gap:12px;margin-top:2px">
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px">
+              <input type="checkbox" id="cfgChannelIndicator" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
+              <span>Channel-Name und Topic automatisch mit 🟢 / 🟡 / 🔴 aktualisieren</span>
+            </label>
+          </div>
+          <div class="cfg-hint">Bei Statuswechsel wird z.B. aus <code>dienste-status</code> → <code>🟢dienste-status</code> (max. 2× / 10 min)</div>
+        </div>
+      </div>
     </div>
+
     <div class="cfg-actions">
       <button class="btn btn-green" id="btnCfgSave" onclick="saveConfig()">💾 Speichern &amp; Neu starten</button>
       <button class="btn" onclick="loadConfig()">↺ Zurücksetzen</button>

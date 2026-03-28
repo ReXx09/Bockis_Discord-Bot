@@ -473,11 +473,26 @@ module.exports = function startWebServer({
       const pkgPath = path.join(rootDir, 'package.json');
       if (!fs.existsSync(pkgPath)) return res.json({ ok: false, error: 'package.json nicht gefunden' });
 
-      const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+      const safeParseJson = (raw, fallback = {}) => {
+        try {
+          const text = String(raw ?? '').replace(/^\uFEFF/, '').trim();
+          if (!text) return fallback;
+          return JSON.parse(text);
+        } catch {
+          return fallback;
+        }
+      };
+
+      const pkgRaw = fs.readFileSync(pkgPath, 'utf8');
+      const pkg = safeParseJson(pkgRaw, {});
       const allDeps = {
         ...Object.fromEntries(Object.entries(pkg.dependencies    || {}).map(([k, v]) => [k, { required: v, type: 'dependency'    }])),
         ...Object.fromEntries(Object.entries(pkg.devDependencies || {}).map(([k, v]) => [k, { required: v, type: 'devDependency' }])),
       };
+
+      if (Object.keys(allDeps).length === 0) {
+        return res.json({ ok: true, packages: [], outdatedCount: 0, total: 0, warning: 'Keine Abhängigkeiten gefunden oder package.json nicht lesbar' });
+      }
 
       // Robust gegen npm-Notices/Warnungen: parseable statt JSON nutzen.
       // Damit vermeiden wir JSON.parse auf gemischter CLI-Ausgabe komplett.
@@ -514,7 +529,8 @@ module.exports = function startWebServer({
       const getInstalled = (name) => {
         try {
           const p = path.join(rootDir, 'node_modules', name, 'package.json');
-          return JSON.parse(fs.readFileSync(p, 'utf8')).version || null;
+          const installedPkg = safeParseJson(fs.readFileSync(p, 'utf8'), {});
+          return installedPkg.version || null;
         } catch { return null; }
       };
 
