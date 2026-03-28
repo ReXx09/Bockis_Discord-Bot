@@ -635,6 +635,41 @@ function parseDiscordWebhookUrl(webhookUrl) {
   return { id: match[1], token: match[2] };
 }
 
+async function enforceSingleStatusMessage(channel, keepMessageId) {
+  if (!channel || !keepMessageId) return;
+
+  let before = null;
+  let deleted = 0;
+
+  // Kanal historisch durchgehen und alles außer der aktuellen Status-Nachricht löschen.
+  // Limit schützt vor Endlosschleifen und unnötig hoher API-Last.
+  for (let page = 0; page < 20; page++) {
+    const batch = await channel.messages.fetch({
+      limit: 100,
+      ...(before ? { before } : {})
+    });
+
+    if (!batch.size) break;
+
+    for (const msg of batch.values()) {
+      if (msg.id === keepMessageId) continue;
+      try {
+        await msg.delete();
+        deleted++;
+      } catch (err) {
+        logger.warn(`Cleanup: Nachricht ${msg.id} konnte nicht gelöscht werden: ${err.message}`);
+      }
+    }
+
+    before = batch.last()?.id || null;
+    if (batch.size < 100) break;
+  }
+
+  if (deleted > 0) {
+    logger.info(`Cleanup: ${deleted} alte Nachricht(en) aus Status-Channel entfernt`);
+  }
+}
+
 function buildAsciiUptimeBar(percent, width = 18) {
   const p = Number.isFinite(percent) ? Math.max(0, Math.min(100, percent)) : 0;
   const filled = Math.round((p / 100) * width);
@@ -993,6 +1028,8 @@ async function updateStatusMessage() {
       lastEditTimestamp = Date.now();
       logger.info(`Status aktualisiert: ${operationalCount}/${monitors.length} Dienste online`);
       logger.info(`Status Render Mode: ${renderDecision.mode}${renderDecision.publicStatusUrl ? ` | ${renderDecision.publicStatusUrl}` : renderDecision.proxyUrl ? ` | proxy` : ``}`);
+
+      await enforceSingleStatusMessage(channel, statusMessageId);
 
       // Channel-Name + Topic bei Statuswechsel aktualisieren
       await updateChannelIndicator(channel, monitors);
