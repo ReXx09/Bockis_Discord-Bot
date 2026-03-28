@@ -1249,7 +1249,8 @@ async function updateStatusMessage() {
  *   🟡-api      → ausstehend
  *
  * Konfiguration via .env:
- *   GUILD_ID              – Guild-ID des Servers (Pflicht für dieses Feature)
+ *   SERVICE_GUILD_ID      – optionale Guild-ID nur für Service-Kanäle (Fallback: GUILD_ID)
+ *   GUILD_ID              – Guild-ID des Servers (Fallback, wenn SERVICE_GUILD_ID leer)
  *   SERVICE_CATEGORY_NAME – Kategoriename (Standard: "📊 Service Status")
  *   MONITORED_SERVICES    – kommagetrennte Whitelist, z.B. "nginx,database,api"
  *                           (leer = alle aktiven Dienste)
@@ -1305,7 +1306,8 @@ function _parseServiceChannelMap(rawMap) {
 }
 
 async function syncServiceChannels(monitors) {
-  const guildId = config.get('discord.guildId');
+  const serviceGuildId = String(config.get('discord.serviceGuildId') || '').trim();
+  const guildId = serviceGuildId || String(config.get('discord.guildId') || '').trim();
   if (!guildId) return;  // Feature nicht konfiguriert
   const namingMode = config.get('discord.serviceChannelNameMode') || 'strict_slug';
   const autoCreate = config.get('discord.serviceChannelAutoCreate') !== false;
@@ -1317,7 +1319,7 @@ async function syncServiceChannels(monitors) {
     try {
       guild = await client.guilds.fetch(guildId);
     } catch {
-      logger.warn(`Service-Kanal-Manager: Guild "${guildId}" nicht gefunden – stimmt GUILD_ID und ist der Bot auf dem Server?`);
+      logger.warn(`Service-Kanal-Manager: Guild "${guildId}" nicht gefunden – stimmt SERVICE_GUILD_ID/GUILD_ID und ist der Bot auf dem Server?`);
       return;
     }
   }

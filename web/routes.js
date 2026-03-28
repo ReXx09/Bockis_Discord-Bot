@@ -851,6 +851,7 @@ module.exports = function startWebServer({
         CLOUDFLARE_PUBLIC_URL:        get('CLOUDFLARE_PUBLIC_URL'),
         CHANNEL_STATUS_INDICATOR:     get('CHANNEL_STATUS_INDICATOR') || 'true',
         GUILD_ID:                     get('GUILD_ID'),
+        SERVICE_GUILD_ID:             get('SERVICE_GUILD_ID') || '',
         SERVICE_CATEGORY_NAME:        get('SERVICE_CATEGORY_NAME'),
         SERVICE_CATEGORY_ID:          get('SERVICE_CATEGORY_ID'),
         SERVICE_CHANNEL_NAME_MODE:    get('SERVICE_CHANNEL_NAME_MODE') || 'strict_slug',
@@ -890,6 +891,7 @@ module.exports = function startWebServer({
       'CLOUDFLARE_PUBLIC_URL',
       'CHANNEL_STATUS_INDICATOR',
       'GUILD_ID',
+      'SERVICE_GUILD_ID',
       'SERVICE_CATEGORY_NAME',
       'SERVICE_CATEGORY_ID',
       'SERVICE_CHANNEL_NAME_MODE',
@@ -970,6 +972,8 @@ module.exports = function startWebServer({
         return res.json({ ok: false, error: 'CHANNEL_STATUS_INDICATOR muss true oder false sein' });
       if (key === 'GUILD_ID' && val && !/^\d+$/.test(val))
         return res.json({ ok: false, error: 'GUILD_ID: Nur Zahlen erlaubt (Discord ID)' });
+      if (key === 'SERVICE_GUILD_ID' && val && !/^\d+$/.test(val))
+        return res.json({ ok: false, error: 'SERVICE_GUILD_ID: Nur Zahlen erlaubt (Discord ID)' });
       if (key === 'SERVICE_CATEGORY_ID' && val && !/^\d+$/.test(val))
         return res.json({ ok: false, error: 'SERVICE_CATEGORY_ID: Nur Zahlen erlaubt (Discord ID)' });
       if (key === 'SERVICE_CHANNEL_NAME_MODE' && !['strict_slug', 'pretty'].includes(val))

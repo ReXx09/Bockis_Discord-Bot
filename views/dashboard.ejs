@@ -738,6 +738,12 @@
       <div class="cfg-pane-card hidden" data-cfg-pane="channels">
         <div class="cfg-pane-title">🧩 Dienst-Kanäle</div>
         <div class="cfg-field">
+          <label class="cfg-label" for="cfgServiceGuildId">Server/Guild ID für Dienst-Kanäle</label>
+          <input class="cfg-input" id="cfgServiceGuildId" type="text" autocomplete="off"
+                 placeholder="z. B. 123456789012345678 (leer = Guild ID aus Bot & IDs)">
+          <div class="cfg-hint">Diese Guild wird für Kategorie- und Kanalerstellung verwendet. Leer = <code>GUILD_ID</code> aus Bot &amp; IDs.</div>
+        </div>
+        <div class="cfg-field">
           <label class="cfg-label" for="cfgServiceCategory">Service Kategorie-Name</label>
           <input class="cfg-input" id="cfgServiceCategory" type="text" autocomplete="off"
                  placeholder="z. B. 📊 Service Status">
@@ -2016,6 +2022,7 @@
       setFieldValue('cfgSlug', d.STATUS_PAGE_SLUG || 'dienste');
       setFieldValue('cfgCloudflareUrl', d.CLOUDFLARE_PUBLIC_URL || '');
       setFieldValue('cfgGuildId', d.GUILD_ID || '');
+      setFieldValue('cfgServiceGuildId', d.SERVICE_GUILD_ID || '');
       setFieldValue('cfgServiceCategory', d.SERVICE_CATEGORY_NAME || '');
       setFieldValue('cfgServiceCategoryId', d.SERVICE_CATEGORY_ID || '');
       setFieldValue('cfgMonitoredServices', d.MONITORED_SERVICES || '');
@@ -2085,6 +2092,7 @@
     maybeSetChanged(body, 'UPTIME_KUMA_API_KEY', 'cfgApiKey', { allowEmpty: true });
     maybeSetChanged(body, 'DISCORD_STATUS_WEBHOOK_URL', 'cfgWebhookUrl', { allowEmpty: true });
     maybeSetChanged(body, 'GUILD_ID', 'cfgGuildId');
+    maybeSetChanged(body, 'SERVICE_GUILD_ID', 'cfgServiceGuildId', { allowEmpty: true });
     maybeSetChanged(body, 'SERVICE_CATEGORY_NAME', 'cfgServiceCategory');
     maybeSetChanged(body, 'SERVICE_CATEGORY_ID', 'cfgServiceCategoryId', { allowEmpty: true });
     maybeSetChanged(body, 'MONITORED_SERVICES', 'cfgMonitoredServices', { allowEmpty: true });

@@ -129,6 +129,12 @@ const config = convict({
       default: '',
       env: 'GUILD_ID'
     },
+    serviceGuildId: {
+      doc: 'Optionale Guild-ID nur für Dienst-Kanäle/Kategorie (leer = GUILD_ID verwenden)',
+      format: String,
+      default: '',
+      env: 'SERVICE_GUILD_ID'
+    },
     serviceCategoryName: {
       doc: 'Name der Kategorie, die für Service-Status-Kanäle erstellt wird',
       format: String,
