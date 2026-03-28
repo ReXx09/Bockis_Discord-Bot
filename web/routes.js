@@ -24,6 +24,20 @@ const { execFile, execFileSync, execSync, spawn } = require('child_process');
 const ALLOWED_SERVICES = ['bockis-bot', 'uptime-kuma', 'cloudflared'];
 const ALLOWED_ACTIONS  = ['start', 'stop', 'restart', 'status'];
 
+function execFilePromise(cmd, args, opts = {}) {
+  return new Promise((resolve, reject) => {
+    execFile(cmd, args, opts, (err, stdout, stderr) => {
+      if (err) {
+        err.stdout = stdout;
+        err.stderr = stderr;
+        reject(err);
+        return;
+      }
+      resolve({ stdout, stderr });
+    });
+  });
+}
+
 // ── Factory-Funktion ──────────────────────────────────────────────────────────
 module.exports = function startWebServer({
   config,
@@ -257,6 +271,108 @@ module.exports = function startWebServer({
     } catch (err) {
       logger.error(`/api/raspi-status Fehler: ${err.message}`);
       res.json({ ok: false, error: err.message });
+    }
+  });
+
+  // ── API: Lokalisierung (Zeitzone / Datum-Uhrzeit / Tastaturlayout) ───────
+
+  app.get('/api/system-localization', dashboardAuth, (req, res) => {
+    let timezone = '';
+    let keyboardLayout = '';
+
+    try {
+      timezone = execFileSync('timedatectl', ['show', '-p', 'Timezone', '--value'], { timeout: 2500 })
+        .toString().trim();
+    } catch { /* ignore */ }
+
+    try {
+      const localectlOut = execFileSync('localectl', ['status'], { timeout: 2500 }).toString();
+      const m = localectlOut.match(/^\s*VC Keymap:\s*(.+)$/mi);
+      if (m?.[1]) keyboardLayout = m[1].trim();
+    } catch { /* ignore */ }
+
+    // Fallback für Raspberry Pi Setups ohne localectl
+    if (!keyboardLayout) {
+      try {
+        const kbFile = '/etc/default/keyboard';
+        if (fs.existsSync(kbFile)) {
+          const raw = fs.readFileSync(kbFile, 'utf8');
+          const m = raw.match(/^XKBLAYOUT=(.*)$/m);
+          keyboardLayout = (m?.[1] || '').trim().replace(/^['"]|['"]$/g, '');
+        }
+      } catch { /* ignore */ }
+    }
+
+    const now = new Date();
+    const localDate = now.toLocaleDateString('de-DE');
+    const localTime = now.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const dateTimeLocal = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}T${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+
+    return res.json({
+      ok: true,
+      timezone,
+      keyboardLayout,
+      localDate,
+      localTime,
+      dateTimeLocal,
+    });
+  });
+
+  app.post('/api/system-localization', dashboardAuth, async (req, res) => {
+    const timezone = String(req.body?.timezone || '').trim();
+    const datetimeLocal = String(req.body?.datetimeLocal || '').trim();
+    const keyboardLayout = String(req.body?.keyboardLayout || '').trim();
+
+    if (!timezone && !datetimeLocal && !keyboardLayout) {
+      return res.status(400).json({ ok: false, error: 'Keine Änderungen übergeben' });
+    }
+
+    if (timezone && !/^[A-Za-z0-9._+-]+(?:\/[A-Za-z0-9._+-]+)+$/.test(timezone)) {
+      return res.status(400).json({ ok: false, error: 'Ungültige Zeitzone (z. B. Europe/Berlin)' });
+    }
+
+    if (datetimeLocal && !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(datetimeLocal)) {
+      return res.status(400).json({ ok: false, error: 'Ungültiges Datum/Uhrzeit-Format' });
+    }
+
+    if (keyboardLayout && !/^[A-Za-z0-9,_+-]{2,32}$/.test(keyboardLayout)) {
+      return res.status(400).json({ ok: false, error: 'Ungültiges Tastaturlayout (z. B. de, us, de,nodeadkeys)' });
+    }
+
+    const applied = [];
+
+    try {
+      if (timezone) {
+        await execFilePromise('sudo', ['timedatectl', 'set-timezone', timezone], { timeout: 10_000 });
+        applied.push(`Zeitzone=${timezone}`);
+      }
+
+      if (datetimeLocal) {
+        const dateForTimedatectl = datetimeLocal.replace('T', ' ') + ':00';
+        await execFilePromise('sudo', ['timedatectl', 'set-time', dateForTimedatectl], { timeout: 10_000 });
+        applied.push(`Datum/Uhrzeit=${datetimeLocal}`);
+      }
+
+      if (keyboardLayout) {
+        try {
+          await execFilePromise('sudo', ['localectl', 'set-keymap', keyboardLayout], { timeout: 10_000 });
+        } catch (err) {
+          const details = `${err.stderr || ''}${err.stdout || ''}${err.message || ''}`;
+          return res.status(500).json({
+            ok: false,
+            error: 'Tastaturlayout konnte nicht gesetzt werden (localectl). Prüfe ob localectl/localed auf dem System verfügbar ist.',
+            details: String(details).trim()
+          });
+        }
+        applied.push(`Keymap=${keyboardLayout}`);
+      }
+
+      logger.info(`/api/system-localization gesetzt: ${applied.join(', ')}`);
+      return res.json({ ok: true, applied });
+    } catch (err) {
+      const details = `${err.stderr || ''}${err.stdout || ''}${err.message || ''}`;
+      logger.error(`/api/system-localization Fehler: ${details}`);
+      return res.status(500).json({ ok: false, error: 'Systemeinstellung konnte nicht gesetzt werden', details: String(details).trim() });
     }
   });
 

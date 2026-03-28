@@ -841,6 +841,28 @@
           <input class="cfg-input" id="cfgWebPort" type="number" min="1" max="65535"
                  placeholder="3000">
         </div>
+        <div class="cfg-field">
+          <label class="cfg-label" for="cfgTimezone">Zeitzone (Raspberry Pi)</label>
+          <input class="cfg-input" id="cfgTimezone" type="text" autocomplete="off"
+                 placeholder="z. B. Europe/Berlin">
+          <div class="cfg-hint">Wird per <code>timedatectl set-timezone</code> gesetzt.</div>
+        </div>
+        <div class="cfg-field">
+          <label class="cfg-label" for="cfgDateTimeLocal">Datum &amp; Uhrzeit (Raspberry Pi)</label>
+          <input class="cfg-input" id="cfgDateTimeLocal" type="datetime-local">
+          <div class="cfg-hint">Wird per <code>timedatectl set-time</code> gesetzt.</div>
+        </div>
+        <div class="cfg-field">
+          <label class="cfg-label" for="cfgKeyboardLayout">Tastaturlayout (Raspberry Pi)</label>
+          <input class="cfg-input" id="cfgKeyboardLayout" type="text" autocomplete="off"
+                 placeholder="z. B. de oder us">
+          <div class="cfg-hint">Wird per <code>localectl set-keymap</code> gesetzt (falls verfügbar).</div>
+        </div>
+        <div class="cfg-actions" style="margin:2px 0 12px 0">
+          <button class="btn" id="btnLocaleReload" onclick="loadSystemLocalization()">↺ Werte laden</button>
+          <button class="btn" id="btnLocaleSave" onclick="saveSystemLocalization()">🕒 System übernehmen</button>
+          <span id="cfgLocaleStatus" class="muted" style="font-size:12px"></span>
+        </div>
         <div class="cfg-field" style="margin-bottom:0">
           <label class="cfg-label">Channel-Status-Indikator</label>
           <div style="display:flex;align-items:center;gap:12px;margin-top:2px">
@@ -1732,6 +1754,65 @@
     });
   }
 
+  async function loadSystemLocalization() {
+    const statusEl = document.getElementById('cfgLocaleStatus');
+    const btn = document.getElementById('btnLocaleReload');
+    if (btn) btn.disabled = true;
+    if (statusEl) { statusEl.textContent = 'Lade…'; statusEl.className = 'muted'; }
+    try {
+      const d = await fetch('/api/system-localization').then(r => r.json());
+      if (!d.ok) throw new Error(d.error || 'Laden fehlgeschlagen');
+      const tz = document.getElementById('cfgTimezone');
+      const dt = document.getElementById('cfgDateTimeLocal');
+      const kb = document.getElementById('cfgKeyboardLayout');
+      if (tz) tz.value = d.timezone || '';
+      if (dt) dt.value = d.dateTimeLocal || '';
+      if (kb) kb.value = d.keyboardLayout || '';
+      if (statusEl) {
+        statusEl.textContent = `Aktuell: ${d.localDate || '-'} ${d.localTime || '-'} | TZ: ${d.timezone || '-'} | Keymap: ${d.keyboardLayout || '-'}`;
+        statusEl.className = 'muted';
+      }
+    } catch (e) {
+      if (statusEl) { statusEl.textContent = 'Fehler: ' + e.message; statusEl.className = 'err'; }
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  }
+
+  async function saveSystemLocalization() {
+    const statusEl = document.getElementById('cfgLocaleStatus');
+    const btn = document.getElementById('btnLocaleSave');
+    const body = {
+      timezone: document.getElementById('cfgTimezone')?.value.trim() || '',
+      datetimeLocal: document.getElementById('cfgDateTimeLocal')?.value || '',
+      keyboardLayout: document.getElementById('cfgKeyboardLayout')?.value.trim() || ''
+    };
+    if (!body.timezone && !body.datetimeLocal && !body.keyboardLayout) {
+      if (statusEl) { statusEl.textContent = 'Keine Werte gesetzt'; statusEl.className = 'warn'; }
+      return;
+    }
+
+    if (btn) btn.disabled = true;
+    if (statusEl) { statusEl.textContent = 'Übernehme Systemeinstellungen…'; statusEl.className = 'muted'; }
+    try {
+      const d = await fetch('/api/system-localization', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      }).then(r => r.json());
+
+      if (!d.ok) throw new Error(d.error || d.details || 'Speichern fehlgeschlagen');
+      if (statusEl) { statusEl.textContent = '✓ Übernommen: ' + (d.applied || []).join(', '); statusEl.className = 'ok'; }
+      toast('✓ Raspi-Einstellungen übernommen', 'ok');
+      loadSystemLocalization();
+    } catch (e) {
+      if (statusEl) { statusEl.textContent = 'Fehler: ' + e.message; statusEl.className = 'err'; }
+      toast('Fehler: ' + e.message, 'err');
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  }
+
   // ── Config laden ─────────────────────────────────────
   async function loadConfig() {
     try {
@@ -1934,6 +2015,7 @@
 
   // Config beim Start laden
   loadConfig();
+  loadSystemLocalization();
   setActiveSettingsPane('bot');
 
   // Live-Vorschau für den Dienst-Kanalnamen
