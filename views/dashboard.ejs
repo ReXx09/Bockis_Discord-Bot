@@ -673,6 +673,7 @@
             <option value="pretty">Pretty (versucht Großschrift/Emoji aus Dienstnamen)</option>
           </select>
           <div class="cfg-hint">Bei <code>pretty</code> wird bei Discord-Ablehnung automatisch auf den sicheren Slug zurückgefallen.</div>
+          <div class="cfg-hint" id="cfgChannelNamePreview" style="margin-top:6px"></div>
         </div>
         <div class="cfg-field" style="margin-bottom:0">
           <label class="cfg-label" for="cfgUpdateInterval">Update Intervall (ms)</label>
@@ -1595,6 +1596,51 @@
     el.dataset.initialValue = normalized;
   }
 
+  function _computeChannelNamePreview(serviceName, status, mode) {
+    const dot = status === 1 ? '🟢' : status === 0 ? '🔴' : '🟡';
+    const raw = String(serviceName || '').trim() || 'Service Name';
+
+    if (mode === 'pretty') {
+      const pretty = raw
+        .replace(/[\u0000-\u001F\u007F]/g, '')
+        .replace(/[\n\r\t]+/g, ' ')
+        .replace(/\s+/g, '-')
+        .replace(/#+/g, '-')
+        .replace(/:+/g, '-')
+        .replace(/@+/g, '-')
+        .replace(/\/+|\\+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 90);
+      return `${dot}-${pretty || 'service'}`;
+    }
+
+    const slug = raw
+      .toLowerCase()
+      .replace(/[äöüß]/g, c => ({ ä: 'ae', ö: 'oe', ü: 'ue', ß: 'ss' })[c] ?? c)
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 94);
+    return `${dot}-${slug || 'service'}`;
+  }
+
+  function updateChannelNamePreview() {
+    const previewEl = document.getElementById('cfgChannelNamePreview');
+    const monitoredEl = document.getElementById('cfgMonitoredServices');
+    const modeEl = document.getElementById('cfgServiceChannelNameMode');
+    if (!previewEl || !monitoredEl || !modeEl) return;
+
+    const firstService = String(monitoredEl.value || '')
+      .split(',')
+      .map(s => s.trim())
+      .find(Boolean) || 'Next-Cloud 🚀';
+
+    const mode = modeEl.value || 'strict_slug';
+    const upName = _computeChannelNamePreview(firstService, 1, mode);
+    const downName = _computeChannelNamePreview(firstService, 0, mode);
+
+    previewEl.innerHTML = `Vorschau: <code>${upName}</code> (up) · <code>${downName}</code> (down)`;
+  }
+
   function maybeSetChanged(body, key, id, { allowEmpty = false } = {}) {
     const el = document.getElementById(id);
     if (!el) return;
@@ -1635,6 +1681,7 @@
       setFieldValue('cfgServiceCategory', d.SERVICE_CATEGORY_NAME || '');
       setFieldValue('cfgMonitoredServices', d.MONITORED_SERVICES || '');
       setFieldValue('cfgServiceChannelNameMode', d.SERVICE_CHANNEL_NAME_MODE || 'strict_slug');
+      updateChannelNamePreview();
       setFieldValue('cfgUpdateInterval', d.UPDATE_INTERVAL || '300000');
       setFieldValue('cfgWebPort', d.WEB_PORT || '3000');
       setFieldValue('cfgDbStorage', d.DB_STORAGE || './data/status.db');
@@ -1806,6 +1853,10 @@
 
   // Config beim Start laden
   loadConfig();
+
+  // Live-Vorschau für den Dienst-Kanalnamen
+  document.getElementById('cfgMonitoredServices')?.addEventListener('input', updateChannelNamePreview);
+  document.getElementById('cfgServiceChannelNameMode')?.addEventListener('change', updateChannelNamePreview);
 
   // ────────────────────────────────────────────────────────────────────────
   // DRAGGABLE + COLLAPSIBLE CARDS SYSTEM
