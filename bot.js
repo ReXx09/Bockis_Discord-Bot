@@ -490,13 +490,12 @@ async function inspectStatusPagePreview(url) {
     const twitterImage = readMetaTag(html, 'name', 'twitter:image');
     const metaDescription = readMetaTag(html, 'name', 'description');
 
-    const richPreview = Boolean(
-      ogImage ||
-      twitterImage ||
-      (twitterCard && twitterCard !== 'summary') ||
-      ogDescription ||
-      metaDescription
-    );
+    // Konsistente Heuristik zur Diagnose-API:
+    // Discord-Vorschau ist verlässlich bei Titel + (Beschreibung ODER Bild)
+    const hasTitle = Boolean(ogTitle);
+    const hasDescription = Boolean(ogDescription || metaDescription);
+    const hasImage = Boolean(ogImage || twitterImage);
+    const richPreview = Boolean(hasTitle && (hasDescription || hasImage));
 
     return {
       reachable: true,
@@ -567,25 +566,27 @@ async function getStatusRenderMode() {
     return { mode: 'link_preview', publicStatusUrl };
   }
 
-  // "auto" Mode: Beste Methode wählen (direct → graphical → embed)
+  // "auto" Mode: Wenn Webhook vorhanden, bevorzugt Webhook ASCII.
   if (webhookUrl) {
     return { mode: 'webhook_ascii', publicStatusUrl };
   }
 
-  // "auto" Mode: Beste Methode wählen (direct → graphical → embed)
+  // "auto" Mode: Stabil vor schön.
+  // Bei fehlenden OG-Metadaten sofort auf Embed wechseln statt fehlerhafte Link-Previews zu posten.
   const reachable = await isStatusPageReachable(publicStatusUrl);
   if (!reachable) {
     logger.warn(`Status Render Mode: auto - Statusseite nicht erreichbar, Fallback auf embed: ${publicStatusUrl}`);
     return { mode: 'custom_embed', publicStatusUrl };
   }
 
-  // Versuche direct mode wenn web-server verfügbar
-  if (webUrl) {
-    return { mode: 'direct', proxyUrl: `${webUrl}/api/status-unfurl` };
+  const preview = await inspectStatusPagePreview(publicStatusUrl);
+  if (!preview.reachable || !preview.richPreview) {
+    logger.warn('Status Render Mode: auto - OG Metadaten unzureichend, Fallback auf embed (kein fehlerhafter Link-Preview Spam)');
+    return { mode: 'custom_embed', publicStatusUrl };
   }
 
-  // Fallback: graphical mode
-  return { mode: 'graphical', statusUrl: publicStatusUrl, badgeUrl: `${webUrl}/api/badge/summary` };
+  // Nur wenn Metadaten ok sind, Link-Preview nutzen.
+  return { mode: 'link_preview', publicStatusUrl };
 }
 
 function buildStatusDirectMessage(proxyUrl) {
