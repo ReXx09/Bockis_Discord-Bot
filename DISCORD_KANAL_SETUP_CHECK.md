@@ -146,3 +146,84 @@ Das kann waehrend Service-Neustart kurz normal sein. Die Reconnect-Logik im Dash
 3. `.env` mit `MONITORED_SERVICES` befuellen.
 4. Bot starten.
 5. Kategorie/Kanaele und Status-Emoji im Discord pruefen.
+
+## 10. Soll-Konfiguration (empfohlen)
+
+Wenn du maximale Kontrolle willst (dein aktueller Use-Case), nutze den manuellen Modus mit fester Kategorie-ID und Kanal-Mapping.
+
+### Variante A: Manuell und stabil (empfohlen)
+
+```env
+# Pflicht
+DISCORD_TOKEN=DEIN_BOT_TOKEN
+STATUS_CHANNEL_ID=123456789012345678
+UPTIME_KUMA_URL=http://192.168.8.121:3001
+GUILD_ID=123456789012345678
+
+# Statuskanal-Anzeige
+CHANNEL_STATUS_INDICATOR=true
+
+# Kategorie/Kanaele
+SERVICE_CATEGORY_NAME=Service Status
+SERVICE_CATEGORY_ID=234567890123456789
+SERVICE_CHANNEL_AUTO_CREATE=false
+
+# Dienste + feste Kanalzuordnung
+MONITORED_SERVICES=Ark-ASA Svartaltheim,Next-Cloud,Pi-VPN,VPN-Mutti,VPN-Andy,VPN-Thomas
+SERVICE_CHANNEL_MAP=Ark-ASA Svartaltheim=345678901234567890;Next-Cloud=456789012345678901;Pi-VPN=567890123456789012;VPN-Mutti=678901234567890123;VPN-Andy=789012345678901234;VPN-Thomas=890123456789012345
+
+# Kanalnamen
+SERVICE_CHANNEL_NAME_MODE=strict_slug
+```
+
+Was das bewirkt:
+
+1. Bot erstellt keine neuen Dienst-Kanaele eigenmaechtig.
+2. Bot nutzt exakt deine vorhandene Kategorie (`SERVICE_CATEGORY_ID`).
+3. Jeder Monitor wird exakt in deinen zugeordneten Kanal geschrieben/umbenannt.
+
+### Variante B: Automatische Erstellung
+
+```env
+GUILD_ID=123456789012345678
+SERVICE_CATEGORY_NAME=Service Status
+SERVICE_CATEGORY_ID=
+SERVICE_CHANNEL_AUTO_CREATE=true
+MONITORED_SERVICES=Ark-ASA Svartaltheim,Next-Cloud,Pi-VPN,VPN-Mutti,VPN-Andy,VPN-Thomas
+SERVICE_CHANNEL_MAP=
+SERVICE_CHANNEL_NAME_MODE=strict_slug
+```
+
+Was das bewirkt:
+
+1. Kategorie wird gesucht/erstellt.
+2. Fehlende Dienst-Kanaele werden automatisch erstellt.
+
+## 11. 3-Minuten-Setup (zum schnellen Durchklicken)
+
+1. In Discord Developer Mode aktivieren und IDs kopieren:
+   1. Server-ID -> `GUILD_ID`
+   2. Status-Kanal-ID -> `STATUS_CHANNEL_ID`
+   3. Kategorie-ID (optional, empfohlen) -> `SERVICE_CATEGORY_ID`
+   4. Kanal-IDs pro Dienst -> fuer `SERVICE_CHANNEL_MAP`
+2. In Web-UI unter Einstellungen -> Dienst-Kanaele eintragen:
+   1. `GUILD_ID`
+   2. `SERVICE_CATEGORY_ID` (oder Kategorie-Name)
+   3. `SERVICE_CHANNEL_AUTO_CREATE` passend setzen
+   4. `MONITORED_SERVICES`
+   5. `SERVICE_CHANNEL_MAP`
+3. Speichern & Neustart ausfuehren.
+4. In Logs pruefen:
+   1. Kein Warnhinweis zu fehlender Guild
+   2. Kein Warnhinweis zu fehlender Berechtigung `Manage Channels`
+5. Test:
+   1. Einen Dienst auf `down` setzen
+   2. Pruefen, ob genau der gemappte Kanal auf `🔴-...` springt
+
+## 12. Typische Stolperfallen
+
+1. `GUILD_ID` falsch oder Bot nicht auf diesem Server.
+2. Bot-Rolle hat kein `Manage Channels`.
+3. `SERVICE_CHANNEL_MAP` hat Tippfehler beim Monitornamen.
+4. Channel-ID im Mapping zeigt auf falschen Kanal oder anderen Server.
+5. Bei `pretty`-Namen kann Discord ablehnen; dann greift der Fallback auf `strict_slug`.
