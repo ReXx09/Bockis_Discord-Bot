@@ -1718,21 +1718,34 @@ function startPresenceRotation() {
   }, intervalMs);
 }
 
-function getAutoReactionEmojis() {
-  const raw = String(config.get('discord.autoReactionsList') || '').trim();
-  const list = raw
-    .split(';')
+function getConfiguredAutoReactionEmojis() {
+  const raw = String(config.get('discord.autoReactEmojis') || '').trim();
+  const entries = raw
+    .split(/[;,]/)
     .map(s => s.trim())
     .filter(Boolean)
-    .slice(0, 30);
-  return list.length ? list : ['👍'];
+    .slice(0, 5);
+  return entries.length ? entries : ['👍'];
 }
 
-function shouldAutoReactNow() {
-  if (!config.get('discord.autoReactionsEnabled')) return false;
-  const chance = Number(config.get('discord.autoReactionsChance'));
-  const safeChance = Number.isFinite(chance) ? Math.max(1, Math.min(chance, 100)) : 100;
-  return Math.random() * 100 < safeChance;
+function getConfiguredAutoReactionChannelIds() {
+  return new Set(
+    String(config.get('discord.autoReactChannelIds') || '')
+      .split(',')
+      .map(s => s.trim())
+      .filter(Boolean)
+  );
+}
+
+function normalizeReactionEmoji(token) {
+  const raw = String(token || '').trim();
+  if (!raw) return null;
+
+  const customMatch = raw.match(/^<a?:[^:>]+:(\d+)>$/);
+  if (customMatch) return customMatch[1];
+
+  if (/^\d+$/.test(raw)) return raw;
+  return raw;
 }
 
 // #region 21. SLASH-COMMAND HANDLER
@@ -1862,21 +1875,31 @@ client.on('interactionCreate', async interaction => {
     });
   }
 });
+// #endregion
 
+// #region 21b. AUTO-REACTIONS
 client.on('messageCreate', async (message) => {
   try {
-    if (!shouldAutoReactNow()) return;
-    if (!message?.inGuild?.()) return;
+    if (!config.get('discord.autoReactEnabled')) return;
+    if (!message.inGuild()) return;
     if (message.author?.bot) return;
+    if (message.system) return;
 
-    const emojis = getAutoReactionEmojis();
-    const pick = emojis[Math.floor(Math.random() * emojis.length)];
-    if (!pick) return;
+    const allowedChannelIds = getConfiguredAutoReactionChannelIds();
+    if (allowedChannelIds.size > 0 && !allowedChannelIds.has(message.channelId)) return;
 
-    await message.react(pick);
+    const emojis = getConfiguredAutoReactionEmojis();
+    for (const entry of emojis) {
+      const emoji = normalizeReactionEmoji(entry);
+      if (!emoji) continue;
+      try {
+        await message.react(emoji);
+      } catch (err) {
+        logger.warn(`Auto-Reaktion fehlgeschlagen in Kanal ${message.channelId} mit "${entry}": ${err.message}`);
+      }
+    }
   } catch (err) {
-    // Keine harte Fehlermeldung, sonst Log-Spam bei fehlenden Rechten/ungültigen Emojis.
-    logger.warn(`Auto-Reaktion übersprungen: ${err.message}`);
+    logger.warn(`Auto-Reaktions-Handler Fehler: ${err.message}`);
   }
 });
 // #endregion

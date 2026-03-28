@@ -1121,9 +1121,9 @@ module.exports = function startWebServer({
         DISCORD_BOT_NAME:             get('DISCORD_BOT_NAME') || '',
         DISCORD_PRESENCE_TEXT:        get('DISCORD_PRESENCE_TEXT') || 'Service Health',
         DISCORD_PRESENCE_ROTATE_MS:   get('DISCORD_PRESENCE_ROTATE_MS') || '90000',
-        DISCORD_AUTO_REACTIONS_ENABLED:get('DISCORD_AUTO_REACTIONS_ENABLED') || 'false',
-        DISCORD_AUTO_REACTIONS_LIST:  get('DISCORD_AUTO_REACTIONS_LIST') || '👍;🔥;😂',
-        DISCORD_AUTO_REACTIONS_CHANCE:get('DISCORD_AUTO_REACTIONS_CHANCE') || '100',
+        DISCORD_AUTO_REACT_ENABLED:   get('DISCORD_AUTO_REACT_ENABLED') || 'false',
+        DISCORD_AUTO_REACT_EMOJIS:    get('DISCORD_AUTO_REACT_EMOJIS') || '👍',
+        DISCORD_AUTO_REACT_CHANNEL_IDS: get('DISCORD_AUTO_REACT_CHANNEL_IDS') || '',
         DISCORD_ENABLED_COMMANDS:     get('DISCORD_ENABLED_COMMANDS') || 'status,uptime,refresh,help,coinflip,dice,eightball',
         STATUS_CHANNEL_ID:            get('STATUS_CHANNEL_ID'),
         DISCORD_NOTIFICATION_CHANNEL: get('DISCORD_NOTIFICATION_CHANNEL'),
@@ -1166,9 +1166,9 @@ module.exports = function startWebServer({
       'DISCORD_BOT_NAME',
       'DISCORD_PRESENCE_TEXT',
       'DISCORD_PRESENCE_ROTATE_MS',
-      'DISCORD_AUTO_REACTIONS_ENABLED',
-      'DISCORD_AUTO_REACTIONS_LIST',
-      'DISCORD_AUTO_REACTIONS_CHANCE',
+      'DISCORD_AUTO_REACT_ENABLED',
+      'DISCORD_AUTO_REACT_EMOJIS',
+      'DISCORD_AUTO_REACT_CHANNEL_IDS',
       'DISCORD_ENABLED_COMMANDS',
       'STATUS_CHANNEL_ID',
       'DISCORD_NOTIFICATION_CHANNEL',
@@ -1200,6 +1200,8 @@ module.exports = function startWebServer({
     ];
     const CLEARABLE_CFG = new Set([
       'DISCORD_PRESENCE_TEXT',
+      'DISCORD_AUTO_REACT_EMOJIS',
+      'DISCORD_AUTO_REACT_CHANNEL_IDS',
       'DISCORD_STATUS_MESSAGE_TITLE',
       'DISCORD_STATUS_BUTTON_LABEL',
       'DISCORD_WEBUI_BUTTON_LABEL',
@@ -1244,18 +1246,17 @@ module.exports = function startWebServer({
         if (!Number.isFinite(n) || n < 15000 || n > 3600000)
           return res.json({ ok: false, error: 'DISCORD_PRESENCE_ROTATE_MS muss zwischen 15000 und 3600000 liegen' });
       }
-      if (key === 'DISCORD_AUTO_REACTIONS_ENABLED' && !['true', 'false'].includes(val))
-        return res.json({ ok: false, error: 'DISCORD_AUTO_REACTIONS_ENABLED muss true oder false sein' });
-      if (key === 'DISCORD_AUTO_REACTIONS_LIST') {
-        if (/[\n\r]/.test(val)) return res.json({ ok: false, error: 'DISCORD_AUTO_REACTIONS_LIST darf keine Zeilenumbrueche enthalten' });
-        const entries = val.split(';').map(s => s.trim()).filter(Boolean);
-        if (!entries.length) return res.json({ ok: false, error: 'DISCORD_AUTO_REACTIONS_LIST muss mindestens ein Emoji enthalten' });
-        if (entries.length > 30) return res.json({ ok: false, error: 'DISCORD_AUTO_REACTIONS_LIST darf maximal 30 Emojis enthalten' });
+      if (key === 'DISCORD_AUTO_REACT_ENABLED' && !['true', 'false'].includes(val))
+        return res.json({ ok: false, error: 'DISCORD_AUTO_REACT_ENABLED muss true oder false sein' });
+      if (key === 'DISCORD_AUTO_REACT_EMOJIS') {
+        if (/[\n\r]/.test(val)) return res.json({ ok: false, error: 'DISCORD_AUTO_REACT_EMOJIS darf keine Zeilenumbrueche enthalten' });
+        if (val.length > 120) return res.json({ ok: false, error: 'DISCORD_AUTO_REACT_EMOJIS darf maximal 120 Zeichen enthalten' });
       }
-      if (key === 'DISCORD_AUTO_REACTIONS_CHANCE') {
-        const n = parseInt(val, 10);
-        if (!Number.isFinite(n) || n < 1 || n > 100)
-          return res.json({ ok: false, error: 'DISCORD_AUTO_REACTIONS_CHANCE muss zwischen 1 und 100 liegen' });
+      if (key === 'DISCORD_AUTO_REACT_CHANNEL_IDS') {
+        const ids = val.split(',').map(s => s.trim()).filter(Boolean);
+        if (ids.some(id => !/^\d+$/.test(id))) {
+          return res.json({ ok: false, error: 'DISCORD_AUTO_REACT_CHANNEL_IDS darf nur kommagetrennte Discord-Channel-IDs enthalten' });
+        }
       }
       if (key === 'DISCORD_ENABLED_COMMANDS') {
         const allowedCommands = new Set(['status', 'uptime', 'refresh', 'help', 'coinflip', 'dice', 'eightball']);
