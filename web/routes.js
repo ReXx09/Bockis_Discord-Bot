@@ -468,7 +468,7 @@ module.exports = function startWebServer({
 
   // ── API: npm Abhängigkeiten prüfen ──────────────────────────────────────────
 
-  app.get('/api/deps-check', dashboardAuth, (req, res) => {
+  app.get('/api/deps-check', dashboardAuth, async (req, res) => {
     try {
       const pkgPath = path.join(rootDir, 'package.json');
       if (!fs.existsSync(pkgPath)) return res.json({ ok: false, error: 'package.json nicht gefunden' });
@@ -479,33 +479,44 @@ module.exports = function startWebServer({
         ...Object.fromEntries(Object.entries(pkg.devDependencies || {}).map(([k, v]) => [k, { required: v, type: 'devDependency' }])),
       };
 
+      // spawn trennt stdout und stderr physisch – npm notices/warnings landen in stderr
+      // und werden ignoriert. stdout enthält ausschließlich das JSON-Objekt.
+      // npm outdated beendet sich mit Exit-Code 1 wenn Pakete veraltet sind (kein Fehler).
       let outdated = {};
-      const _parseNpmJson = (raw) => {
-        // npm kann vor dem JSON Notices/Warnings in stdout mischen – JSON-Block extrahieren
-        const s = typeof raw === 'string' ? raw : raw.toString();
-        const start = s.indexOf('{');
-        const end   = s.lastIndexOf('}');
-        if (start === -1 || end === -1) return {};
-        return JSON.parse(s.slice(start, end + 1));
+      await new Promise((resolve) => {
+        let rawOut = '';
+        const proc = spawn('npm', ['outdated', '--json', '--depth=0'], {
+          cwd: rootDir, shell: true,
+        });
+        proc.stdout.on('data', (chunk) => { rawOut += chunk; });
+        proc.on('close', () => {
+          const s = rawOut.trim();
+          if (s.length > 0) {
+            try { outdated = JSON.parse(s); } catch { /* kein gültigesJSON – leer = alle aktuell */ }
+          }
+          resolve();
+        });
+        proc.on('error', () => resolve()); // npm nicht gefunden o. ä.
+      });
+
+      // Installierte Version direkt aus node_modules lesen (Fallback wenn outdated leer)
+      const getInstalled = (name) => {
+        try {
+          const p = path.join(rootDir, 'node_modules', name, 'package.json');
+          return JSON.parse(fs.readFileSync(p, 'utf8')).version || null;
+        } catch { return null; }
       };
-      try {
-        // --silent unterdrückt npm notices/warnings in stdout
-        const out = execSync('npm outdated --json --depth=0 --silent', { cwd: rootDir, timeout: 30000 });
-        outdated = _parseNpmJson(out);
-      } catch (err) {
-        // npm outdated exits with code 1 when packages are outdated; stdout still contains JSON
-        if (err.stdout) { try { outdated = _parseNpmJson(err.stdout); } catch {} }
-      }
 
       const packages = Object.entries(allDeps).map(([name, info]) => {
         const od = outdated[name];
+        const installed = od?.current ?? getInstalled(name);
         const curMajor = od ? parseInt((od.current || '0').split('.')[0], 10) : 0;
         const latMajor = od ? parseInt((od.latest  || '0').split('.')[0], 10) : 0;
         return {
           name,
           required : info.required,
           type     : info.type,
-          current  : od?.current ?? null,
+          current  : installed,
           wanted   : od?.wanted  ?? null,
           latest   : od?.latest  ?? null,
           outdated : !!od,
