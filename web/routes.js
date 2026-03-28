@@ -286,6 +286,7 @@ module.exports = function startWebServer({
   app.get('/api/diagnostics/link-preview', dashboardAuth, async (req, res) => {
     try {
       const targetUrl = getPublicStatusUrl();
+      const currentRenderMode = config.get('discord.statusRenderMode');
       if (!targetUrl) {
         return res.json({
           ok: false,
@@ -303,6 +304,13 @@ module.exports = function startWebServer({
         'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0 Safari/537.36'
       );
 
+      const meta = discordProbe?.meta || {};
+      const hasOgTitle = !!meta.ogTitle;
+      const hasDescription = !!(meta.ogDescription || meta.metaDescription);
+      const hasImage = !!(meta.ogImage || meta.twitterImage);
+      const hasTwitterCard = !!meta.twitterCard;
+      const richPreviewLikely = !!(hasOgTitle && (hasDescription || hasImage || hasTwitterCard));
+
       const hints = [];
       if (!/^https:\/\//i.test(targetUrl)) {
         hints.push('🔴 Link-Preview benötigt HTTPS (nicht HTTP!).');
@@ -317,18 +325,20 @@ module.exports = function startWebServer({
         if (!/text\/html/i.test(discordProbe.contentType || '')) {
           hints.push(`🔴 Content-Type ist nicht text/html (${discordProbe.contentType || 'unbekannt'}).`);
         }
-        if (!discordProbe.hasMinimalOg && !discordProbe.hasTwitter) {
+        if (!richPreviewLikely) {
           const missing = [];
-          if (!discordProbe.meta.ogTitle) missing.push('og:title');
-          if (!discordProbe.meta.ogDescription && !discordProbe.meta.metaDescription) missing.push('og:description oder <meta name="description">');
-          if (!discordProbe.meta.ogImage) missing.push('og:image');
-          hints.push(`🔴 UNZUREICHENDE METADATEN: Fehlend: ${missing.join(', ')}. Discord braucht Title + Description/Image.`);
+          if (!hasOgTitle) missing.push('og:title');
+          if (!hasDescription) missing.push('og:description oder <meta name="description">');
+          if (!hasImage) missing.push('og:image oder twitter:image');
+          hints.push(`🔴 UNZUREICHENDE METADATEN: Fehlend: ${missing.join(', ')}. Discord braucht mindestens Titel + (Beschreibung ODER Bild).`);
+        } else if (hasOgTitle && !hasImage) {
+          hints.push('🟡 Vorschau ist grundsätzlich möglich, aber ohne Bild oft nur als Text-Link (og:image fehlt).');
         }
         if (discordProbe.challengeDetected) {
           hints.push('🔴 Cloudflare-Challenge erkannt - Discord-Crawler wird möglicherweise blockiert!');
         }
         if (discordProbe.isCloudflareServer && !discordProbe.challengeDetected) {
-          hints.push('ℹ️ Server: Cloudflare (läuft über CDN). Browser und Discord sehen eventuell unterschiedliche Cache-Versionen.');
+          hints.push('ℹ️ Server: Cloudflare (CDN). Browser und Discord sehen teils unterschiedliche Cache-Stände.');
         }
       }
 
@@ -338,21 +348,35 @@ module.exports = function startWebServer({
 
       // Konkrete Lösungsvorschläge
       const solutions = [];
-      if (!discordProbe.richPreview && targetUrl.includes('uptime.rexxlab.uk')) {
-        solutions.push('💡 LÖSUNG: Uptime Kuma hat zu minimale OG-Tags. Optionen:');
-        solutions.push('  1️⃣ Im Uptime Kuma: Bearbeite die Status-Seite HTML-Template um og:description & og:image zu entfernen/setzen.');
-        solutions.push('  2️⃣ Nutze statt Link-Preview den EMBED-Modus (Einstellungen → DISCORD_STATUS_RENDER_MODE = "embed").');
-        solutions.push('  3️⃣ Schreibe eine eigene Status-Seite mit vollständigen OG-Tags.');
+      if (!richPreviewLikely) {
+        solutions.push('💡 LÖSUNG: Für zuverlässige Discord-Vorschau müssen Meta-Tags ergänzt werden.');
+        solutions.push('  1️⃣ Pflicht: og:title + (og:description ODER og:image). Empfohlen: alle drei Tags setzen.');
+        solutions.push('  2️⃣ Bei og:image: absolute HTTPS-URL verwenden (kein relativer Pfad).');
+        solutions.push('  3️⃣ Nach Änderungen 2–10 Minuten warten (CDN/Discord Cache) und Diagnose erneut starten.');
+        if (currentRenderMode !== 'embed') {
+          solutions.push('  4️⃣ Sofort-Workaround: DISCORD_STATUS_RENDER_MODE="embed" setzen (stabil, ohne OG-Abhängigkeit).');
+        }
       }
       if (discordProbe.challengeDetected) {
         solutions.push('⚠️ CLOUDFLARE-HERAUSFORDERUNG: Cloudflare blockiert Discord-Crawler!');
-        solutions.push('  → Lösung: In Cloudflare-Dashboard → IP-Whitelist oder Bot-Filter für Discordbot anpassen.');
+        solutions.push('  → Lösung: In Cloudflare Dashboard Bot-Protection/Firewall-Regeln für Discordbot lockern.');
+      }
+      if (discordProbe.ok && defaultProbe.ok && defaultProbe.status === discordProbe.status && discordProbe.headers?.cfCacheStatus) {
+        solutions.push(`ℹ️ Cloudflare Cache-Status: ${discordProbe.headers.cfCacheStatus}. Bei DYNAMIC/BYPASS ist der Ursprung direkt relevant.`);
       }
 
       res.json({
         ok: true,
         targetUrl,
+        currentRenderMode,
         checkedAt: new Date().toISOString(),
+        diagnosis: {
+          richPreviewLikely,
+          hasOgTitle,
+          hasDescription,
+          hasImage,
+          hasTwitterCard,
+        },
         probes: {
           discord: discordProbe,
           browser: defaultProbe,
