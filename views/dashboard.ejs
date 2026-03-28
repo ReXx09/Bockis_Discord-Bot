@@ -151,8 +151,9 @@
       border-radius: var(--radius);
       padding: 20px;
     }
-    .card.dragging { opacity: 0.5; }
+    .card.dragging { opacity: 0.5; will-change: opacity; }
     .card.drag-over { border-color: var(--blue); box-shadow: 0 0 0 2px rgba(56,139,253,.2); }
+    .dashboard-grid.dragging { pointer-events: none; }
     .drop-placeholder {
       min-height: 96px;
       border: 2px dashed rgba(56,139,253,.75);
@@ -161,6 +162,7 @@
       box-shadow: 0 0 0 2px rgba(56,139,253,.16), 0 0 18px rgba(56,139,253,.24);
       pointer-events: none;
       animation: dropPulse .9s ease-in-out infinite alternate;
+      will-change: grid-column;
     }
     @keyframes dropPulse {
       from { box-shadow: 0 0 0 1px rgba(56,139,253,.14), 0 0 8px rgba(56,139,253,.18); }
@@ -2408,6 +2410,10 @@
 
   let dragSrc = null;
   let dropPlaceholder = null;
+  let dragSrc = null;
+  let lastDragOverCard = null;
+  let lastPlacerBefore = null;
+  let dragOverThrottleId = null;
 
   function normalizeCardSpan(span) {
     // Historische 3/4-Einstellung (9/12) auf 2/3 (8/12) migrieren,
@@ -2467,17 +2473,24 @@
 
     card.addEventListener('dragstart', (e) => {
       dragSrc = card;
+      lastDragOverCard = null;
+      lastPlacerBefore = null;
       ensureDropPlaceholder(card);
       e.dataTransfer.effectAllowed = 'move';
       e.dataTransfer.setData('text/plain', card.dataset.cardId);
+      document.getElementById('dashboardGrid')?.classList.add('dragging');
       setTimeout(() => card.classList.add('dragging'), 0);
     });
 
     card.addEventListener('dragend', () => {
       card.classList.remove('dragging');
+      document.getElementById('dashboardGrid')?.classList.remove('dragging');
       document.querySelectorAll('.card.drag-over').forEach(c => c.classList.remove('drag-over'));
+      if (dragOverThrottleId) clearTimeout(dragOverThrottleId);
       removeDropPlaceholder();
       dragSrc = null;
+      lastDragOverCard = null;
+      lastPlacerBefore = null;
     });
 
     card.addEventListener('dragover', (e) => {
@@ -2485,21 +2498,33 @@
       if (!dragSrc || dragSrc === card) return;
       card.classList.add('drag-over');
 
-      const rect = card.getBoundingClientRect();
-      const placeBefore = e.clientY < rect.top + rect.height / 2;
-      const grid = document.getElementById('dashboardGrid');
-      if (!grid || !dropPlaceholder) return;
+      // Throttle die Positionsberechnung: max einmal pro 50ms
+      if (dragOverThrottleId) clearTimeout(dragOverThrottleId);
+      dragOverThrottleId = setTimeout(() => {
+        if (!dragSrc || !dropPlaceholder) return;
 
-      dropPlaceholder.dataset.span = dragSrc.dataset.span || '12';
-      if (placeBefore) {
-        if (card !== dropPlaceholder.nextElementSibling) {
-          grid.insertBefore(dropPlaceholder, card);
+        const rect = card.getBoundingClientRect();
+        const placeBefore = e.clientY < rect.top + rect.height / 2;
+        const grid = document.getElementById('dashboardGrid');
+        if (!grid || !dropPlaceholder) return;
+
+        // Nur DOM-Änderung wenn sich Position wirklich geändert hat
+        if (lastDragOverCard !== card || lastPlacerBefore !== placeBefore) {
+          dropPlaceholder.dataset.span = dragSrc.dataset.span || '12';
+          if (placeBefore) {
+            if (card !== dropPlaceholder.nextElementSibling) {
+              grid.insertBefore(dropPlaceholder, card);
+            }
+          } else {
+            if (card.nextSibling !== dropPlaceholder) {
+              grid.insertBefore(dropPlaceholder, card.nextSibling);
+            }
+          }
+          lastDragOverCard = card;
+          lastPlacerBefore = placeBefore;
         }
-      } else {
-        if (card.nextSibling !== dropPlaceholder) {
-          grid.insertBefore(dropPlaceholder, card.nextSibling);
-        }
-      }
+        dragOverThrottleId = null;
+      }, 50);
     });
 
     card.addEventListener('dragleave', (e) => {
