@@ -123,11 +123,29 @@ const config = convict({
       default: '📊 Service Status',
       env: 'SERVICE_CATEGORY_NAME'
     },
+    serviceCategoryId: {
+      doc: 'Optionale feste Kategorie-ID für Service-Kanäle (wenn gesetzt, hat diese Vorrang vor SERVICE_CATEGORY_NAME)',
+      format: String,
+      default: '',
+      env: 'SERVICE_CATEGORY_ID'
+    },
     serviceChannelNameMode: {
       doc: 'Namensmodus für automatisch erzeugte Service-Kanäle: strict_slug (Discord-sicher, klein) oder pretty (Groß/Klein/Emoji soweit Discord akzeptiert)',
       format: ['strict_slug', 'pretty'],
       default: 'strict_slug',
       env: 'SERVICE_CHANNEL_NAME_MODE'
+    },
+    serviceChannelAutoCreate: {
+      doc: 'Fehlende Service-Kanäle automatisch erstellen (true) oder nur bestehende, manuell zugeordnete Kanäle verwenden (false)',
+      format: Boolean,
+      default: true,
+      env: 'SERVICE_CHANNEL_AUTO_CREATE'
+    },
+    serviceChannelMap: {
+      doc: 'Optionale Zuordnung Monitor=ChannelID, getrennt mit ; (z.B. Next-Cloud=123;Pi-VPN=456)',
+      format: String,
+      default: '',
+      env: 'SERVICE_CHANNEL_MAP'
     },
     monitoredServices: {
       doc: 'Kommagetrennte Liste der Dienste, die als eigene Kanäle angezeigt werden (leer = alle aktiven)',

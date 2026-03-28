@@ -731,10 +731,37 @@
       <div class="cfg-pane-card hidden" data-cfg-pane="channels">
         <div class="cfg-pane-title">🧩 Dienst-Kanäle</div>
         <div class="cfg-field">
+          <label class="cfg-label" for="cfgServiceCategory">Service Kategorie-Name</label>
+          <input class="cfg-input" id="cfgServiceCategory" type="text" autocomplete="off"
+                 placeholder="z. B. 📊 Service Status">
+          <div class="cfg-hint">Wird für Auto-Erstellung genutzt, wenn keine feste Kategorie-ID gesetzt ist.</div>
+        </div>
+        <div class="cfg-field">
+          <label class="cfg-label" for="cfgServiceCategoryId">Feste Kategorie-ID (optional)</label>
+          <input class="cfg-input" id="cfgServiceCategoryId" type="text" autocomplete="off"
+                 placeholder="z. B. 123456789012345678">
+          <div class="cfg-hint">Wenn gesetzt, nutzt der Bot genau diese Kategorie und erstellt keine neue per Name.</div>
+        </div>
+        <div class="cfg-field">
           <label class="cfg-label" for="cfgMonitoredServices">Monitored Services</label>
           <input class="cfg-input" id="cfgMonitoredServices" type="text" autocomplete="off"
                  placeholder="Kommagetrennt, z. B. website,api,database">
-          <div class="cfg-hint">Leer = alle aktiven Monitore.</div>
+          <div class="cfg-hint">Kommagetrennte Whitelist. Wenn leer, werden Einträge aus Kanal-Mapping verwendet.</div>
+        </div>
+        <div class="cfg-field">
+          <label class="cfg-label" for="cfgServiceChannelMap">Manuelle Kanal-Zuordnung (optional)</label>
+          <input class="cfg-input" id="cfgServiceChannelMap" type="text" autocomplete="off"
+                 placeholder="Next-Cloud=123456789012345678;Pi-VPN=234567890123456789">
+          <div class="cfg-hint">Format: <code>Monitorname=ChannelID;Anderer Monitor=ChannelID</code>. Diese Zuordnung hat Vorrang.</div>
+        </div>
+        <div class="cfg-field">
+          <label class="cfg-label">Fehlende Kanäle automatisch erstellen</label>
+          <div style="display:flex;align-items:center;gap:12px;margin-top:2px">
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px">
+              <input type="checkbox" id="cfgServiceAutoCreate" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
+              <span>Auto-Erstellung aktiv (falls kein Mapping-Kanal vorhanden)</span>
+            </label>
+          </div>
         </div>
         <div class="cfg-field">
           <label class="cfg-label" for="cfgServiceChannelNameMode">Dienst-Kanalname Modus</label>
@@ -742,7 +769,7 @@
             <option value="strict_slug">Strict (Discord-sicher: klein + slug)</option>
             <option value="pretty">Pretty (versucht Großschrift/Emoji aus Dienstnamen)</option>
           </select>
-          <div class="cfg-hint">Bei <code>pretty</code> wird bei Discord-Ablehnung automatisch auf den sicheren Slug zurückgefallen.</div>
+          <div class="cfg-hint">Bei <code>pretty</code> wird bei Discord-Ablehnung automatisch auf den sicheren Slug zurückgefallen. Discord-Textkanäle unterstützen Großschreibung nur eingeschränkt.</div>
           <div class="cfg-hint" id="cfgChannelNamePreview" style="margin-top:6px"></div>
         </div>
         <div class="cfg-field" style="margin-bottom:0">
@@ -831,11 +858,6 @@
 
       <div class="cfg-pane-card hidden" data-cfg-pane="raspi">
         <div class="cfg-pane-title">🍓 Raspi / Web</div>
-        <div class="cfg-field">
-          <label class="cfg-label" for="cfgServiceCategory">Service Kategorie-Name</label>
-          <input class="cfg-input" id="cfgServiceCategory" type="text" autocomplete="off"
-                 placeholder="z. B. 📊 Service Status">
-        </div>
         <div class="cfg-field">
           <label class="cfg-label" for="cfgWebPort">Web Port</label>
           <input class="cfg-input" id="cfgWebPort" type="number" min="1" max="65535"
@@ -1928,7 +1950,9 @@
       setFieldValue('cfgCloudflareUrl', d.CLOUDFLARE_PUBLIC_URL || '');
       setFieldValue('cfgGuildId', d.GUILD_ID || '');
       setFieldValue('cfgServiceCategory', d.SERVICE_CATEGORY_NAME || '');
+      setFieldValue('cfgServiceCategoryId', d.SERVICE_CATEGORY_ID || '');
       setFieldValue('cfgMonitoredServices', d.MONITORED_SERVICES || '');
+      setFieldValue('cfgServiceChannelMap', d.SERVICE_CHANNEL_MAP || '');
       setFieldValue('cfgServiceChannelNameMode', d.SERVICE_CHANNEL_NAME_MODE || 'strict_slug');
       updateChannelNamePreview();
       setFieldValue('cfgUpdateInterval', d.UPDATE_INTERVAL || '300000');
@@ -1952,6 +1976,10 @@
       const indicatorEl = document.getElementById('cfgChannelIndicator');
       indicatorEl.checked = (d.CHANNEL_STATUS_INDICATOR || 'true') !== 'false';
       indicatorEl.dataset.initialValue = indicatorEl.checked ? 'true' : 'false';
+
+      const autoCreateEl = document.getElementById('cfgServiceAutoCreate');
+      autoCreateEl.checked = (d.SERVICE_CHANNEL_AUTO_CREATE || 'true') !== 'false';
+      autoCreateEl.dataset.initialValue = autoCreateEl.checked ? 'true' : 'false';
     } catch (e) {
       document.getElementById('cfgStatus').textContent = 'Ladefehler: ' + e.message;
       document.getElementById('cfgStatus').className = 'err';
@@ -1982,7 +2010,9 @@
     maybeSetChanged(body, 'DISCORD_STATUS_WEBHOOK_URL', 'cfgWebhookUrl', { allowEmpty: true });
     maybeSetChanged(body, 'GUILD_ID', 'cfgGuildId');
     maybeSetChanged(body, 'SERVICE_CATEGORY_NAME', 'cfgServiceCategory');
+    maybeSetChanged(body, 'SERVICE_CATEGORY_ID', 'cfgServiceCategoryId', { allowEmpty: true });
     maybeSetChanged(body, 'MONITORED_SERVICES', 'cfgMonitoredServices', { allowEmpty: true });
+    maybeSetChanged(body, 'SERVICE_CHANNEL_MAP', 'cfgServiceChannelMap', { allowEmpty: true });
     maybeSetChanged(body, 'SERVICE_CHANNEL_NAME_MODE', 'cfgServiceChannelNameMode');
     maybeSetChanged(body, 'UPDATE_INTERVAL', 'cfgUpdateInterval');
     maybeSetChanged(body, 'WEB_PORT', 'cfgWebPort');
@@ -1994,6 +2024,13 @@
     const initialIndicator = indicatorEl.dataset.initialValue || 'true';
     if (currentIndicator !== initialIndicator) {
       body.CHANNEL_STATUS_INDICATOR = currentIndicator;
+    }
+
+    const autoCreateEl = document.getElementById('cfgServiceAutoCreate');
+    const currentAutoCreate = autoCreateEl.checked ? 'true' : 'false';
+    const initialAutoCreate = autoCreateEl.dataset.initialValue || 'true';
+    if (currentAutoCreate !== initialAutoCreate) {
+      body.SERVICE_CHANNEL_AUTO_CREATE = currentAutoCreate;
     }
 
     if (Object.keys(body).length === 0) {

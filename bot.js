@@ -1267,10 +1267,31 @@ function _serviceChannelName(monitorName, status, mode = 'strict_slug') {
   return `${dot}-${slug || 'service'}`;
 }
 
+function _parseServiceChannelMap(rawMap) {
+  const map = {};
+  const source = String(rawMap || '').trim();
+  if (!source) return map;
+
+  const entries = source.split(';').map(s => s.trim()).filter(Boolean);
+  for (const entry of entries) {
+    const idx = entry.lastIndexOf('=');
+    if (idx <= 0) continue;
+    const monitor = entry.slice(0, idx).trim();
+    const channelId = entry.slice(idx + 1).trim();
+    if (!monitor || !/^\d+$/.test(channelId)) continue;
+    map[monitor.toLowerCase()] = channelId;
+  }
+
+  return map;
+}
+
 async function syncServiceChannels(monitors) {
   const guildId = config.get('discord.guildId');
   if (!guildId) return;  // Feature nicht konfiguriert
   const namingMode = config.get('discord.serviceChannelNameMode') || 'strict_slug';
+  const autoCreate = config.get('discord.serviceChannelAutoCreate') !== false;
+  const fixedCategoryId = String(config.get('discord.serviceCategoryId') || '').trim();
+  const manualChannelMap = _parseServiceChannelMap(config.get('discord.serviceChannelMap') || '');
 
   const guild = client.guilds.cache.get(guildId);
   if (!guild) {
@@ -1282,39 +1303,60 @@ async function syncServiceChannels(monitors) {
   const whitelist = (config.get('discord.monitoredServices') || '')
     .split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
 
-  if (!whitelist.length) {
-    logger.warn('Service-Kanal-Manager: MONITORED_SERVICES ist leer – Feature deaktiviert. Bitte konkrete Dienste in .env eintragen.');
+  const targetNames = new Set([...whitelist, ...Object.keys(manualChannelMap)]);
+
+  if (!targetNames.size) {
+    logger.warn('Service-Kanal-Manager: MONITORED_SERVICES und SERVICE_CHANNEL_MAP sind leer – Feature deaktiviert.');
     return;
   }
 
-  const targets = monitors.filter(m => whitelist.includes(m.name.toLowerCase()));
+  const targets = monitors.filter(m => targetNames.has(String(m.name || '').toLowerCase()));
 
   if (!targets.length) return;
 
-  // ── Kategorie sicherstellen ───────────────────────────────────────────────
-  let category = serviceCategoryId ? guild.channels.cache.get(serviceCategoryId) : null;
-  if (!category) {
-    const catName = config.get('discord.serviceCategoryName');
-    category = guild.channels.cache.find(
-      c => c.type === ChannelType.GuildCategory && c.name === catName
-    );
-    if (!category) {
-      try {
-        category = await guild.channels.create({
-          name: catName,
-          type: ChannelType.GuildCategory,
-          permissionOverwrites: [
-            { id: guild.roles.everyone, deny: [PermissionFlagsBits.SendMessages] }
-          ]
-        });
-        logger.info(`Service-Kanal-Manager: Kategorie "${catName}" erstellt (ID: ${category.id})`);
-      } catch (err) {
-        logger.error(`Service-Kanal-Manager: Kategorie erstellen fehlgeschlagen: ${err.message}`);
-        return;
+  let category = null;
+
+  if (autoCreate) {
+    // ── Kategorie sicherstellen (nur erforderlich bei Auto-Erstellung) ─────
+    if (fixedCategoryId) {
+      const byId = guild.channels.cache.get(fixedCategoryId);
+      if (byId && byId.type === ChannelType.GuildCategory) {
+        category = byId;
+      } else {
+        logger.warn(`Service-Kanal-Manager: SERVICE_CATEGORY_ID "${fixedCategoryId}" nicht gefunden oder keine Kategorie`);
       }
     }
-    serviceCategoryId = category.id;
-    persistState();
+
+    if (!category) {
+      category = serviceCategoryId ? guild.channels.cache.get(serviceCategoryId) : null;
+      if (category && category.type !== ChannelType.GuildCategory) {
+        category = null;
+      }
+    }
+
+    if (!category) {
+      const catName = config.get('discord.serviceCategoryName');
+      category = guild.channels.cache.find(
+        c => c.type === ChannelType.GuildCategory && c.name === catName
+      );
+      if (!category) {
+        try {
+          category = await guild.channels.create({
+            name: catName,
+            type: ChannelType.GuildCategory,
+            permissionOverwrites: [
+              { id: guild.roles.everyone, deny: [PermissionFlagsBits.SendMessages] }
+            ]
+          });
+          logger.info(`Service-Kanal-Manager: Kategorie "${catName}" erstellt (ID: ${category.id})`);
+        } catch (err) {
+          logger.error(`Service-Kanal-Manager: Kategorie erstellen fehlgeschlagen: ${err.message}`);
+          return;
+        }
+      }
+      serviceCategoryId = category.id;
+      persistState();
+    }
   }
 
   // ── Kanäle erstellen / umbenennen ─────────────────────────────────────────
@@ -1322,14 +1364,33 @@ async function syncServiceChannels(monitors) {
   let stateChanged = false;
 
   for (const monitor of targets) {
+    const monitorKey = String(monitor.name || '').toLowerCase();
     const desiredName = _serviceChannelName(monitor.name, monitor.status, namingMode);
     const fallbackName = _serviceChannelName(monitor.name, monitor.status, 'strict_slug');
     const topic       = `📈 Uptime: ${monitor.uptime ?? '–'}%  ⏱ Ping: ${monitor.ping != null ? monitor.ping + 'ms' : '–'}`;
-    let channelId     = serviceChannels[monitor.name];
+    const mappedChannelId = manualChannelMap[monitorKey] || null;
+    let channelId     = mappedChannelId || serviceChannels[monitor.name];
     let channel       = channelId ? guild.channels.cache.get(channelId) : null;
+
+    if (mappedChannelId && !channel) {
+      logger.warn(`Service-Kanal-Manager: Mapping für "${monitor.name}" auf Kanal ${mappedChannelId}, aber Kanal nicht gefunden`);
+    }
+
+    if (mappedChannelId && channel && serviceChannels[monitor.name] !== mappedChannelId) {
+      serviceChannels[monitor.name] = mappedChannelId;
+      stateChanged = true;
+    }
 
     // Kanal existiert nicht → erstellen
     if (!channel) {
+      if (!autoCreate) {
+        logger.warn(`Service-Kanal-Manager: Kein Kanal für "${monitor.name}" vorhanden und Auto-Erstellung ist deaktiviert`);
+        continue;
+      }
+      if (!category) {
+        logger.warn(`Service-Kanal-Manager: Keine Kategorie verfügbar für Auto-Erstellung von "${monitor.name}"`);
+        continue;
+      }
       try {
         channel = await guild.channels.create({
           name:   desiredName,
@@ -1367,6 +1428,11 @@ async function syncServiceChannels(monitors) {
           continue;
         }
       }
+    }
+
+    if (channel.type !== ChannelType.GuildText) {
+      logger.warn(`Service-Kanal-Manager: Kanal für "${monitor.name}" ist kein Textkanal (${channel.type})`);
+      continue;
     }
 
     // Kanal umbenennen wenn Status sich geändert hat

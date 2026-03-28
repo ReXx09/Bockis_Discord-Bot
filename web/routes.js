@@ -850,7 +850,10 @@ module.exports = function startWebServer({
         CHANNEL_STATUS_INDICATOR:     get('CHANNEL_STATUS_INDICATOR') || 'true',
         GUILD_ID:                     get('GUILD_ID'),
         SERVICE_CATEGORY_NAME:        get('SERVICE_CATEGORY_NAME'),
+        SERVICE_CATEGORY_ID:          get('SERVICE_CATEGORY_ID'),
         SERVICE_CHANNEL_NAME_MODE:    get('SERVICE_CHANNEL_NAME_MODE') || 'strict_slug',
+        SERVICE_CHANNEL_AUTO_CREATE:  get('SERVICE_CHANNEL_AUTO_CREATE') || 'true',
+        SERVICE_CHANNEL_MAP:          get('SERVICE_CHANNEL_MAP') || '',
         MONITORED_SERVICES:           get('MONITORED_SERVICES'),
         UPDATE_INTERVAL:              get('UPDATE_INTERVAL') || '300000',
         WEB_PORT:                     get('WEB_PORT') || '3000',
@@ -883,7 +886,10 @@ module.exports = function startWebServer({
       'CHANNEL_STATUS_INDICATOR',
       'GUILD_ID',
       'SERVICE_CATEGORY_NAME',
+      'SERVICE_CATEGORY_ID',
       'SERVICE_CHANNEL_NAME_MODE',
+      'SERVICE_CHANNEL_AUTO_CREATE',
+      'SERVICE_CHANNEL_MAP',
       'MONITORED_SERVICES',
       'UPDATE_INTERVAL',
       'WEB_PORT',
@@ -899,6 +905,8 @@ module.exports = function startWebServer({
       'UPTIME_KUMA_API_KEY',
       'CLOUDFLARE_PUBLIC_URL',
       'DASHBOARD_PASSWORD',
+      'SERVICE_CATEGORY_ID',
+      'SERVICE_CHANNEL_MAP',
       'MONITORED_SERVICES'
     ]);
     const envPath = path.join(rootDir, '.env');
@@ -939,8 +947,29 @@ module.exports = function startWebServer({
         return res.json({ ok: false, error: 'CHANNEL_STATUS_INDICATOR muss true oder false sein' });
       if (key === 'GUILD_ID' && val && !/^\d+$/.test(val))
         return res.json({ ok: false, error: 'GUILD_ID: Nur Zahlen erlaubt (Discord ID)' });
+      if (key === 'SERVICE_CATEGORY_ID' && val && !/^\d+$/.test(val))
+        return res.json({ ok: false, error: 'SERVICE_CATEGORY_ID: Nur Zahlen erlaubt (Discord ID)' });
       if (key === 'SERVICE_CHANNEL_NAME_MODE' && !['strict_slug', 'pretty'].includes(val))
         return res.json({ ok: false, error: 'SERVICE_CHANNEL_NAME_MODE muss strict_slug oder pretty sein' });
+      if (key === 'SERVICE_CHANNEL_AUTO_CREATE' && !['true', 'false'].includes(val))
+        return res.json({ ok: false, error: 'SERVICE_CHANNEL_AUTO_CREATE muss true oder false sein' });
+      if (key === 'SERVICE_CHANNEL_MAP') {
+        const entries = val.split(';').map(s => s.trim()).filter(Boolean);
+        for (const entry of entries) {
+          const idx = entry.lastIndexOf('=');
+          if (idx <= 0) {
+            return res.json({ ok: false, error: 'SERVICE_CHANNEL_MAP Format: Monitor=123456;Anderer Monitor=987654' });
+          }
+          const monitorName = entry.slice(0, idx).trim();
+          const channelId = entry.slice(idx + 1).trim();
+          if (!monitorName) {
+            return res.json({ ok: false, error: 'SERVICE_CHANNEL_MAP: Monitorname darf nicht leer sein' });
+          }
+          if (!/^\d+$/.test(channelId)) {
+            return res.json({ ok: false, error: `SERVICE_CHANNEL_MAP: Channel-ID ungültig bei "${monitorName}"` });
+          }
+        }
+      }
       if (key === 'UPDATE_INTERVAL') {
         const n = parseInt(val, 10);
         if (!Number.isFinite(n) || n < 10000)
