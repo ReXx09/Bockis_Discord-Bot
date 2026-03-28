@@ -480,12 +480,21 @@ module.exports = function startWebServer({
       };
 
       let outdated = {};
+      const _parseNpmJson = (raw) => {
+        // npm kann vor dem JSON Notices/Warnings in stdout mischen – JSON-Block extrahieren
+        const s = typeof raw === 'string' ? raw : raw.toString();
+        const start = s.indexOf('{');
+        const end   = s.lastIndexOf('}');
+        if (start === -1 || end === -1) return {};
+        return JSON.parse(s.slice(start, end + 1));
+      };
       try {
-        const out = execSync('npm outdated --json --depth=0', { cwd: rootDir, timeout: 30000 });
-        outdated = JSON.parse(out.toString() || '{}');
+        // --silent unterdrückt npm notices/warnings in stdout
+        const out = execSync('npm outdated --json --depth=0 --silent', { cwd: rootDir, timeout: 30000 });
+        outdated = _parseNpmJson(out);
       } catch (err) {
         // npm outdated exits with code 1 when packages are outdated; stdout still contains JSON
-        if (err.stdout) { try { outdated = JSON.parse(err.stdout.toString()); } catch {} }
+        if (err.stdout) { try { outdated = _parseNpmJson(err.stdout); } catch {} }
       }
 
       const packages = Object.entries(allDeps).map(([name, info]) => {
