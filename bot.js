@@ -1525,26 +1525,53 @@ async function calculateUptimeMetrics() {
 // #endregion
 
 // #region 20. SLASH-COMMANDS REGISTRIEREN
+const AVAILABLE_SLASH_COMMANDS = ['status', 'uptime', 'refresh'];
+
+function getEnabledSlashCommands() {
+  const raw = String(config.get('discord.enabledCommands') || '').trim();
+  const entries = raw
+    .split(',')
+    .map(s => s.trim().toLowerCase())
+    .filter(Boolean);
+  const unique = Array.from(new Set(entries)).filter(cmd => AVAILABLE_SLASH_COMMANDS.includes(cmd));
+  return unique.length ? unique : [...AVAILABLE_SLASH_COMMANDS];
+}
+
 async function registerSlashCommands() {
-  const commands = [
-    new SlashCommandBuilder()
-      .setName('status')
-      .setDescription('Zeigt den aktuellen Status aller Services')
-      .toJSON(),
-    new SlashCommandBuilder()
-      .setName('uptime')
-      .setDescription('Zeigt die Gesamt-Uptime aller aufgezeichneten Checks')
-      .toJSON(),
-    new SlashCommandBuilder()
-      .setName('refresh')
-      .setDescription('Erzwingt einen sofortigen Status-Refresh (nur Admins)')
-      .toJSON()
-  ];
+  const enabled = new Set(getEnabledSlashCommands());
+  const commands = [];
+
+  if (enabled.has('status')) {
+    commands.push(
+      new SlashCommandBuilder()
+        .setName('status')
+        .setDescription('Zeigt den aktuellen Status aller Services')
+        .toJSON()
+    );
+  }
+
+  if (enabled.has('uptime')) {
+    commands.push(
+      new SlashCommandBuilder()
+        .setName('uptime')
+        .setDescription('Zeigt die Gesamt-Uptime aller aufgezeichneten Checks')
+        .toJSON()
+    );
+  }
+
+  if (enabled.has('refresh')) {
+    commands.push(
+      new SlashCommandBuilder()
+        .setName('refresh')
+        .setDescription('Erzwingt einen sofortigen Status-Refresh (nur Admins)')
+        .toJSON()
+    );
+  }
 
   try {
     const rest = new REST({ version: '10' }).setToken(config.get('discord.token'));
     await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
-    logger.info('Slash-Commands erfolgreich registriert');
+    logger.info(`Slash-Commands erfolgreich registriert: ${Array.from(enabled).join(', ')}`);
   } catch (err) {
     logger.error(`Slash-Command-Registrierung fehlgeschlagen: ${err.message}`);
   }
@@ -1569,6 +1596,11 @@ async function applyConfiguredBotName() {
 // #region 21. SLASH-COMMAND HANDLER
 client.on('interactionCreate', async interaction => {
   if (!interaction.isChatInputCommand()) return;
+
+  const enabledSlashCommands = new Set(getEnabledSlashCommands());
+  if (!enabledSlashCommands.has(interaction.commandName)) {
+    return interaction.reply({ content: '❌ Dieses Bot-Kommando ist derzeit deaktiviert.', ephemeral: true });
+  }
 
   if (interaction.commandName === 'status') {
     await interaction.deferReply({ ephemeral: true });

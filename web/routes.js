@@ -837,6 +837,7 @@ module.exports = function startWebServer({
         ok: true,
         DISCORD_TOKEN:                maskSecret(token),
         DISCORD_BOT_NAME:             get('DISCORD_BOT_NAME') || '',
+        DISCORD_ENABLED_COMMANDS:     get('DISCORD_ENABLED_COMMANDS') || 'status,uptime,refresh',
         STATUS_CHANNEL_ID:            get('STATUS_CHANNEL_ID'),
         DISCORD_NOTIFICATION_CHANNEL: get('DISCORD_NOTIFICATION_CHANNEL'),
         DISCORD_STATUS_RENDER_MODE:   get('DISCORD_STATUS_RENDER_MODE') || 'auto',
@@ -874,6 +875,7 @@ module.exports = function startWebServer({
     const ALLOWED_CFG = [
       'DISCORD_TOKEN',
       'DISCORD_BOT_NAME',
+      'DISCORD_ENABLED_COMMANDS',
       'STATUS_CHANNEL_ID',
       'DISCORD_NOTIFICATION_CHANNEL',
       'DISCORD_STATUS_RENDER_MODE',
@@ -935,6 +937,20 @@ module.exports = function startWebServer({
       if (key === 'DISCORD_BOT_NAME') {
         if (/[\n\r]/.test(val)) return res.json({ ok: false, error: 'DISCORD_BOT_NAME darf keine Zeilenumbrüche enthalten' });
         if (val.length > 32) return res.json({ ok: false, error: 'DISCORD_BOT_NAME darf maximal 32 Zeichen enthalten' });
+      }
+      if (key === 'DISCORD_ENABLED_COMMANDS') {
+        const allowedCommands = new Set(['status', 'uptime', 'refresh']);
+        const entries = val.split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+        const uniqueEntries = Array.from(new Set(entries));
+        if (!uniqueEntries.length) {
+          return res.json({ ok: false, error: 'DISCORD_ENABLED_COMMANDS muss mindestens ein Kommando enthalten' });
+        }
+        const invalid = uniqueEntries.filter(cmd => !allowedCommands.has(cmd));
+        if (invalid.length) {
+          return res.json({ ok: false, error: `DISCORD_ENABLED_COMMANDS enthält ungültige Kommandos: ${invalid.join(', ')}` });
+        }
+        updates[key] = uniqueEntries.join(',');
+        continue;
       }
       if ((key === 'STATUS_CHANNEL_ID' || key === 'DISCORD_NOTIFICATION_CHANNEL') && !/^\d+$/.test(val))
         return res.json({ ok: false, error: `${key}: Nur Zahlen erlaubt (Discord ID)` });

@@ -695,6 +695,7 @@
         <div class="cfg-sidebar-title">Einstellungs-Menü</div>
         <div class="cfg-nav">
           <button class="cfg-nav-btn active" data-cfg-pane-btn="bot" onclick="setActiveSettingsPane('bot')">🤖 Bot & IDs</button>
+          <button class="cfg-nav-btn" data-cfg-pane-btn="commands" onclick="setActiveSettingsPane('commands')">⌨️ Bot-Kommandos</button>
           <button class="cfg-nav-btn" data-cfg-pane-btn="channels" onclick="setActiveSettingsPane('channels')">🧩 Dienst-Kanäle</button>
           <button class="cfg-nav-btn" data-cfg-pane-btn="renderer" onclick="setActiveSettingsPane('renderer')">📡 Discord Renderer</button>
           <button class="cfg-nav-btn" data-cfg-pane-btn="security" onclick="setActiveSettingsPane('security')">🗂 Sicherheit & API</button>
@@ -782,6 +783,29 @@
           <label class="cfg-label" for="cfgUpdateInterval">Update Intervall (ms)</label>
           <input class="cfg-input" id="cfgUpdateInterval" type="number" min="10000" step="1000"
                  placeholder="300000">
+        </div>
+      </div>
+
+      <div class="cfg-pane-card hidden" data-cfg-pane="commands">
+        <div class="cfg-pane-title">⌨️ Bot-Kommandos</div>
+        <div class="cfg-field">
+          <label class="cfg-label">Aktive Slash-Commands</label>
+          <div style="display:grid;gap:8px;margin-top:4px">
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px">
+              <input type="checkbox" id="cfgCmdStatus" data-cmd="status" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
+              <span><code>/status</code> - aktueller Service-Status</span>
+            </label>
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px">
+              <input type="checkbox" id="cfgCmdUptime" data-cmd="uptime" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
+              <span><code>/uptime</code> - Gesamt-Uptime</span>
+            </label>
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px">
+              <input type="checkbox" id="cfgCmdRefresh" data-cmd="refresh" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
+              <span><code>/refresh</code> - manueller Refresh (ManageGuild)</span>
+            </label>
+          </div>
+          <input type="hidden" id="cfgEnabledCommands" value="status,uptime,refresh">
+          <div class="cfg-hint">Mindestens ein Kommando muss aktiv bleiben. Änderungen werden beim Neustart neu registriert.</div>
         </div>
       </div>
 
@@ -1827,6 +1851,40 @@
     body[key] = value;
   }
 
+  function _parseEnabledCommands(value) {
+    const allowed = ['status', 'uptime', 'refresh'];
+    const entries = String(value || '')
+      .split(',')
+      .map(s => s.trim().toLowerCase())
+      .filter(Boolean);
+    const unique = Array.from(new Set(entries)).filter(cmd => allowed.includes(cmd));
+    return unique.length ? unique : ['status', 'uptime', 'refresh'];
+  }
+
+  function applyEnabledCommandsToCheckboxes(value) {
+    const enabled = new Set(_parseEnabledCommands(value));
+    const boxes = document.querySelectorAll('[data-cmd]');
+    boxes.forEach((box) => {
+      box.checked = enabled.has(box.dataset.cmd);
+    });
+  }
+
+  function syncEnabledCommandsFromCheckboxes(changedBox = null) {
+    const boxes = Array.from(document.querySelectorAll('[data-cmd]'));
+    if (!boxes.length) return;
+
+    let selected = boxes.filter(b => b.checked);
+    if (!selected.length) {
+      if (changedBox) changedBox.checked = true;
+      selected = boxes.filter(b => b.checked);
+      toast('Mindestens ein Bot-Kommando muss aktiv bleiben', 'warn');
+    }
+
+    const value = selected.map(b => b.dataset.cmd).join(',');
+    const hidden = document.getElementById('cfgEnabledCommands');
+    if (hidden) hidden.value = value;
+  }
+
   function setActiveSettingsPane(pane) {
     document.querySelectorAll('[data-cfg-pane-btn]').forEach((btn) => {
       btn.classList.toggle('active', btn.dataset.cfgPaneBtn === pane);
@@ -1947,6 +2005,8 @@
 
       setFieldValue('cfgStatusCh', d.STATUS_CHANNEL_ID || '');
       setFieldValue('cfgBotName', d.DISCORD_BOT_NAME || '');
+      setFieldValue('cfgEnabledCommands', d.DISCORD_ENABLED_COMMANDS || 'status,uptime,refresh');
+      applyEnabledCommandsToCheckboxes(d.DISCORD_ENABLED_COMMANDS || 'status,uptime,refresh');
       setFieldValue('cfgNotifCh', d.DISCORD_NOTIFICATION_CHANNEL || '');
       setFieldValue('cfgKumaUrl', d.UPTIME_KUMA_URL || '');
       setFieldValue('cfgRenderMode', d.DISCORD_STATUS_RENDER_MODE || 'auto');
@@ -2009,8 +2069,10 @@
     st.className = '';
 
     const body = {};
+    syncEnabledCommandsFromCheckboxes();
     maybeSetChanged(body, 'DISCORD_TOKEN', 'cfgToken');
     maybeSetChanged(body, 'DISCORD_BOT_NAME', 'cfgBotName', { allowEmpty: true });
+    maybeSetChanged(body, 'DISCORD_ENABLED_COMMANDS', 'cfgEnabledCommands');
     maybeSetChanged(body, 'STATUS_CHANNEL_ID', 'cfgStatusCh');
     maybeSetChanged(body, 'DISCORD_NOTIFICATION_CHANNEL', 'cfgNotifCh');
     maybeSetChanged(body, 'UPTIME_KUMA_URL', 'cfgKumaUrl');
@@ -2159,6 +2221,9 @@
   // Live-Vorschau für den Dienst-Kanalnamen
   document.getElementById('cfgMonitoredServices')?.addEventListener('input', updateChannelNamePreview);
   document.getElementById('cfgServiceChannelNameMode')?.addEventListener('change', updateChannelNamePreview);
+  document.querySelectorAll('[data-cmd]').forEach((box) => {
+    box.addEventListener('change', () => syncEnabledCommandsFromCheckboxes(box));
+  });
 
   // ────────────────────────────────────────────────────────────────────────
   // DRAGGABLE + COLLAPSIBLE CARDS SYSTEM
