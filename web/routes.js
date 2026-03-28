@@ -479,24 +479,35 @@ module.exports = function startWebServer({
         ...Object.fromEntries(Object.entries(pkg.devDependencies || {}).map(([k, v]) => [k, { required: v, type: 'devDependency' }])),
       };
 
-      // spawn trennt stdout und stderr physisch – npm notices/warnings landen in stderr
-      // und werden ignoriert. stdout enthält ausschließlich das JSON-Objekt.
-      // npm outdated beendet sich mit Exit-Code 1 wenn Pakete veraltet sind (kein Fehler).
+      // Robust gegen npm-Notices/Warnungen: parseable statt JSON nutzen.
+      // Damit vermeiden wir JSON.parse auf gemischter CLI-Ausgabe komplett.
       let outdated = {};
       await new Promise((resolve) => {
         let rawOut = '';
-        const proc = spawn('npm', ['outdated', '--json', '--depth=0'], {
-          cwd: rootDir, shell: true,
+        const proc = spawn('npm', ['outdated', '--parseable', '--depth=0'], {
+          cwd: rootDir,
         });
-        proc.stdout.on('data', (chunk) => { rawOut += chunk; });
+        proc.stdout.on('data', (chunk) => { rawOut += chunk.toString(); });
         proc.on('close', () => {
-          const s = rawOut.trim();
-          if (s.length > 0) {
-            try { outdated = JSON.parse(s); } catch { /* kein gültigesJSON – leer = alle aktuell */ }
+          const depNames = Object.keys(allDeps);
+          const lines = rawOut.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+          for (const line of lines) {
+            for (const depName of depNames) {
+              const marker = `node_modules/${depName}:`;
+              const idx = line.indexOf(marker);
+              if (idx === -1) continue;
+              const cols = line.slice(idx + marker.length).split(':');
+              outdated[depName] = {
+                current: cols[0] || null,
+                wanted : cols[1] || null,
+                latest : cols[2] || null,
+              };
+              break;
+            }
           }
           resolve();
         });
-        proc.on('error', () => resolve()); // npm nicht gefunden o. ä.
+        proc.on('error', () => resolve()); // npm nicht gefunden o.ä.
       });
 
       // Installierte Version direkt aus node_modules lesen (Fallback wenn outdated leer)
