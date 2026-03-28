@@ -274,6 +274,48 @@ module.exports = function startWebServer({
     }
   });
 
+  // ── API: Zeitkontext (System vs Node-Prozess) ─────────────────────────────
+
+  app.get('/api/time-context', dashboardAuth, (req, res) => {
+    try {
+      let systemTimezone = '';
+      try {
+        systemTimezone = execFileSync('timedatectl', ['show', '-p', 'Timezone', '--value'], { timeout: 2500 })
+          .toString().trim();
+      } catch { /* ignore */ }
+
+      const now = new Date();
+      const processTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || process.env.TZ || 'unknown';
+      const processTime = now.toLocaleString('de-DE', { hour12: false });
+
+      let systemTime = processTime;
+      if (systemTimezone) {
+        try {
+          systemTime = new Intl.DateTimeFormat('de-DE', {
+            timeZone: systemTimezone,
+            year: 'numeric', month: '2-digit', day: '2-digit',
+            hour: '2-digit', minute: '2-digit', second: '2-digit',
+            hour12: false
+          }).format(now);
+        } catch { /* ignore */ }
+      }
+
+      const timezoneMismatch = Boolean(systemTimezone && processTimezone && systemTimezone !== processTimezone);
+
+      return res.json({
+        ok: true,
+        systemTimezone,
+        processTimezone,
+        systemTime,
+        processTime,
+        timezoneMismatch,
+      });
+    } catch (err) {
+      logger.error(`/api/time-context Fehler: ${err.message}`);
+      return res.json({ ok: false, error: err.message });
+    }
+  });
+
   // ── API: Lokalisierung (Zeitzone / Datum-Uhrzeit / Sprache/Locale) ───────
 
   app.get('/api/system-localization', dashboardAuth, (req, res) => {

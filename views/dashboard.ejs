@@ -967,7 +967,7 @@
 
 <!-- ── ROW 3: LOGS ────────────────────────────────────── -->
 <div class="card" id="logsCard" data-span="12" data-pane="diagnostics">
-  <div class="card-title">📄 Bot-Logs <span class="muted" id="logFile" style="font-size:11px;font-weight:400;text-transform:none;letter-spacing:0;margin-left:8px">–</span></div>
+  <div class="card-title">📄 Bot-Logs <span class="muted" id="logFile" style="font-size:11px;font-weight:400;text-transform:none;letter-spacing:0;margin-left:8px">–</span> <span class="muted" id="logTimeContext" style="font-size:11px;font-weight:400;text-transform:none;letter-spacing:0;margin-left:8px">Zeit: –</span></div>
   <div class="log-viewer" id="logViewer">
     <span class="muted">Lade Logs…</span>
   </div>
@@ -1312,18 +1312,40 @@
     }).join('');
   }
 
+  function renderLogTimeContext(d) {
+    const el = document.getElementById('logTimeContext');
+    if (!el) return;
+    if (!d || !d.ok) {
+      el.textContent = 'Zeit: nicht verfügbar';
+      el.style.color = 'var(--muted)';
+      return;
+    }
+
+    const sysTz = d.systemTimezone || 'n/a';
+    const procTz = d.processTimezone || 'n/a';
+    el.textContent = `Zeit: System ${d.systemTime || '-'} (${sysTz}) | Bot ${d.processTime || '-'} (${procTz})`;
+
+    if (d.timezoneMismatch) {
+      el.style.color = 'var(--yellow)';
+    } else {
+      el.style.color = 'var(--muted)';
+    }
+  }
+
   // ── Fetch All ────────────────────────────────────────
   async function fetchAll() {
     try {
-      const [bot, status, logs, raspi] = await Promise.all([
+      const [bot, status, logs, raspi, timeCtx] = await Promise.all([
         fetch('/api/bot-info').then(r => r.json()),
         fetch('/api/status').then(r => r.json()),
         fetch('/api/logs').then(r => r.json()),
-        fetch('/api/raspi-status').then(r => r.json()).catch(() => ({ ok: false }))
+        fetch('/api/raspi-status').then(r => r.json()).catch(() => ({ ok: false })),
+        fetch('/api/time-context').then(r => r.json()).catch(() => ({ ok: false }))
       ]);
       if (bot.ok)    { renderBot(bot); renderSys(bot, raspi?.ok ? raspi : null); }
       if (status.ok) renderMonitors(status.monitors);
       if (logs.ok)   renderLogs(logs);
+      renderLogTimeContext(timeCtx);
     } catch (e) {
       toast('Verbindungsfehler – ' + e.message, 'err');
     }
