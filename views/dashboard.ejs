@@ -2312,13 +2312,18 @@
       { label: '⅔', span: '8',  title: 'Zwei Drittel Breite' },
       { label: '↔', span: '12', title: 'Volle Breite' },
     ];
+    const isSettingsCard = card.id === 'cfgCard';
+    const availableSpans = isSettingsCard
+      ? SPANS.filter(({ span }) => span !== '4')
+      : SPANS;
     const widthBtns = document.createElement('div');
     widthBtns.style.cssText = 'display:flex;gap:3px;margin-right:6px';
     const currentSpan = normalizeCardSpan(card.dataset.span || '12');
-    card.dataset.span = currentSpan;
-    SPANS.forEach(({ label, span, title }) => {
+    const safeCurrentSpan = isSettingsCard && currentSpan === '4' ? '12' : currentSpan;
+    card.dataset.span = safeCurrentSpan;
+    availableSpans.forEach(({ label, span, title }) => {
       const wb = document.createElement('button');
-      wb.className = 'btn-width' + (span === currentSpan ? ' active' : '');
+      wb.className = 'btn-width' + (span === safeCurrentSpan ? ' active' : '');
       wb.textContent = label;
       wb.title = title;
       wb.dataset.spanValue = span;
@@ -2378,10 +2383,12 @@
     document.querySelectorAll('#dashboardGrid > .card').forEach(card => {
       const span = normalizeCardSpan(s[card.dataset.cardId]);
       if (!span) return;
-      card.dataset.span = span;
-      s[card.dataset.cardId] = span;
+      const isSettingsCard = card.id === 'cfgCard';
+      const safeSpan = isSettingsCard && span === '4' ? '12' : span;
+      card.dataset.span = safeSpan;
+      s[card.dataset.cardId] = safeSpan;
       card.querySelectorAll('.btn-width').forEach(wb => {
-        wb.classList.toggle('active', wb.dataset.spanValue === span);
+        wb.classList.toggle('active', wb.dataset.spanValue === safeSpan);
       });
     });
     localStorage.setItem(STORAGE_KEY_SPAN, JSON.stringify(s));
