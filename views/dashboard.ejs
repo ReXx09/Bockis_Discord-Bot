@@ -732,6 +732,22 @@
                  placeholder="90000">
           <div class="cfg-hint">Wie oft der nächste Text aktiv wird (15s bis 60min).</div>
         </div>
+        <div class="cfg-field" style="border:1px solid var(--border);border-radius:8px;padding:12px;background:rgba(255,255,255,.01)">
+          <label class="cfg-label">Automatische Reaktionen auf Nachrichten</label>
+          <div style="display:flex;align-items:center;gap:10px;margin-top:6px;flex-wrap:wrap">
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px">
+              <input type="checkbox" id="cfgAutoReactionsEnabled" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
+              <span>Aktiviert (auf Nutzer-Nachrichten, ohne Bot-Nachrichten)</span>
+            </label>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 180px;gap:8px;margin-top:8px">
+            <input class="cfg-input" id="cfgAutoReactionsList" type="text" autocomplete="off"
+                   placeholder="👍;🔥;😂;🎉">
+            <input class="cfg-input" id="cfgAutoReactionsChance" type="number" min="1" max="100" step="1"
+                   placeholder="100">
+          </div>
+          <div class="cfg-hint" style="margin-top:8px">Emoji per <code>;</code> trennen, rechts Chance in Prozent (1-100).</div>
+        </div>
         <div class="cfg-field">
           <label class="cfg-label" for="cfgStatusCh">Status-Channel ID</label>
           <input class="cfg-input" id="cfgStatusCh" type="text" autocomplete="off"
@@ -2418,6 +2434,8 @@
       setFieldValue('cfgBotName', d.DISCORD_BOT_NAME || '');
       setFieldValue('cfgPresenceText', d.DISCORD_PRESENCE_TEXT || 'Service Health');
       setFieldValue('cfgPresenceRotateMs', d.DISCORD_PRESENCE_ROTATE_MS || '90000');
+      setFieldValue('cfgAutoReactionsList', d.DISCORD_AUTO_REACTIONS_LIST || '👍;🔥;😂');
+      setFieldValue('cfgAutoReactionsChance', d.DISCORD_AUTO_REACTIONS_CHANCE || '100');
       setFieldValue('cfgEnabledCommands', d.DISCORD_ENABLED_COMMANDS || 'status,uptime,refresh,help,coinflip,dice,eightball');
       applyEnabledCommandsToCheckboxes(d.DISCORD_ENABLED_COMMANDS || 'status,uptime,refresh,help,coinflip,dice,eightball');
       setFieldValue('cfgNotifCh', d.DISCORD_NOTIFICATION_CHANNEL || '');
@@ -2465,6 +2483,10 @@
       const autoQuietEl = document.getElementById('cfgServiceAutoQuiet');
       autoQuietEl.checked = (d.SERVICE_CHANNEL_AUTO_QUIET || 'true') !== 'false';
       autoQuietEl.dataset.initialValue = autoQuietEl.checked ? 'true' : 'false';
+
+      const autoReactEl = document.getElementById('cfgAutoReactionsEnabled');
+      autoReactEl.checked = (d.DISCORD_AUTO_REACTIONS_ENABLED || 'false') === 'true';
+      autoReactEl.dataset.initialValue = autoReactEl.checked ? 'true' : 'false';
     } catch (e) {
       document.getElementById('cfgStatus').textContent = 'Ladefehler: ' + e.message;
       document.getElementById('cfgStatus').className = 'err';
@@ -2492,6 +2514,8 @@
     maybeSetChanged(body, 'DISCORD_BOT_NAME', 'cfgBotName', { allowEmpty: true });
     maybeSetChanged(body, 'DISCORD_PRESENCE_TEXT', 'cfgPresenceText', { allowEmpty: true });
     maybeSetChanged(body, 'DISCORD_PRESENCE_ROTATE_MS', 'cfgPresenceRotateMs');
+    maybeSetChanged(body, 'DISCORD_AUTO_REACTIONS_LIST', 'cfgAutoReactionsList');
+    maybeSetChanged(body, 'DISCORD_AUTO_REACTIONS_CHANCE', 'cfgAutoReactionsChance');
     maybeSetChanged(body, 'DISCORD_ENABLED_COMMANDS', 'cfgEnabledCommands');
     maybeSetChanged(body, 'STATUS_CHANNEL_ID', 'cfgStatusCh');
     maybeSetChanged(body, 'DISCORD_NOTIFICATION_CHANNEL', 'cfgNotifCh');
@@ -2535,6 +2559,13 @@
     const initialAutoQuiet = autoQuietEl.dataset.initialValue || 'true';
     if (currentAutoQuiet !== initialAutoQuiet) {
       body.SERVICE_CHANNEL_AUTO_QUIET = currentAutoQuiet;
+    }
+
+    const autoReactEl = document.getElementById('cfgAutoReactionsEnabled');
+    const currentAutoReact = autoReactEl.checked ? 'true' : 'false';
+    const initialAutoReact = autoReactEl.dataset.initialValue || 'false';
+    if (currentAutoReact !== initialAutoReact) {
+      body.DISCORD_AUTO_REACTIONS_ENABLED = currentAutoReact;
     }
 
     if (Object.keys(body).length === 0) {

@@ -1718,6 +1718,23 @@ function startPresenceRotation() {
   }, intervalMs);
 }
 
+function getAutoReactionEmojis() {
+  const raw = String(config.get('discord.autoReactionsList') || '').trim();
+  const list = raw
+    .split(';')
+    .map(s => s.trim())
+    .filter(Boolean)
+    .slice(0, 30);
+  return list.length ? list : ['👍'];
+}
+
+function shouldAutoReactNow() {
+  if (!config.get('discord.autoReactionsEnabled')) return false;
+  const chance = Number(config.get('discord.autoReactionsChance'));
+  const safeChance = Number.isFinite(chance) ? Math.max(1, Math.min(chance, 100)) : 100;
+  return Math.random() * 100 < safeChance;
+}
+
 // #region 21. SLASH-COMMAND HANDLER
 client.on('interactionCreate', async interaction => {
   if (!interaction.isChatInputCommand()) return;
@@ -1843,6 +1860,23 @@ client.on('interactionCreate', async interaction => {
         ],
       }]
     });
+  }
+});
+
+client.on('messageCreate', async (message) => {
+  try {
+    if (!shouldAutoReactNow()) return;
+    if (!message?.inGuild?.()) return;
+    if (message.author?.bot) return;
+
+    const emojis = getAutoReactionEmojis();
+    const pick = emojis[Math.floor(Math.random() * emojis.length)];
+    if (!pick) return;
+
+    await message.react(pick);
+  } catch (err) {
+    // Keine harte Fehlermeldung, sonst Log-Spam bei fehlenden Rechten/ungültigen Emojis.
+    logger.warn(`Auto-Reaktion übersprungen: ${err.message}`);
   }
 });
 // #endregion

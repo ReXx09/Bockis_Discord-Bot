@@ -80,6 +80,24 @@ const config = convict({
       default: 90000,
       env: 'DISCORD_PRESENCE_ROTATE_MS'
     },
+    autoReactionsEnabled: {
+      doc: 'Automatische Reaktionen auf neue Nachrichten aktivieren',
+      format: Boolean,
+      default: false,
+      env: 'DISCORD_AUTO_REACTIONS_ENABLED'
+    },
+    autoReactionsList: {
+      doc: 'Emoji-Liste fuer Auto-Reaktionen, getrennt mit ; (z.B. 👍;🔥;😂)',
+      format: String,
+      default: '👍;🔥;😂',
+      env: 'DISCORD_AUTO_REACTIONS_LIST'
+    },
+    autoReactionsChance: {
+      doc: 'Wahrscheinlichkeit in Prozent (1-100) fuer Auto-Reaktionen',
+      format: 'int',
+      default: 100,
+      env: 'DISCORD_AUTO_REACTIONS_CHANCE'
+    },
     enabledCommands: {
       doc: 'Aktive Slash-Commands als Komma-Liste (status,uptime,refresh,help,coinflip,dice,eightball)',
       format: String,
