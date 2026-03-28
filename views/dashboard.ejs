@@ -458,6 +458,28 @@
     .ul-err  { color: var(--red); }
     .ul-warn { color: var(--yellow); }
 
+    /* DEPS TABLE */
+    .deps-table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 12px; }
+    .deps-table th {
+      text-align: left; font-size: 10px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: .06em;
+      color: var(--muted); padding: 5px 10px;
+      border-bottom: 1px solid var(--border);
+    }
+    .deps-table td { padding: 6px 10px; border-bottom: 1px solid rgba(255,255,255,.04); font-family: 'SFMono-Regular', Consolas, monospace; vertical-align: middle; }
+    .deps-table tr:last-child td { border-bottom: none; }
+    .deps-table tr:hover td { background: rgba(255,255,255,.03); }
+    .dep-name  { font-weight: 600; color: var(--text); }
+    .dep-dev   { font-size: 10px; color: var(--muted); margin-left: 4px; }
+    .dep-ver   { color: var(--muted); }
+    .dep-badge {
+      display: inline-block; padding: 2px 7px; border-radius: 4px;
+      font-size: 10px; font-weight: 700; letter-spacing: .03em;
+    }
+    .dep-ok-badge   { background: rgba(63,185,80,.12);  color: var(--green); }
+    .dep-warn-badge { background: rgba(210,153,34,.12); color: var(--yellow); }
+    .dep-crit-badge { background: rgba(248,81,73,.12);  color: var(--red); }
+
     /* CONFIG FORM */
     .cfg-form { margin-top: 4px; }
     .cfg-field { margin-bottom: 14px; }
@@ -777,6 +799,16 @@
   <div id="updateLog"></div>
 </div>
 
+<!-- ── DEPS KACHEL ──────────────────────────────────── -->
+<div class="card" id="depsCard" data-span="12" data-pane="updates">
+  <div class="card-title">📦 npm Abhängigkeiten</div>
+  <div class="mb12" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px">
+    <button class="btn" id="btnDepsCheck" onclick="checkDeps(true)">🔎 Abhängigkeiten prüfen</button>
+    <span class="muted" id="depsState">Noch nicht geprüft</span>
+  </div>
+  <div id="depsList"></div>
+</div>
+
 </div><!-- /.dashboard-grid -->
 
 <!-- ── TOAST ──────────────────────────────────────────── -->
@@ -808,6 +840,7 @@
 
     if (pane === 'updates') {
       checkUpdate(false);
+      checkDeps(false);
     }
 
     if (pane === 'diagnostics') {
@@ -1192,6 +1225,7 @@
   fetchAll();
   resetCd();
   checkUpdate();
+  checkDeps();
   setActivePane(localStorage.getItem(STORAGE_KEY_ACTIVE_PANE) || 'overview');
 
   // ── Update Check ─────────────────────────────────────
@@ -1257,6 +1291,64 @@
   function toggleUpdateSection() {
     const card = document.getElementById('updateCard');
     if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  // ── Abhängigkeiten prüfen ────────────────────────────
+
+  async function checkDeps(showToast = false) {
+    const btn   = document.getElementById('btnDepsCheck');
+    const state = document.getElementById('depsState');
+    const list  = document.getElementById('depsList');
+
+    btn.disabled = true;
+    btn.textContent = '⏳ Prüfe…';
+    if (state) state.textContent = 'Prüfe npm-Pakete…';
+
+    try {
+      const d = await fetch('/api/deps-check').then(r => r.json());
+
+      if (!d.ok) {
+        if (state) state.textContent = 'Fehler: ' + (d.error || 'Unbekannt');
+        if (showToast) toast('Fehler beim Abhängigkeitscheck', 'err');
+        return;
+      }
+
+      const rows = d.packages.map(p => {
+        const badge = !p.outdated
+          ? `<span class="dep-badge dep-ok-badge">✓ aktuell</span>`
+          : p.majorBump
+            ? `<span class="dep-badge dep-crit-badge">↑ Major ${escapeHtml(p.latest)}</span>`
+            : `<span class="dep-badge dep-warn-badge">↑ Minor ${escapeHtml(p.latest)}</span>`;
+        return `<tr>
+          <td><span class="dep-name">${escapeHtml(p.name)}</span>${p.type === 'devDependency' ? '<span class="dep-dev">dev</span>' : ''}</td>
+          <td class="dep-ver">${escapeHtml(p.required)}</td>
+          <td class="dep-ver">${escapeHtml(p.current ?? '–')}</td>
+          <td class="dep-ver">${escapeHtml(p.wanted  ?? '–')}</td>
+          <td class="dep-ver">${escapeHtml(p.latest  ?? '–')}</td>
+          <td>${badge}</td>
+        </tr>`;
+      }).join('');
+
+      list.innerHTML = `
+        <table class="deps-table">
+          <thead><tr>
+            <th>Paket</th><th>Erwartet</th><th>Installiert</th><th>Kompatibel</th><th>Neuest</th><th>Status</th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>`;
+
+      const txt = d.outdatedCount > 0
+        ? `${d.outdatedCount} von ${d.total} Paket(en) veraltet`
+        : `Alle ${d.total} Pakete aktuell`;
+      if (state) state.textContent = txt;
+      if (showToast) toast(txt, d.outdatedCount > 0 ? 'err' : 'ok');
+    } catch (e) {
+      if (state) state.textContent = 'Verbindungsfehler';
+      if (showToast) toast('Fehler: ' + e.message, 'err');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '🔎 Abhängigkeiten prüfen';
+    }
   }
 
   async function runUpdate(modeOverride = null, sourceBtnId = 'btnUpdateRun') {

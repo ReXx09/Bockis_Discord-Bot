@@ -466,6 +466,53 @@ module.exports = function startWebServer({
     }
   });
 
+  // ── API: npm Abhängigkeiten prüfen ──────────────────────────────────────────
+
+  app.get('/api/deps-check', dashboardAuth, (req, res) => {
+    try {
+      const pkgPath = path.join(rootDir, 'package.json');
+      if (!fs.existsSync(pkgPath)) return res.json({ ok: false, error: 'package.json nicht gefunden' });
+
+      const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+      const allDeps = {
+        ...Object.fromEntries(Object.entries(pkg.dependencies    || {}).map(([k, v]) => [k, { required: v, type: 'dependency'    }])),
+        ...Object.fromEntries(Object.entries(pkg.devDependencies || {}).map(([k, v]) => [k, { required: v, type: 'devDependency' }])),
+      };
+
+      let outdated = {};
+      try {
+        const out = execSync('npm outdated --json --depth=0', { cwd: rootDir, timeout: 30000 });
+        outdated = JSON.parse(out.toString() || '{}');
+      } catch (err) {
+        // npm outdated exits with code 1 when packages are outdated; stdout still contains JSON
+        if (err.stdout) { try { outdated = JSON.parse(err.stdout.toString()); } catch {} }
+      }
+
+      const packages = Object.entries(allDeps).map(([name, info]) => {
+        const od = outdated[name];
+        const curMajor = od ? parseInt((od.current || '0').split('.')[0], 10) : 0;
+        const latMajor = od ? parseInt((od.latest  || '0').split('.')[0], 10) : 0;
+        return {
+          name,
+          required : info.required,
+          type     : info.type,
+          current  : od?.current ?? null,
+          wanted   : od?.wanted  ?? null,
+          latest   : od?.latest  ?? null,
+          outdated : !!od,
+          majorBump: od ? (latMajor > curMajor) : false,
+        };
+      });
+
+      packages.sort((a, b) => (b.outdated - a.outdated) || a.name.localeCompare(b.name));
+      const outdatedCount = packages.filter(p => p.outdated).length;
+      res.json({ ok: true, packages, outdatedCount, total: packages.length });
+    } catch (err) {
+      logger.error(`/api/deps-check Fehler: ${err.message}`);
+      res.json({ ok: false, error: err.message });
+    }
+  });
+
   // ── API: Update ausführen (Server-Sent Events) ──────────────────────────────
 
   app.post('/api/update-run', dashboardAuth, (req, res) => {
