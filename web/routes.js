@@ -935,6 +935,55 @@ module.exports = function startWebServer({
     }
   });
 
+  // ── API: System-Abhängigkeit per apt-get installieren ──────────────────────
+
+  app.post('/api/sys-dep-install', dashboardAuth, (req, res) => {
+    // Hardcoded allowlist — key vom Client, aptPackage kommt immer vom Server
+    const ALLOWED_SYS_KEYS = {
+      'git':                   'git',
+      'curl':                  'curl',
+      'wget':                  'wget',
+      'node':                  'nodejs npm',
+      'npm':                   'npm',
+      'rsvg-convert':          'librsvg2-bin',
+      'cloudflared':           'cloudflared',
+      'docker':                'docker.io',
+      'docker-compose-plugin': 'docker-compose-plugin',
+    };
+
+    const key = req.body?.key;
+    if (!key || !Object.prototype.hasOwnProperty.call(ALLOWED_SYS_KEYS, key)) {
+      return res.status(400).json({ ok: false, error: 'Ungültiger Abhängigkeits-Schlüssel.' });
+    }
+
+    let aptAvailable = false;
+    try {
+      execFileSync('apt-get', ['--version'], { timeout: 3000, stdio: 'ignore' });
+      aptAvailable = true;
+    } catch { /* not available */ }
+
+    if (!aptAvailable) {
+      return res.status(400).json({ ok: false, error: 'apt-get nicht verfügbar. Manuelle Installation erforderlich.' });
+    }
+
+    const aptPackage = ALLOWED_SYS_KEYS[key];
+
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders();
+
+    const send = (line) => res.write(`data: ${line.replace(/\n/g, ' ')}\n\n`);
+
+    send(`[Dashboard] sudo apt-get install -y ${aptPackage}`);
+    const proc = spawn('sudo', ['apt-get', 'install', '-y', ...aptPackage.split(' ')], {
+      env: { ...process.env, DEBIAN_FRONTEND: 'noninteractive' },
+    });
+    proc.stdout.on('data', d => d.toString().split('\n').filter(Boolean).forEach(send));
+    proc.stderr.on('data', d => d.toString().split('\n').filter(Boolean).forEach(send));
+    proc.on('close', code => { res.write(`data: __EXIT__:${code}\n\n`); res.end(); });
+  });
+
   // ── API: Update ausführen (Server-Sent Events) ──────────────────────────────
 
   app.post('/api/update-run', dashboardAuth, (req, res) => {

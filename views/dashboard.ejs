@@ -456,7 +456,7 @@
     .commit-when { font-size: 11px; color: var(--muted); white-space: nowrap; }
 
     /* TERMINAL OUTPUT */
-    #updateLog {
+    #updateLog, .update-log {
       background: #010409;
       border: 1px solid var(--border);
       border-radius: var(--radius);
@@ -469,7 +469,7 @@
       display: none;
       margin-top: 12px;
     }
-    #updateLog.visible { display: block; }
+    #updateLog.visible, .update-log.visible { display: block; }
     .ul-line { white-space: pre-wrap; word-break: break-all; color: var(--muted); }
     .ul-ok   { color: var(--green); }
     .ul-err  { color: var(--red); }
@@ -1067,14 +1067,26 @@
   <div id="updateLog"></div>
 </div>
 
-<!-- ── DEPS KACHEL ──────────────────────────────────── -->
-<div class="card" id="depsCard" data-span="12" data-pane="updates">
-  <div class="card-title">📦 Abhängigkeiten (npm + System)</div>
+<!-- ── NPM DEPS KACHEL ──────────────────────────────── -->
+<div class="card" id="npmDepCard" data-span="12" data-pane="updates">
+  <div class="card-title">📦 npm Pakete</div>
   <div class="mb12" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px">
-    <button class="btn" id="btnDepsCheck" onclick="checkDeps(true)">🔎 Abhängigkeiten prüfen</button>
+    <button class="btn" id="btnDepsCheck" onclick="checkDeps(true)">🔎 npm prüfen</button>
     <span class="muted" id="depsState">Noch nicht geprüft</span>
   </div>
   <div id="depsList"></div>
+</div>
+
+<!-- ── SYSTEM DEPS KACHEL ─────────────────────────── -->
+<div class="card" id="sysDepCard" data-span="12" data-pane="updates">
+  <div class="card-title">🖥️ System-Abhängigkeiten</div>
+  <div class="mb12" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px">
+    <button class="btn" id="btnSysDepsCheck" onclick="checkDeps(true)">🔎 System prüfen</button>
+    <button class="btn btn-green" id="btnInstallAllMissing" onclick="installAllMissingSysDeps()" style="display:none">⬇ Alle fehlenden installieren</button>
+    <span class="muted" id="sysDepState">Noch nicht geprüft</span>
+  </div>
+  <div id="sysDepsList"></div>
+  <div id="sysInstallLog" style="display:none;margin-top:12px"></div>
 </div>
 
 </div><!-- /.dashboard-grid -->
@@ -1589,24 +1601,33 @@
 
   // ── Abhängigkeiten prüfen ────────────────────────────
 
-  async function checkDeps(showToast = false) {
-    const btn   = document.getElementById('btnDepsCheck');
-    const state = document.getElementById('depsState');
-    const list  = document.getElementById('depsList');
+  // Zwischenspeicher für fehlende+installierbare Deps (für "Alle installieren")
+  let _pendingSysInstalls = [];
 
-    btn.disabled = true;
-    btn.textContent = '⏳ Prüfe…';
-    if (state) state.textContent = 'Prüfe npm- und System-Abhängigkeiten…';
+  async function checkDeps(showToast = false) {
+    const btn      = document.getElementById('btnDepsCheck');
+    const sysBtn   = document.getElementById('btnSysDepsCheck');
+    const state    = document.getElementById('depsState');
+    const sysState = document.getElementById('sysDepState');
+    const list     = document.getElementById('depsList');
+    const sysList  = document.getElementById('sysDepsList');
+    const btnInstAll = document.getElementById('btnInstallAllMissing');
+
+    [btn, sysBtn].forEach(b => { if (b) { b.disabled = true; b.textContent = '⏳ Prüfe…'; } });
+    if (state)    state.textContent    = 'Prüfe npm-Pakete…';
+    if (sysState) sysState.textContent = 'Prüfe System-Abhängigkeiten…';
 
     try {
       const d = await fetch('/api/deps-check').then(r => r.json());
 
       if (!d.ok) {
-        if (state) state.textContent = 'Fehler: ' + (d.error || 'Unbekannt');
+        if (state)    state.textContent    = 'Fehler: ' + (d.error || 'Unbekannt');
+        if (sysState) sysState.textContent = 'Fehler: ' + (d.error || 'Unbekannt');
         if (showToast) toast('Fehler beim Abhängigkeitscheck', 'err');
         return;
       }
 
+      // ── npm Tabelle ─────────────────────────────────────────────────────────
       const rows = d.packages.map(p => {
         const badge = !p.outdated
           ? `<span class="dep-badge dep-ok-badge">✓ aktuell</span>`
@@ -1623,29 +1644,7 @@
         </tr>`;
       }).join('');
 
-      const systemRows = (d.systemDeps || []).map(dep => {
-        const badge = dep.installed
-          ? `<span class="dep-badge dep-ok-badge">✓ installiert</span>`
-          : dep.required
-            ? `<span class="dep-badge dep-crit-badge">✗ fehlt (Pflicht)</span>`
-            : `<span class="dep-badge dep-warn-badge">○ optional</span>`;
-
-        const installHint = dep.installable
-          ? `<code>${escapeHtml(dep.installCommand)}</code>`
-          : '<span class="muted">manuell installieren</span>';
-
-        return `<tr>
-          <td><span class="dep-name">${escapeHtml(dep.name)}</span></td>
-          <td>${dep.required ? 'Pflicht' : 'Optional'}</td>
-          <td class="dep-ver">${escapeHtml(dep.version || '–')}</td>
-          <td>${escapeHtml(dep.requiredBy || '–')}</td>
-          <td>${dep.installed ? '–' : installHint}</td>
-          <td>${badge}</td>
-        </tr>`;
-      }).join('');
-
-      const npmTable = `
-        <div class="muted" style="margin:10px 0 6px 0;font-size:12px;letter-spacing:.08em;text-transform:uppercase">npm Pakete</div>
+      list.innerHTML = `
         <table class="deps-table">
           <thead><tr>
             <th>Paket</th><th>Erwartet</th><th>Installiert</th><th>Kompatibel</th><th>Neuest</th><th>Status</th>
@@ -1653,38 +1652,161 @@
           <tbody>${rows || '<tr><td colspan="6" class="muted">Keine npm-Pakete gefunden.</td></tr>'}</tbody>
         </table>`;
 
-      const systemTable = `
-        <div class="muted" style="margin:14px 0 6px 0;font-size:12px;letter-spacing:.08em;text-transform:uppercase">System-Abhängigkeiten</div>
+      const npmTxt = d.outdatedCount > 0
+        ? `${d.outdatedCount} von ${d.total} Paket(en) veraltet`
+        : `Alles aktuell (${d.total} Pakete)`;
+      if (state) state.textContent = npmTxt;
+
+      // ── System-Tabelle ──────────────────────────────────────────────────────
+      _pendingSysInstalls = [];
+
+      const systemRows = (d.systemDeps || []).map(dep => {
+        const badge = dep.installed
+          ? `<span class="dep-badge dep-ok-badge">✓ installiert</span>`
+          : dep.required
+            ? `<span class="dep-badge dep-crit-badge">✗ fehlt (Pflicht)</span>`
+            : `<span class="dep-badge dep-warn-badge">○ optional</span>`;
+
+        let installCell;
+        if (dep.installed) {
+          installCell = '<span class="muted">–</span>';
+        } else if (dep.installable) {
+          _pendingSysInstalls.push(dep.key);
+          installCell = `<button class="btn btn-green" style="padding:2px 10px;font-size:12px"
+            onclick="installSysDep('${escapeHtml(dep.key)}', this)">⬇ Installieren</button>`;
+        } else {
+          installCell = `<code style="font-size:11px">${escapeHtml(dep.installCommand || 'manuell')}</code>`;
+        }
+
+        return `<tr id="sysdep-row-${escapeHtml(dep.key)}">
+          <td><span class="dep-name">${escapeHtml(dep.name)}</span></td>
+          <td>${dep.required ? '<span style="color:var(--accent-err)">Pflicht</span>' : '<span class="muted">Optional</span>'}</td>
+          <td class="dep-ver">${escapeHtml(dep.version || '–')}</td>
+          <td>${escapeHtml(dep.requiredBy || '–')}</td>
+          <td>${installCell}</td>
+          <td>${badge}</td>
+        </tr>`;
+      }).join('');
+
+      const aptHint = (d.systemDeps?.length > 0 && !d.aptAvailable)
+        ? '<div class="muted" style="margin-top:8px;font-size:12px">Hinweis: apt-get nicht verfügbar — Direkt-Installation nicht möglich.</div>'
+        : '';
+
+      sysList.innerHTML = `
         <table class="deps-table">
           <thead><tr>
             <th>Tool</th><th>Typ</th><th>Version</th><th>Verwendet für</th><th>Installieren</th><th>Status</th>
           </tr></thead>
           <tbody>${systemRows || '<tr><td colspan="6" class="muted">Keine System-Abhängigkeiten definiert.</td></tr>'}</tbody>
-        </table>`;
+        </table>${aptHint}`;
 
-      const aptHint = d.aptAvailable
-        ? ''
-        : '<div class="muted" style="margin-top:8px">Hinweis: apt-get nicht verfügbar, daher keine Auto-Install-Befehle.</div>';
+      // "Alle installieren" Button nur zeigen wenn mindestens eine Dep installierbar ist
+      if (btnInstAll) btnInstAll.style.display = _pendingSysInstalls.length > 0 ? '' : 'none';
 
-      list.innerHTML = npmTable + systemTable + aptHint;
-
-      const npmTxt = d.outdatedCount > 0
-        ? `${d.outdatedCount} von ${d.total} npm-Paket(en) veraltet`
-        : `npm aktuell (${d.total} Pakete)`;
-      const sysMissing = d.systemMissingCount || 0;
+      const sysMissing         = d.systemMissingCount || 0;
       const sysRequiredMissing = d.systemRequiredMissingCount || 0;
       const sysTxt = sysMissing > 0
-        ? `System: ${sysMissing} fehlen${sysRequiredMissing > 0 ? ` (${sysRequiredMissing} Pflicht)` : ''}`
-        : 'System: alle vorhanden';
-      const txt = `${npmTxt} · ${sysTxt}`;
-      if (state) state.textContent = txt;
-      if (showToast) toast(txt, (d.outdatedCount > 0 || sysRequiredMissing > 0) ? 'err' : 'ok');
+        ? `${sysMissing} fehlend${sysRequiredMissing > 0 ? `, ${sysRequiredMissing} Pflicht` : ''}`
+        : 'Alle vorhanden';
+      if (sysState) sysState.textContent = sysTxt;
+
+      if (showToast) {
+        const allOk = d.outdatedCount === 0 && sysRequiredMissing === 0;
+        toast(`npm: ${npmTxt} · System: ${sysTxt}`, allOk ? 'ok' : 'err');
+      }
     } catch (e) {
-      if (state) state.textContent = 'Verbindungsfehler';
+      if (state)    state.textContent    = 'Verbindungsfehler';
+      if (sysState) sysState.textContent = 'Verbindungsfehler';
       if (showToast) toast('Fehler: ' + e.message, 'err');
     } finally {
-      btn.disabled = false;
-      btn.textContent = '🔎 Abhängigkeiten prüfen';
+      if (btn)    { btn.disabled    = false; btn.textContent    = '🔎 npm prüfen'; }
+      if (sysBtn) { sysBtn.disabled = false; sysBtn.textContent = '🔎 System prüfen'; }
+    }
+  }
+
+  // ── System-Abhängigkeit direkt installieren ─────────────────────────────────
+
+  async function installSysDep(key, triggerBtn = null) {
+    const logEl   = document.getElementById('sysInstallLog');
+    const sysState = document.getElementById('sysDepState');
+    const btnInstAll = document.getElementById('btnInstallAllMissing');
+
+    if (triggerBtn) { triggerBtn.disabled = true; triggerBtn.textContent = '⏳…'; }
+    if (btnInstAll) btnInstAll.disabled = true;
+    if (sysState)   sysState.textContent = `Installiere ${key}…`;
+
+    logEl.style.display = 'block';
+    logEl.className = 'update-log visible';
+    logEl.innerHTML = '';
+
+    const addLine = (text, cls = '') => {
+      const el = document.createElement('div');
+      el.className = 'ul-line ' + cls;
+      el.textContent = text.replace(/\x1b\[[0-9;]*m/g, '');
+      logEl.appendChild(el);
+      logEl.scrollTop = logEl.scrollHeight;
+    };
+
+    try {
+      const res = await fetch('/api/sys-dep-install', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: res.statusText }));
+        addLine('Fehler: ' + (err.error || res.statusText), 'ul-err');
+        if (sysState) sysState.textContent = 'Installation fehlgeschlagen';
+        toast('Installation fehlgeschlagen: ' + (err.error || ''), 'err');
+        return;
+      }
+
+      const reader = res.body.getReader();
+      const dec    = new TextDecoder();
+      let buf = '';
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        const parts = buf.split('\n\n');
+        buf = parts.pop();
+        for (const part of parts) {
+          if (!part.startsWith('data:')) continue;
+          const line = part.slice(5).trim();
+          if (line.startsWith('__EXIT__:')) {
+            const code = line.split(':')[1];
+            if (code === '0') {
+              addLine(`✓ ${key} erfolgreich installiert!`, 'ul-ok');
+              toast(`✓ ${key} installiert`, 'ok');
+            } else {
+              addLine(`✗ Installation fehlgeschlagen (Exit-Code ${code})`, 'ul-err');
+              toast(`Installation fehlgeschlagen (Code ${code})`, 'err');
+            }
+          } else {
+            let cls = 'ul-line';
+            if (/error|fehler|fail/i.test(line))          cls = 'ul-err';
+            else if (/warn|⚠/i.test(line))                cls = 'ul-warn';
+            else if (/✓|success|erfolgreich/i.test(line)) cls = 'ul-ok';
+            addLine(line, cls);
+          }
+        }
+      }
+    } catch (e) {
+      addLine('Verbindungsfehler: ' + e.message, 'ul-err');
+      toast('Fehler: ' + e.message, 'err');
+    } finally {
+      if (triggerBtn) { triggerBtn.disabled = false; triggerBtn.textContent = '⬇ Installieren'; }
+      if (btnInstAll) btnInstAll.disabled = false;
+      // Status nach Installation neu laden
+      checkDeps(false);
+    }
+  }
+
+  async function installAllMissingSysDeps() {
+    for (const key of [..._pendingSysInstalls]) {
+      await installSysDep(key, null);
     }
   }
 
