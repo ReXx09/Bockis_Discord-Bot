@@ -1469,6 +1469,11 @@
       log.scrollTop = log.scrollHeight;
     };
 
+    // Wird true, sobald der Stream "Service wird neugestartet" meldet.
+    // Dann ist ein Verbindungsabbruch erwartet und kein Fehler.
+    let willRestart = false;
+    let handledByRestart = false;
+
     try {
       const res  = await fetch('/api/update-run', {
         method: 'POST',
@@ -1502,6 +1507,11 @@
               if (state) state.textContent = `Update fehlgeschlagen (Code ${code})`;
             }
           } else {
+            // Neustart erkennen bevor der Service (und damit die Verbindung) stirbt
+            const cleanLine = line.replace(/\x1b\[[0-9;]*m/g, '');
+            if (/starte.*service.*neu|restarting.*service/i.test(cleanLine)) {
+              willRestart = true;
+            }
             let cls = 'ul-line';
             if (/error|fehler|fail/i.test(line))   cls = 'ul-err';
             else if (/warn|⚠/i.test(line))         cls = 'ul-warn';
@@ -1511,9 +1521,18 @@
         }
       }
     } catch (e) {
-      addLine('Verbindungsfehler: ' + e.message, 'ul-err');
-      toast('Fehler: ' + e.message, 'err');
-      if (state) state.textContent = 'Verbindungsfehler beim Update';
+      if (willRestart) {
+        // Erwarteter Verbindungsabbruch durch Service-Neustart — kein Fehler
+        handledByRestart = true;
+        addLine('→ Service neugestartet — warte auf Wiederherstellung…', 'ul-warn');
+        if (state) state.textContent = 'Service neugestartet — warte…';
+        // Im Hintergrund pollen bis der Server wieder antwortet
+        _waitForServerReconnect(state);
+      } else {
+        addLine('Verbindungsfehler: ' + e.message, 'ul-err');
+        toast('Fehler: ' + e.message, 'err');
+        if (state) state.textContent = 'Verbindungsfehler beim Update';
+      }
     } finally {
       btn.disabled = false;
       btn.textContent = getUpdateButtonLabel(selectedTask, sourceBtnId === 'btnUpdateRun');
@@ -1527,8 +1546,37 @@
         if (paneBtn.id === 'btnUpdateNpmPane') paneBtn.textContent = getUpdateButtonLabel('npm');
         if (paneBtn.id === 'btnUpdateFullPane') paneBtn.textContent = getUpdateButtonLabel('full');
       });
-      checkUpdate(false);
+      // Update-Check nur ausführen wenn kein Neustart läuft (der Reconnect-Poller macht es dann)
+      if (!handledByRestart) checkUpdate(false);
     }
+  }
+
+  async function _waitForServerReconnect(stateEl, maxWaitMs = 90000, intervalMs = 2500) {
+    const start = Date.now();
+    while (Date.now() - start < maxWaitMs) {
+      await new Promise(r => setTimeout(r, intervalMs));
+      try {
+        const r = await fetch('/api/config', { signal: AbortSignal.timeout(3000) });
+        if (r.ok) {
+          if (stateEl) stateEl.textContent = 'Update & Neustart erfolgreich ✓';
+          const logEl = document.getElementById('updateLog');
+          if (logEl) {
+            const el = document.createElement('div');
+            el.className = 'ul-line ul-ok';
+            el.textContent = '✓ Service läuft wieder — Verbindung wiederhergestellt!';
+            logEl.appendChild(el);
+            logEl.scrollTop = logEl.scrollHeight;
+          }
+          toast('✓ Update & Neustart erfolgreich!', 'ok');
+          document.getElementById('updateBanner')?.classList.add('hidden');
+          checkUpdate(false);
+          return;
+        }
+      } catch { /* Server antwortet noch nicht */ }
+    }
+    // Timeout nach maxWaitMs
+    if (stateEl) stateEl.textContent = 'Service antwortet nicht — bitte manuell prüfen';
+    toast('Service antwortet nach 90s nicht', 'err');
   }
 
   function setFieldValue(id, value) {
