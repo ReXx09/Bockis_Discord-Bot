@@ -884,6 +884,22 @@
               <option value="sansbold">Sans Bold (𝗟𝗼𝗼𝗸)</option>
               <option value="circled">Kreis (Ⓛⓞⓞⓚ)</option>
             </select>
+            <select class="cfg-input" id="cfgUnicodeSpecial" style="min-width:220px;flex:1">
+              <option value="">Sonderzeichen wählen…</option>
+              <option value="┃">┃ Senkrecht breit</option>
+              <option value="┇">┇ Senkrecht gestrichelt</option>
+              <option value="┋">┋ Senkrecht fett</option>
+              <option value="╏">╏ Senkrecht doppelt</option>
+              <option value="『』">『』 Klammern eckig</option>
+              <option value="【】">【】 Klammern fett</option>
+              <option value="《》">《》 Klammern spitz</option>
+              <option value="✦">✦ Stern klein</option>
+              <option value="✧">✧ Stern fein</option>
+              <option value="❖">❖ Diamant</option>
+              <option value="•">• Punkt</option>
+              <option value="→">→ Pfeil rechts</option>
+            </select>
+            <button class="btn" onclick="appendUnicodeSpecialChar()">➕ Sonderzeichen einfügen</button>
             <button class="btn" onclick="copyUnicodeStyledText()">📋 Ergebnis kopieren</button>
           </div>
           <input class="cfg-input" id="cfgUnicodeOutput" type="text" readonly
@@ -2226,6 +2242,29 @@
     const style = styleEl.value || 'fullwidth';
     const transformed = Array.from(input).map(ch => _toStyledAsciiChar(ch, style)).join('');
     outputEl.value = transformed;
+  }
+
+  function appendUnicodeSpecialChar() {
+    const inputEl = document.getElementById('cfgUnicodeInput');
+    const specialEl = document.getElementById('cfgUnicodeSpecial');
+    if (!inputEl || !specialEl) return;
+
+    const selected = String(specialEl.value || '');
+    if (!selected) {
+      toast('Bitte ein Sonderzeichen auswählen', 'warn');
+      return;
+    }
+
+    const start = inputEl.selectionStart ?? inputEl.value.length;
+    const end = inputEl.selectionEnd ?? inputEl.value.length;
+    const before = inputEl.value.slice(0, start);
+    const after = inputEl.value.slice(end);
+    inputEl.value = before + selected + after;
+    const cursorPos = start + selected.length;
+    inputEl.setSelectionRange(cursorPos, cursorPos);
+    inputEl.focus();
+    specialEl.value = '';
+    convertUnicodeStyledText();
   }
 
   async function copyUnicodeStyledText() {
