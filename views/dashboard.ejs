@@ -600,12 +600,30 @@
       transition: border-color .15s;
     }
     .cfg-input:focus { border-color: var(--blue); }
+    .cfg-input.cfg-dirty {
+      border-color: var(--yellow, #d4b60d);
+      box-shadow: 0 0 0 1px rgba(212,182,13,.25);
+    }
+    #cfgCard input[type="checkbox"].cfg-dirty {
+      outline: 1px solid rgba(212,182,13,.65);
+      outline-offset: 2px;
+    }
+    .cfg-field-dirty .cfg-label {
+      color: var(--yellow, #d4b60d);
+    }
     .cfg-hint { font-size: 11px; color: var(--muted); margin-top: 4px; }
     .cfg-actions { display: flex; gap: 10px; align-items: center; margin-top: 6px; }
     #cfgStatus { font-size: 12px; }
     #cfgStatus.ok  { color: var(--green); }
     #cfgStatus.err { color: var(--red); }
     #cfgStatus.warn { color: var(--yellow, #d4b60d); }
+    #cfgDirtyState {
+      display: none;
+      font-size: 12px;
+      color: var(--yellow, #d4b60d);
+      white-space: nowrap;
+    }
+    #cfgDirtyState.show { display: inline; }
 
     .diag-hints { margin-top: 10px; }
     .diag-hints .ll { border-left: 2px solid transparent; padding-left: 8px; }
@@ -1134,6 +1152,7 @@
     <div class="cfg-actions">
       <button class="btn btn-green" id="btnCfgSave" onclick="saveConfig()">💾 Speichern &amp; Neu starten</button>
       <button class="btn" onclick="confirmResetConfig()" title="Lädt alle Eingaben aus der gespeicherten Konfiguration neu">↺ Zurücksetzen</button>
+      <span id="cfgDirtyState" title="Ungespeicherte lokale Änderungen in den Einstellungen">● Ungespeicherte Änderungen</span>
       <span id="cfgStatus"></span>
     </div>
   </div>
@@ -2193,6 +2212,28 @@
     return el.dataset.dirty === '1';
   }
 
+  function _setDirtyState(el, isDirty) {
+    if (!el) return;
+    el.dataset.dirty = isDirty ? '1' : '0';
+    el.classList.toggle('cfg-dirty', !!isDirty);
+    const field = el.closest('.cfg-field');
+    if (field) field.classList.toggle('cfg-field-dirty', !!isDirty);
+  }
+
+  function refreshConfigDirtyIndicator() {
+    const dirtyEl = document.getElementById('cfgDirtyState');
+    if (!dirtyEl) return;
+    const fields = document.querySelectorAll('#cfgCard .cfg-input, #cfgCard input[type="checkbox"], #cfgCard select, #cfgCard textarea');
+    const count = Array.from(fields).filter((el) => el.dataset.dirty === '1').length;
+    if (count > 0) {
+      dirtyEl.textContent = `● ${count} ungespeicherte Änderung${count === 1 ? '' : 'en'}`;
+      dirtyEl.classList.add('show');
+    } else {
+      dirtyEl.classList.remove('show');
+      dirtyEl.textContent = '● Ungespeicherte Änderungen';
+    }
+  }
+
   function setFieldValue(id, value, { force = false } = {}) {
     const el = document.getElementById(id);
     if (!el) return;
@@ -2200,7 +2241,8 @@
     const normalized = value ?? '';
     el.value = normalized;
     el.dataset.initialValue = normalized;
-    el.dataset.dirty = '0';
+    _setDirtyState(el, false);
+    refreshConfigDirtyIndicator();
   }
 
   function setCheckboxValue(id, checked, { force = false } = {}) {
@@ -2210,7 +2252,8 @@
     const normalized = !!checked;
     el.checked = normalized;
     el.dataset.initialValue = normalized ? 'true' : 'false';
-    el.dataset.dirty = '0';
+    _setDirtyState(el, false);
+    refreshConfigDirtyIndicator();
   }
 
   function initConfigDirtyTracking() {
@@ -2218,15 +2261,20 @@
     fields.forEach((el) => {
       if (el.dataset.dirtyBound === '1') return;
       el.dataset.dirtyBound = '1';
-      const markDirty = () => { el.dataset.dirty = '1'; };
+      const markDirty = () => {
+        _setDirtyState(el, true);
+        refreshConfigDirtyIndicator();
+      };
       el.addEventListener('input', markDirty);
       el.addEventListener('change', markDirty);
     });
+    refreshConfigDirtyIndicator();
   }
 
   function clearConfigDirtyTracking() {
     const fields = document.querySelectorAll('#cfgCard .cfg-input, #cfgCard input[type="checkbox"], #cfgCard select, #cfgCard textarea');
-    fields.forEach((el) => { el.dataset.dirty = '0'; });
+    fields.forEach((el) => { _setDirtyState(el, false); });
+    refreshConfigDirtyIndicator();
   }
 
   function _computeChannelNamePreview(serviceName, status, mode) {
