@@ -2187,12 +2187,46 @@
     toast('Service antwortet nach 90s nicht', 'err');
   }
 
-  function setFieldValue(id, value) {
+  function _shouldPreserveConfigField(el, force = false) {
+    if (!el || force) return false;
+    if (el === document.activeElement) return true;
+    return el.dataset.dirty === '1';
+  }
+
+  function setFieldValue(id, value, { force = false } = {}) {
     const el = document.getElementById(id);
     if (!el) return;
+    if (_shouldPreserveConfigField(el, force)) return;
     const normalized = value ?? '';
     el.value = normalized;
     el.dataset.initialValue = normalized;
+    el.dataset.dirty = '0';
+  }
+
+  function setCheckboxValue(id, checked, { force = false } = {}) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (_shouldPreserveConfigField(el, force)) return;
+    const normalized = !!checked;
+    el.checked = normalized;
+    el.dataset.initialValue = normalized ? 'true' : 'false';
+    el.dataset.dirty = '0';
+  }
+
+  function initConfigDirtyTracking() {
+    const fields = document.querySelectorAll('#cfgCard .cfg-input, #cfgCard input[type="checkbox"], #cfgCard select, #cfgCard textarea');
+    fields.forEach((el) => {
+      if (el.dataset.dirtyBound === '1') return;
+      el.dataset.dirtyBound = '1';
+      const markDirty = () => { el.dataset.dirty = '1'; };
+      el.addEventListener('input', markDirty);
+      el.addEventListener('change', markDirty);
+    });
+  }
+
+  function clearConfigDirtyTracking() {
+    const fields = document.querySelectorAll('#cfgCard .cfg-input, #cfgCard input[type="checkbox"], #cfgCard select, #cfgCard textarea');
+    fields.forEach((el) => { el.dataset.dirty = '0'; });
   }
 
   function _computeChannelNamePreview(serviceName, status, mode) {
@@ -2682,49 +2716,51 @@
   }
 
   // ── Config laden ─────────────────────────────────────
-  async function loadConfig() {
+  async function loadConfig({ force = false } = {}) {
     try {
       const d = await fetch('/api/config').then(r => r.json());
       if (!d.ok) { document.getElementById('cfgStatus').textContent = d.error; return; }
 
+      const setCfg = (id, value) => setFieldValue(id, value, { force });
+
       // Secret-Felder bleiben leer, Platzhalter zeigt maskierten Ist-Wert.
-      setFieldValue('cfgToken', '');
-      setFieldValue('cfgApiKey', '');
-      setFieldValue('cfgWebhookUrl', '');
-      setFieldValue('cfgDashPassword', '');
+      setCfg('cfgToken', '');
+      setCfg('cfgApiKey', '');
+      setCfg('cfgWebhookUrl', '');
+      setCfg('cfgDashPassword', '');
 
       document.getElementById('cfgToken').dataset.initialValue = d.DISCORD_TOKEN ? '__MASKED__' : '';
       document.getElementById('cfgApiKey').dataset.initialValue = d.UPTIME_KUMA_API_KEY ? '__MASKED__' : '';
       document.getElementById('cfgWebhookUrl').dataset.initialValue = d.DISCORD_STATUS_WEBHOOK_URL ? '__MASKED__' : '';
       document.getElementById('cfgDashPassword').dataset.initialValue = d.DASHBOARD_PASSWORD ? '__MASKED__' : '';
 
-      setFieldValue('cfgStatusCh', d.STATUS_CHANNEL_ID || '');
-      setFieldValue('cfgBotName', d.DISCORD_BOT_NAME || '');
-      setFieldValue('cfgPresenceText', d.DISCORD_PRESENCE_TEXT || 'Service Health');
-      setFieldValue('cfgPresenceRotateMs', d.DISCORD_PRESENCE_ROTATE_MS || '90000');
-      setFieldValue('cfgAutoReactionEmojis', d.DISCORD_AUTO_REACTION_EMOJIS || '👍');
-      setFieldValue('cfgAutoReactionChannelIds', d.DISCORD_AUTO_REACTION_CHANNEL_IDS || '');
-      setFieldValue('cfgEnabledCommands', d.DISCORD_ENABLED_COMMANDS || 'status,uptime,refresh,help,coinflip,dice,eightball');
+      setCfg('cfgStatusCh', d.STATUS_CHANNEL_ID || '');
+      setCfg('cfgBotName', d.DISCORD_BOT_NAME || '');
+      setCfg('cfgPresenceText', d.DISCORD_PRESENCE_TEXT || 'Service Health');
+      setCfg('cfgPresenceRotateMs', d.DISCORD_PRESENCE_ROTATE_MS || '90000');
+      setCfg('cfgAutoReactionEmojis', d.DISCORD_AUTO_REACTION_EMOJIS || '👍');
+      setCfg('cfgAutoReactionChannelIds', d.DISCORD_AUTO_REACTION_CHANNEL_IDS || '');
+      setCfg('cfgEnabledCommands', d.DISCORD_ENABLED_COMMANDS || 'status,uptime,refresh,help,coinflip,dice,eightball');
       applyEnabledCommandsToCheckboxes(d.DISCORD_ENABLED_COMMANDS || 'status,uptime,refresh,help,coinflip,dice,eightball');
-      setFieldValue('cfgNotifCh', d.DISCORD_NOTIFICATION_CHANNEL || '');
-      setFieldValue('cfgKumaUrl', d.UPTIME_KUMA_URL || '');
-      setFieldValue('cfgRenderMode', d.DISCORD_STATUS_RENDER_MODE || 'auto');
-      setFieldValue('cfgStatusTitle', d.DISCORD_STATUS_MESSAGE_TITLE || '');
-      setFieldValue('cfgStatusButtonLabel', d.DISCORD_STATUS_BUTTON_LABEL || 'Statusseite öffnen');
-      setFieldValue('cfgWebuiButtonLabel', d.DISCORD_WEBUI_BUTTON_LABEL || '');
-      setFieldValue('cfgSlug', d.STATUS_PAGE_SLUG || 'dienste');
-      setFieldValue('cfgCloudflareUrl', d.CLOUDFLARE_PUBLIC_URL || '');
-      setFieldValue('cfgGuildId', d.GUILD_ID || '');
-      setFieldValue('cfgServiceGuildId', d.SERVICE_GUILD_ID || '');
-      setFieldValue('cfgServiceCategory', d.SERVICE_CATEGORY_NAME || '');
-      setFieldValue('cfgServiceCategoryId', d.SERVICE_CATEGORY_ID || '');
-      setFieldValue('cfgMonitoredServices', d.MONITORED_SERVICES || '');
-      setFieldValue('cfgServiceChannelMap', d.SERVICE_CHANNEL_MAP || '');
-      setFieldValue('cfgServiceChannelNameMode', d.SERVICE_CHANNEL_NAME_MODE || 'strict_slug');
+      setCfg('cfgNotifCh', d.DISCORD_NOTIFICATION_CHANNEL || '');
+      setCfg('cfgKumaUrl', d.UPTIME_KUMA_URL || '');
+      setCfg('cfgRenderMode', d.DISCORD_STATUS_RENDER_MODE || 'auto');
+      setCfg('cfgStatusTitle', d.DISCORD_STATUS_MESSAGE_TITLE || '');
+      setCfg('cfgStatusButtonLabel', d.DISCORD_STATUS_BUTTON_LABEL || 'Statusseite öffnen');
+      setCfg('cfgWebuiButtonLabel', d.DISCORD_WEBUI_BUTTON_LABEL || '');
+      setCfg('cfgSlug', d.STATUS_PAGE_SLUG || 'dienste');
+      setCfg('cfgCloudflareUrl', d.CLOUDFLARE_PUBLIC_URL || '');
+      setCfg('cfgGuildId', d.GUILD_ID || '');
+      setCfg('cfgServiceGuildId', d.SERVICE_GUILD_ID || '');
+      setCfg('cfgServiceCategory', d.SERVICE_CATEGORY_NAME || '');
+      setCfg('cfgServiceCategoryId', d.SERVICE_CATEGORY_ID || '');
+      setCfg('cfgMonitoredServices', d.MONITORED_SERVICES || '');
+      setCfg('cfgServiceChannelMap', d.SERVICE_CHANNEL_MAP || '');
+      setCfg('cfgServiceChannelNameMode', d.SERVICE_CHANNEL_NAME_MODE || 'strict_slug');
       updateChannelNamePreview();
-      setFieldValue('cfgUpdateInterval', d.UPDATE_INTERVAL || '300000');
-      setFieldValue('cfgWebPort', d.WEB_PORT || '3000');
-      setFieldValue('cfgDbStorage', d.DB_STORAGE || './data/status.db');
+      setCfg('cfgUpdateInterval', d.UPDATE_INTERVAL || '300000');
+      setCfg('cfgWebPort', d.WEB_PORT || '3000');
+      setCfg('cfgDbStorage', d.DB_STORAGE || './data/status.db');
 
       document.getElementById('cfgStatus').textContent = '';
       document.getElementById('cfgToken').placeholder = d.DISCORD_TOKEN
@@ -2740,21 +2776,12 @@
         ? `Aktuell: ${d.DASHBOARD_PASSWORD} — leer lassen = unverändert`
         : 'Neues Passwort eingeben (optional)';
 
-      const indicatorEl = document.getElementById('cfgChannelIndicator');
-      indicatorEl.checked = (d.CHANNEL_STATUS_INDICATOR || 'true') !== 'false';
-      indicatorEl.dataset.initialValue = indicatorEl.checked ? 'true' : 'false';
+      setCheckboxValue('cfgChannelIndicator', (d.CHANNEL_STATUS_INDICATOR || 'true') !== 'false', { force });
+      setCheckboxValue('cfgServiceAutoCreate', (d.SERVICE_CHANNEL_AUTO_CREATE || 'true') !== 'false', { force });
+      setCheckboxValue('cfgServiceAutoQuiet', (d.SERVICE_CHANNEL_AUTO_QUIET || 'true') !== 'false', { force });
+      setCheckboxValue('cfgAutoReactionEnabled', (d.DISCORD_AUTO_REACTION_ENABLED || 'false') === 'true', { force });
 
-      const autoCreateEl = document.getElementById('cfgServiceAutoCreate');
-      autoCreateEl.checked = (d.SERVICE_CHANNEL_AUTO_CREATE || 'true') !== 'false';
-      autoCreateEl.dataset.initialValue = autoCreateEl.checked ? 'true' : 'false';
-
-      const autoQuietEl = document.getElementById('cfgServiceAutoQuiet');
-      autoQuietEl.checked = (d.SERVICE_CHANNEL_AUTO_QUIET || 'true') !== 'false';
-      autoQuietEl.dataset.initialValue = autoQuietEl.checked ? 'true' : 'false';
-
-      const autoReactionEl = document.getElementById('cfgAutoReactionEnabled');
-      autoReactionEl.checked = (d.DISCORD_AUTO_REACTION_ENABLED || 'false') === 'true';
-      autoReactionEl.dataset.initialValue = autoReactionEl.checked ? 'true' : 'false';
+      if (force) clearConfigDirtyTracking();
     } catch (e) {
       document.getElementById('cfgStatus').textContent = 'Ladefehler: ' + e.message;
       document.getElementById('cfgStatus').className = 'err';
@@ -2764,7 +2791,8 @@
   function confirmResetConfig() {
     const ok = window.confirm('Zurücksetzen lädt alle Einstellungsfelder aus der gespeicherten Konfiguration neu. Nicht gespeicherte Änderungen gehen verloren. Fortfahren?');
     if (!ok) return;
-    loadConfig();
+    clearConfigDirtyTracking();
+    loadConfig({ force: true });
   }
 
   // ── Config speichern mit Polling nach Restart ──────
@@ -2875,7 +2903,8 @@
                 clearInterval(pollBotReady);
                 pollBotReady = null;
                 await new Promise(r => setTimeout(r, 500)); // Kurze Pause für Bot-Stabilisierung
-                loadConfig();
+                clearConfigDirtyTracking();
+                loadConfig({ force: true });
                 fetchAll();
                 await fetch('/api/refresh', { method: 'POST' }); // Sofortiger Discord-Update
                 st.textContent = `✓ Bot neu gestartet. Status aktualisiert.`;
@@ -2896,7 +2925,8 @@
             }
           }, 500);
         } else {
-          loadConfig();
+          clearConfigDirtyTracking();
+          loadConfig({ force: true });
         }
       } else {
         st.textContent = '✗ ' + (res.error || 'Unbekannter Fehler');
@@ -2941,6 +2971,7 @@
   }
 
   // Config beim Start laden
+  initConfigDirtyTracking();
   loadConfig();
   loadSystemLocalization();
   setActiveSettingsPane('bot');
