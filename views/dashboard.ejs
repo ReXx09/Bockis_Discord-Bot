@@ -869,8 +869,9 @@
           <select class="cfg-input" id="cfgServiceChannelNameMode">
             <option value="strict_slug">Strict (Discord-sicher: klein + slug)</option>
             <option value="pretty">Pretty (Lesbarkeit + Emoji, Großschrift nur wenn Discord es zulässt)</option>
+            <option value="mono">Monospace Look (Unicode-Schrift, wenn Discord es zulässt)</option>
           </select>
-          <div class="cfg-hint">Bei <code>pretty</code> bleibt der Name so lesbar wie möglich. Wichtig: Discord normalisiert Textkanalnamen oft selbst auf Kleinbuchstaben. Bei Ablehnung wird automatisch auf den sicheren Slug zurückgefallen.</div>
+          <div class="cfg-hint">Bei <code>pretty</code> und <code>mono</code> bleibt der Name so lesbar wie möglich. Wichtig: Discord normalisiert Textkanalnamen oft selbst auf Kleinbuchstaben oder lehnt bestimmte Unicode-Zeichen ab. Bei Ablehnung wird automatisch auf den sicheren Slug zurückgefallen.</div>
           <div class="cfg-hint" id="cfgChannelNamePreview" style="margin-top:6px"></div>
         </div>
         <div class="cfg-field" style="border:1px solid var(--border);border-radius:8px;padding:12px;background:rgba(255,255,255,.01)">
@@ -2173,6 +2174,30 @@
   function _computeChannelNamePreview(serviceName, status, mode) {
     const dot = status === 1 ? '🟢' : status === 0 ? '🔴' : '🟡';
     const raw = String(serviceName || '').trim() || 'Service Name';
+
+    const toMono = (value) => {
+      return Array.from(value).map((ch) => {
+        const code = ch.codePointAt(0);
+        if (code >= 65 && code <= 90) return String.fromCodePoint(0x1D670 + (code - 65));
+        if (code >= 97 && code <= 122) return String.fromCodePoint(0x1D68A + (code - 97));
+        if (code >= 48 && code <= 57) return String.fromCodePoint(0x1D7F6 + (code - 48));
+        return ch;
+      }).join('');
+    };
+
+    if (mode === 'mono') {
+      const mono = raw
+        .replace(/[\u0000-\u001F\u007F]/g, '')
+        .replace(/[\n\r\t]+/g, ' ')
+        .replace(/\s+/g, '-')
+        .replace(/#+/g, '-')
+        .replace(/:+/g, '-')
+        .replace(/@+/g, '-')
+        .replace(/\/+|\\+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 90);
+      return `${dot}-${toMono(mono || 'service')}`;
+    }
 
     if (mode === 'pretty') {
       const pretty = raw

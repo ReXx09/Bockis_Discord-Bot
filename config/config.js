@@ -178,8 +178,8 @@ const config = convict({
       env: 'SERVICE_CATEGORY_ID'
     },
     serviceChannelNameMode: {
-      doc: 'Namensmodus für automatisch erzeugte Service-Kanäle: strict_slug (Discord-sicher, klein) oder pretty (Groß/Klein/Emoji soweit Discord akzeptiert)',
-      format: ['strict_slug', 'pretty'],
+      doc: 'Namensmodus für automatisch erzeugte Service-Kanäle: strict_slug (Discord-sicher, klein), pretty (lesbar + Emoji) oder mono (Monospace Look soweit Discord akzeptiert)',
+      format: ['strict_slug', 'pretty', 'mono'],
       default: 'strict_slug',
       env: 'SERVICE_CHANNEL_NAME_MODE'
     },

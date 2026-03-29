@@ -1261,6 +1261,14 @@ async function updateStatusMessage() {
 function _serviceChannelName(monitorName, status, mode = 'strict_slug') {
   const dot  = status === 1 ? '🟢' : status === 0 ? '🔴' : '🟡';
 
+  const toMono = (value) => Array.from(value).map((ch) => {
+    const code = ch.codePointAt(0);
+    if (code >= 65 && code <= 90) return String.fromCodePoint(0x1D670 + (code - 65));
+    if (code >= 97 && code <= 122) return String.fromCodePoint(0x1D68A + (code - 97));
+    if (code >= 48 && code <= 57) return String.fromCodePoint(0x1D7F6 + (code - 48));
+    return ch;
+  }).join('');
+
   if (mode === 'pretty') {
     // "pretty" versucht Groß/Kleinschreibung und Emoji beizubehalten.
     // Falls Discord den Namen ablehnt, wird in syncServiceChannels auf strict_slug zurückgefallen.
@@ -1276,6 +1284,23 @@ function _serviceChannelName(monitorName, status, mode = 'strict_slug') {
       .replace(/^-+|-+$/g, '')
       .slice(0, 90);
     return `${dot}-${pretty || 'service'}`;
+  }
+
+  if (mode === 'mono') {
+    // "mono" nutzt mathematische Monospace-Zeichen als visuellen Look.
+    // Falls Discord den Namen ablehnt, wird in syncServiceChannels auf strict_slug zurückgefallen.
+    const base = String(monitorName || 'service')
+      .trim()
+      .replace(/[\u0000-\u001F\u007F]/g, '')
+      .replace(/[\n\r\t]+/g, ' ')
+      .replace(/\s+/g, '-')
+      .replace(/#+/g, '-')
+      .replace(/:+/g, '-')
+      .replace(/@+/g, '-')
+      .replace(/\/+|\\+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 90);
+    return `${dot}-${toMono(base || 'service')}`;
   }
 
   const slug = String(monitorName || 'service')
@@ -1481,7 +1506,7 @@ async function syncServiceChannels(monitors) {
             });
             serviceChannels[monitor.name] = channel.id;
             stateChanged = true;
-            logger.warn(`Service-Kanal-Manager: Pretty-Name abgelehnt, Fallback auf "${fallbackName}" für "${monitor.name}"`);
+            logger.warn(`Service-Kanal-Manager: Modus "${namingMode}" abgelehnt, Fallback auf "${fallbackName}" für "${monitor.name}"`);
           } catch (fallbackErr) {
             logger.error(`Service-Kanal-Manager: Kanal für "${monitor.name}" fehlgeschlagen: ${fallbackErr.message}`);
             continue;
@@ -1517,7 +1542,7 @@ async function syncServiceChannels(monitors) {
           try {
             await channel.edit({ name: fallbackName, topic });
             _svcRenameMs[channel.id] = now;
-            logger.warn(`Service-Kanal-Manager: Pretty-Umbenennung abgelehnt, Fallback auf "${fallbackName}" für "${monitor.name}"`);
+            logger.warn(`Service-Kanal-Manager: Modus "${namingMode}" bei Umbenennung abgelehnt, Fallback auf "${fallbackName}" für "${monitor.name}"`);
           } catch (fallbackErr) {
             logger.error(`Service-Kanal-Manager: Umbenennen "${monitor.name}" fehlgeschlagen: ${fallbackErr.message}`);
           }

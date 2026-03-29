@@ -1274,8 +1274,8 @@ module.exports = function startWebServer({
         return res.json({ ok: false, error: 'SERVICE_GUILD_ID: Nur Zahlen erlaubt (Discord ID)' });
       if (key === 'SERVICE_CATEGORY_ID' && val && !/^\d+$/.test(val))
         return res.json({ ok: false, error: 'SERVICE_CATEGORY_ID: Nur Zahlen erlaubt (Discord ID)' });
-      if (key === 'SERVICE_CHANNEL_NAME_MODE' && !['strict_slug', 'pretty'].includes(val))
-        return res.json({ ok: false, error: 'SERVICE_CHANNEL_NAME_MODE muss strict_slug oder pretty sein' });
+      if (key === 'SERVICE_CHANNEL_NAME_MODE' && !['strict_slug', 'pretty', 'mono'].includes(val))
+        return res.json({ ok: false, error: 'SERVICE_CHANNEL_NAME_MODE muss strict_slug, pretty oder mono sein' });
       if (key === 'SERVICE_CHANNEL_AUTO_CREATE' && !['true', 'false'].includes(val))
         return res.json({ ok: false, error: 'SERVICE_CHANNEL_AUTO_CREATE muss true oder false sein' });
       if (key === 'SERVICE_CHANNEL_AUTO_QUIET' && !['true', 'false'].includes(val))
