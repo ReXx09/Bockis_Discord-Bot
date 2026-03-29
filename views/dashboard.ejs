@@ -879,10 +879,8 @@
                  placeholder="Text eingeben, z. B. Next-Cloud" oninput="convertUnicodeStyledText()">
           <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
             <select class="cfg-input" id="cfgUnicodeStyle" style="min-width:220px;flex:1" onchange="convertUnicodeStyledText()">
-              <option value="fullwidth">Vollbreite (Ｌｏｏｋ)</option>
               <option value="mono">Monospace (𝙻𝚘𝚘𝚔)</option>
               <option value="sansbold">Sans Bold (𝗟𝗼𝗼𝗸)</option>
-              <option value="circled">Kreis (Ⓛⓞⓞⓚ)</option>
             </select>
             <select class="cfg-input" id="cfgUnicodeSpecial" style="min-width:220px;flex:1">
               <option value="">Sonderzeichen wählen…</option>
@@ -2205,31 +2203,22 @@
     // A-Z
     if (code >= 65 && code <= 90) {
       const offset = code - 65;
-      if (style === 'fullwidth') return String.fromCodePoint(0xFF21 + offset);
       if (style === 'mono') return String.fromCodePoint(0x1D670 + offset);
       if (style === 'sansbold') return String.fromCodePoint(0x1D5D4 + offset);
-      if (style === 'circled') return String.fromCodePoint(0x24B6 + offset);
     }
 
     // a-z
     if (code >= 97 && code <= 122) {
       const offset = code - 97;
-      if (style === 'fullwidth') return String.fromCodePoint(0xFF41 + offset);
       if (style === 'mono') return String.fromCodePoint(0x1D68A + offset);
       if (style === 'sansbold') return String.fromCodePoint(0x1D5EE + offset);
-      if (style === 'circled') return String.fromCodePoint(0x24D0 + offset);
     }
 
     // 0-9
     if (code >= 48 && code <= 57) {
       const offset = code - 48;
-      if (style === 'fullwidth') return String.fromCodePoint(0xFF10 + offset);
       if (style === 'mono') return String.fromCodePoint(0x1D7F6 + offset);
       if (style === 'sansbold') return String.fromCodePoint(0x1D7EC + offset);
-      if (style === 'circled') {
-        if (offset === 0) return String.fromCodePoint(0x24EA);
-        return String.fromCodePoint(0x2460 + (offset - 1));
-      }
     }
 
     return ch;
@@ -2242,7 +2231,7 @@
     if (!inputEl || !styleEl || !outputEl) return;
 
     const input = String(inputEl.value || '');
-    const style = styleEl.value || 'fullwidth';
+    const style = styleEl.value || 'mono';
     const transformed = Array.from(input).map(ch => _toStyledAsciiChar(ch, style)).join('');
     outputEl.value = transformed;
   }
