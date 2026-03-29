@@ -883,6 +883,8 @@
               <option value="mono">Monospace (𝙻𝚘𝚘𝚔)</option>
               <option value="sansbold">Sans Bold (𝗟𝗼𝗼𝗸)</option>
             </select>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
             <select class="cfg-input" id="cfgUnicodeSpecial" style="min-width:220px;flex:1">
               <option value="">Sonderzeichen wählen…</option>
               <option value="╔》">╔》 Start links</option>
@@ -901,7 +903,6 @@
               <option value="•">• Punkt</option>
               <option value="→">→ Pfeil rechts</option>
             </select>
-            <button class="btn" onclick="appendUnicodeSpecialChar()">➕ Sonderzeichen einfügen</button>
             <select class="cfg-input" id="cfgUnicodeEmoji" style="min-width:220px;flex:1">
               <option value="">Smiley wählen…</option>
               <option value="😀">😀 Freude</option>
@@ -920,8 +921,12 @@
               <option value="⚠️">⚠️ Hinweis</option>
               <option value="❌">❌ Fehler</option>
             </select>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+            <button class="btn" onclick="appendUnicodeSpecialChar()">➕ Sonderzeichen einfügen</button>
             <button class="btn" onclick="appendUnicodeSmiley()">😊 Smiley einfügen</button>
             <button class="btn" onclick="copyUnicodeStyledText()">📋 Ergebnis kopieren</button>
+            <button class="btn" onclick="clearUnicodeConverter()">🧹 Eingabe leeren</button>
           </div>
           <input class="cfg-input" id="cfgUnicodeOutput" type="text" readonly
                  placeholder="Hier erscheint der konvertierte Text" style="margin-top:8px">
@@ -2280,49 +2285,54 @@
     outputEl.value = transformed;
   }
 
-  function appendUnicodeSpecialChar() {
+  function _insertUnicodeValue(selected, emptyMsg) {
     const inputEl = document.getElementById('cfgUnicodeInput');
-    const specialEl = document.getElementById('cfgUnicodeSpecial');
-    if (!inputEl || !specialEl) return;
+    if (!inputEl) return false;
 
-    const selected = String(specialEl.value || '');
-    if (!selected) {
-      toast('Bitte ein Sonderzeichen auswählen', 'warn');
-      return;
+    const value = String(selected || '');
+    if (!value) {
+      toast(emptyMsg, 'warn');
+      return false;
     }
 
     const start = inputEl.selectionStart ?? inputEl.value.length;
     const end = inputEl.selectionEnd ?? inputEl.value.length;
     const before = inputEl.value.slice(0, start);
     const after = inputEl.value.slice(end);
-    inputEl.value = before + selected + after;
-    const cursorPos = start + selected.length;
+    inputEl.value = before + value + after;
+    const cursorPos = start + value.length;
     inputEl.setSelectionRange(cursorPos, cursorPos);
     inputEl.focus();
-    specialEl.value = '';
     convertUnicodeStyledText();
+    return true;
+  }
+
+  function appendUnicodeSpecialChar() {
+    const specialEl = document.getElementById('cfgUnicodeSpecial');
+    if (!specialEl) return;
+    const inserted = _insertUnicodeValue(specialEl.value, 'Bitte ein Sonderzeichen auswählen');
+    if (!inserted) return;
+    specialEl.value = '';
   }
 
   function appendUnicodeSmiley() {
-    const inputEl = document.getElementById('cfgUnicodeInput');
     const emojiEl = document.getElementById('cfgUnicodeEmoji');
-    if (!inputEl || !emojiEl) return;
-
-    const selected = String(emojiEl.value || '');
-    if (!selected) {
-      toast('Bitte einen Smiley auswählen', 'warn');
-      return;
-    }
-
-    const start = inputEl.selectionStart ?? inputEl.value.length;
-    const end = inputEl.selectionEnd ?? inputEl.value.length;
-    const before = inputEl.value.slice(0, start);
-    const after = inputEl.value.slice(end);
-    inputEl.value = before + selected + after;
-    const cursorPos = start + selected.length;
-    inputEl.setSelectionRange(cursorPos, cursorPos);
-    inputEl.focus();
+    if (!emojiEl) return;
+    const inserted = _insertUnicodeValue(emojiEl.value, 'Bitte einen Smiley auswählen');
+    if (!inserted) return;
     emojiEl.value = '';
+  }
+
+  function clearUnicodeConverter() {
+    const inputEl = document.getElementById('cfgUnicodeInput');
+    const outputEl = document.getElementById('cfgUnicodeOutput');
+    const specialEl = document.getElementById('cfgUnicodeSpecial');
+    const emojiEl = document.getElementById('cfgUnicodeEmoji');
+    if (inputEl) inputEl.value = '';
+    if (outputEl) outputEl.value = '';
+    if (specialEl) specialEl.value = '';
+    if (emojiEl) emojiEl.value = '';
+    if (inputEl) inputEl.focus();
     convertUnicodeStyledText();
   }
 
