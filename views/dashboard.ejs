@@ -873,6 +873,23 @@
           <div class="cfg-hint">Bei <code>pretty</code> bleibt der Name so lesbar wie möglich. Wichtig: Discord normalisiert Textkanalnamen oft selbst auf Kleinbuchstaben. Bei Ablehnung wird automatisch auf den sicheren Slug zurückgefallen.</div>
           <div class="cfg-hint" id="cfgChannelNamePreview" style="margin-top:6px"></div>
         </div>
+        <div class="cfg-field" style="border:1px solid var(--border);border-radius:8px;padding:12px;background:rgba(255,255,255,.01)">
+          <label class="cfg-label" for="cfgUnicodeInput">Unicode-Schrift Konverter (Copy &amp; Paste)</label>
+          <input class="cfg-input" id="cfgUnicodeInput" type="text" autocomplete="off"
+                 placeholder="Text eingeben, z. B. Next-Cloud" oninput="convertUnicodeStyledText()">
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+            <select class="cfg-input" id="cfgUnicodeStyle" style="min-width:220px;flex:1" onchange="convertUnicodeStyledText()">
+              <option value="fullwidth">Vollbreite (Ｌｏｏｋ)</option>
+              <option value="mono">Monospace (𝙻𝚘𝚘𝚔)</option>
+              <option value="sansbold">Sans Bold (𝗟𝗼𝗼𝗸)</option>
+              <option value="circled">Kreis (Ⓛⓞⓞⓚ)</option>
+            </select>
+            <button class="btn" onclick="copyUnicodeStyledText()">📋 Ergebnis kopieren</button>
+          </div>
+          <input class="cfg-input" id="cfgUnicodeOutput" type="text" readonly
+                 placeholder="Hier erscheint der konvertierte Text" style="margin-top:8px">
+          <div class="cfg-hint">Nur ein Hilfswerkzeug für manuelles Copy/Paste in Discord. Nicht jede Unicode-Schrift wird in jedem Client gleich dargestellt.</div>
+        </div>
         <div class="cfg-field" style="margin-bottom:0">
           <label class="cfg-label" for="cfgUpdateInterval">Update Intervall (ms)</label>
           <input class="cfg-input" id="cfgUpdateInterval" type="number" min="10000" step="1000"
@@ -2161,6 +2178,71 @@
       .replace(/^-+|-+$/g, '')
       .slice(0, 94);
     return `${dot}-${slug || 'service'}`;
+  }
+
+  function _toStyledAsciiChar(ch, style) {
+    const code = ch.codePointAt(0);
+
+    // A-Z
+    if (code >= 65 && code <= 90) {
+      const offset = code - 65;
+      if (style === 'fullwidth') return String.fromCodePoint(0xFF21 + offset);
+      if (style === 'mono') return String.fromCodePoint(0x1D670 + offset);
+      if (style === 'sansbold') return String.fromCodePoint(0x1D5D4 + offset);
+      if (style === 'circled') return String.fromCodePoint(0x24B6 + offset);
+    }
+
+    // a-z
+    if (code >= 97 && code <= 122) {
+      const offset = code - 97;
+      if (style === 'fullwidth') return String.fromCodePoint(0xFF41 + offset);
+      if (style === 'mono') return String.fromCodePoint(0x1D68A + offset);
+      if (style === 'sansbold') return String.fromCodePoint(0x1D5EE + offset);
+      if (style === 'circled') return String.fromCodePoint(0x24D0 + offset);
+    }
+
+    // 0-9
+    if (code >= 48 && code <= 57) {
+      const offset = code - 48;
+      if (style === 'fullwidth') return String.fromCodePoint(0xFF10 + offset);
+      if (style === 'mono') return String.fromCodePoint(0x1D7F6 + offset);
+      if (style === 'sansbold') return String.fromCodePoint(0x1D7EC + offset);
+      if (style === 'circled') {
+        if (offset === 0) return String.fromCodePoint(0x24EA);
+        return String.fromCodePoint(0x2460 + (offset - 1));
+      }
+    }
+
+    return ch;
+  }
+
+  function convertUnicodeStyledText() {
+    const inputEl = document.getElementById('cfgUnicodeInput');
+    const styleEl = document.getElementById('cfgUnicodeStyle');
+    const outputEl = document.getElementById('cfgUnicodeOutput');
+    if (!inputEl || !styleEl || !outputEl) return;
+
+    const input = String(inputEl.value || '');
+    const style = styleEl.value || 'fullwidth';
+    const transformed = Array.from(input).map(ch => _toStyledAsciiChar(ch, style)).join('');
+    outputEl.value = transformed;
+  }
+
+  async function copyUnicodeStyledText() {
+    const outputEl = document.getElementById('cfgUnicodeOutput');
+    if (!outputEl) return;
+
+    if (!outputEl.value.trim()) {
+      toast('Kein Text zum Kopieren', 'warn');
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(outputEl.value);
+      toast('Unicode-Text kopiert', 'ok');
+    } catch (e) {
+      toast('Kopieren fehlgeschlagen: ' + e.message, 'err');
+    }
   }
 
   function updateChannelNamePreview() {
