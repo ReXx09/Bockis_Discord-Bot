@@ -902,6 +902,25 @@
               <option value="→">→ Pfeil rechts</option>
             </select>
             <button class="btn" onclick="appendUnicodeSpecialChar()">➕ Sonderzeichen einfügen</button>
+            <select class="cfg-input" id="cfgUnicodeEmoji" style="min-width:220px;flex:1">
+              <option value="">Smiley wählen…</option>
+              <option value="😀">😀 Freude</option>
+              <option value="😁">😁 Grinsen</option>
+              <option value="😂">😂 Tränen lachen</option>
+              <option value="😊">😊 Freundlich</option>
+              <option value="😎">😎 Cool</option>
+              <option value="🤖">🤖 Bot</option>
+              <option value="🫡">🫡 Respekt</option>
+              <option value="👍">👍 Daumen hoch</option>
+              <option value="🔥">🔥 Hype</option>
+              <option value="❤️">❤️ Herz</option>
+              <option value="🎉">🎉 Feiern</option>
+              <option value="👀">👀 Beobachten</option>
+              <option value="✅">✅ Erledigt</option>
+              <option value="⚠️">⚠️ Hinweis</option>
+              <option value="❌">❌ Fehler</option>
+            </select>
+            <button class="btn" onclick="appendUnicodeSmiley()">😊 Smiley einfügen</button>
             <button class="btn" onclick="copyUnicodeStyledText()">📋 Ergebnis kopieren</button>
           </div>
           <input class="cfg-input" id="cfgUnicodeOutput" type="text" readonly
@@ -2281,6 +2300,29 @@
     inputEl.setSelectionRange(cursorPos, cursorPos);
     inputEl.focus();
     specialEl.value = '';
+    convertUnicodeStyledText();
+  }
+
+  function appendUnicodeSmiley() {
+    const inputEl = document.getElementById('cfgUnicodeInput');
+    const emojiEl = document.getElementById('cfgUnicodeEmoji');
+    if (!inputEl || !emojiEl) return;
+
+    const selected = String(emojiEl.value || '');
+    if (!selected) {
+      toast('Bitte einen Smiley auswählen', 'warn');
+      return;
+    }
+
+    const start = inputEl.selectionStart ?? inputEl.value.length;
+    const end = inputEl.selectionEnd ?? inputEl.value.length;
+    const before = inputEl.value.slice(0, start);
+    const after = inputEl.value.slice(end);
+    inputEl.value = before + selected + after;
+    const cursorPos = start + selected.length;
+    inputEl.setSelectionRange(cursorPos, cursorPos);
+    inputEl.focus();
+    emojiEl.value = '';
     convertUnicodeStyledText();
   }
 
