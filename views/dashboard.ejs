@@ -2238,7 +2238,23 @@
     }
 
     try {
-      await navigator.clipboard.writeText(outputEl.value);
+      if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+        await navigator.clipboard.writeText(outputEl.value);
+      } else {
+        const tmp = document.createElement('textarea');
+        tmp.value = outputEl.value;
+        tmp.setAttribute('readonly', '');
+        tmp.style.position = 'fixed';
+        tmp.style.opacity = '0';
+        tmp.style.pointerEvents = 'none';
+        document.body.appendChild(tmp);
+        tmp.focus();
+        tmp.select();
+
+        const ok = document.execCommand('copy');
+        document.body.removeChild(tmp);
+        if (!ok) throw new Error('Clipboard API nicht verfügbar');
+      }
       toast('Unicode-Text kopiert', 'ok');
     } catch (e) {
       toast('Kopieren fehlgeschlagen: ' + e.message, 'err');
