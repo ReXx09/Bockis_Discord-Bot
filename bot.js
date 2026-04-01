@@ -1906,7 +1906,25 @@ async function registerSlashCommands() {
 
   try {
     const rest = new REST({ version: '10' }).setToken(config.get('discord.token'));
+
+    // Globale Registrierung (kann bei Discord verzögert sichtbar werden).
     await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
+
+    // Zusätzliche Guild-Registrierung für sofortige Verfügbarkeit auf dem eigenen Server.
+    const guildIds = Array.from(new Set([
+      String(config.get('discord.guildId') || '').trim(),
+      String(config.get('discord.serviceGuildId') || '').trim(),
+    ].filter(Boolean)));
+
+    for (const guildId of guildIds) {
+      try {
+        await rest.put(Routes.applicationGuildCommands(client.user.id, guildId), { body: commands });
+        logger.info(`Slash-Commands für Guild ${guildId} registriert`);
+      } catch (guildErr) {
+        logger.warn(`Slash-Commands Guild-Registrierung fehlgeschlagen (${guildId}): ${guildErr.message}`);
+      }
+    }
+
     logger.info(`Slash-Commands erfolgreich registriert: ${Array.from(enabled).join(', ')}`);
   } catch (err) {
     logger.error(`Slash-Command-Registrierung fehlgeschlagen: ${err.message}`);
