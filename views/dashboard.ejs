@@ -829,11 +829,21 @@
             </label>
           </div>
           <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px;margin-top:8px">
-            <input class="cfg-input" id="cfgMsgCleanupMaxMessages" type="number" min="0" max="200" step="1" placeholder="Max. Nachrichten (z. B. 4)">
-            <input class="cfg-input" id="cfgMsgCleanupMaxAgeHours" type="number" min="0" max="720" step="1" placeholder="Max. Alter in Stunden (z. B. 12)">
-            <input class="cfg-input" id="cfgMsgCleanupIntervalMs" type="number" min="60000" max="86400000" step="1000" placeholder="Cleanup Intervall in ms">
+            <div>
+              <label class="cfg-label" for="cfgMsgCleanupMaxMessages" style="font-size:12px;margin-bottom:4px">Max. Nachrichten im Kanal</label>
+              <input class="cfg-input" id="cfgMsgCleanupMaxMessages" type="number" min="0" max="200" step="1" placeholder="z. B. 4">
+            </div>
+            <div>
+              <label class="cfg-label" for="cfgMsgCleanupMaxAgeHours" style="font-size:12px;margin-bottom:4px">Nachrichten älter als (Stunden)</label>
+              <input class="cfg-input" id="cfgMsgCleanupMaxAgeHours" type="number" min="0" max="720" step="1" placeholder="z. B. 12">
+            </div>
+            <div>
+              <label class="cfg-label" for="cfgMsgCleanupIntervalMs" style="font-size:12px;margin-bottom:4px">Cleanup-Intervall (ms)</label>
+              <input class="cfg-input" id="cfgMsgCleanupIntervalMs" type="number" min="60000" max="86400000" step="1000" placeholder="z. B. 300000">
+            </div>
           </div>
           <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+            <label class="cfg-label" for="cfgMsgCleanupChannelIds" style="font-size:12px;width:100%;margin-bottom:0">Channel-IDs für Cleanup (optional)</label>
             <input class="cfg-input" id="cfgMsgCleanupChannelIds" type="text" autocomplete="off" style="min-width:260px;flex:1"
                    placeholder="Channel-IDs, z. B. 123456789012345678,234567890123456789">
           </div>
