@@ -1324,10 +1324,20 @@ function _parseServiceChannelMap(rawMap) {
     const monitor = entry.slice(0, idx).trim();
     const channelId = entry.slice(idx + 1).trim();
     if (!monitor || !/^\d+$/.test(channelId)) continue;
-    map[monitor.toLowerCase()] = channelId;
+    map[_normalizeServiceKey(monitor)] = channelId;
   }
 
   return map;
+}
+
+function _normalizeServiceKey(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[äöüß]/g, c => ({ ä: 'ae', ö: 'oe', ü: 'ue', ß: 'ss' })[c] ?? c)
+    .replace(/[\s_]+/g, '-')
+    .replace(/[^a-z0-9-]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-+|-+$/g, '');
 }
 
 async function syncServiceChannels(monitors) {
@@ -1389,14 +1399,14 @@ async function syncServiceChannels(monitors) {
 
   // Whitelist filtern (oder alle aktiven Dienste wenn leer)
   const whitelist = (config.get('discord.monitoredServices') || '')
-    .split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+    .split(',').map(s => _normalizeServiceKey(s)).filter(Boolean);
 
   const targetNames = new Set([...whitelist, ...Object.keys(manualChannelMap)]);
   const useAllActiveServices = targetNames.size === 0;
 
   const targets = useAllActiveServices
     ? monitors.filter(m => m.active !== false)
-    : monitors.filter(m => targetNames.has(String(m.name || '').toLowerCase()));
+    : monitors.filter(m => targetNames.has(_normalizeServiceKey(m.name || '')));
 
   if (!targets.length) return;
 
@@ -1450,7 +1460,7 @@ async function syncServiceChannels(monitors) {
   let stateChanged = false;
 
   for (const monitor of targets) {
-    const monitorKey = String(monitor.name || '').toLowerCase();
+    const monitorKey = _normalizeServiceKey(monitor.name || '');
     const desiredName = _serviceChannelName(monitor.name, monitor.status, namingMode);
     const fallbackName = _serviceChannelName(monitor.name, monitor.status, 'strict_slug');
     const topic       = `📈 Uptime: ${monitor.uptime ?? '–'}%  ⏱ Ping: ${monitor.ping != null ? monitor.ping + 'ms' : '–'}`;
