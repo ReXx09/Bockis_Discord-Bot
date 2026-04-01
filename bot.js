@@ -220,7 +220,7 @@ let lastChannelStatus      = _initState.lastChannelStatus  ?? null;
 let lastChannelNameMs      = _initState.lastChannelNameMs  ?? 0;
 let serviceCategoryId      = _initState.serviceCategoryId  ?? null;
 let serviceChannels        = _initState.serviceChannels     ?? {};  // { monitorName: channelId }
-const _svcRenameMs         = {};  // Rate-Limit pro Kanal (in-memory, wird nicht persistiert)
+const _svcRenameMs         = _initState.svcRenameMs         ?? {};  // Rate-Limit-Zeitstempel pro Kanal-ID
 
 function persistState() {
   saveState({
@@ -229,7 +229,8 @@ function persistState() {
     lastChannelStatus,
     lastChannelNameMs,
     serviceCategoryId,
-    serviceChannels
+    serviceChannels,
+    svcRenameMs: _svcRenameMs
   });
 }
 // #endregion
