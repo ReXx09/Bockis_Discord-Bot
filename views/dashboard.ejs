@@ -816,6 +816,29 @@
           <input class="cfg-input" id="cfgNotifCh" type="text" autocomplete="off"
                  placeholder="z. B. 123456789012345678">
         </div>
+        <div class="cfg-field" style="border:1px solid var(--border);border-radius:8px;padding:12px;background:rgba(255,255,255,.01)">
+          <label class="cfg-label">Nachrichten-Cleanup (z. B. Bot_Info)</label>
+          <div style="display:flex;align-items:center;gap:12px;margin-top:2px;flex-wrap:wrap">
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px">
+              <input type="checkbox" id="cfgMsgCleanupEnabled" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
+              <span>Auto-Cleanup aktivieren</span>
+            </label>
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px">
+              <input type="checkbox" id="cfgMsgCleanupOnlyBot" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
+              <span>Nur Bot-Nachrichten löschen</span>
+            </label>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px;margin-top:8px">
+            <input class="cfg-input" id="cfgMsgCleanupMaxMessages" type="number" min="0" max="200" step="1" placeholder="Max. Nachrichten (z. B. 4)">
+            <input class="cfg-input" id="cfgMsgCleanupMaxAgeHours" type="number" min="0" max="720" step="1" placeholder="Max. Alter in Stunden (z. B. 12)">
+            <input class="cfg-input" id="cfgMsgCleanupIntervalMs" type="number" min="60000" max="86400000" step="1000" placeholder="Cleanup Intervall in ms">
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+            <input class="cfg-input" id="cfgMsgCleanupChannelIds" type="text" autocomplete="off" style="min-width:260px;flex:1"
+                   placeholder="Channel-IDs, z. B. 123456789012345678,234567890123456789">
+          </div>
+          <div class="cfg-hint">Leer bei Channel-IDs = nutzt automatisch <code>DISCORD_NOTIFICATION_CHANNEL</code>. Setze <code>0</code> bei max. Nachrichten oder max. Alter, um die jeweilige Regel zu deaktivieren.</div>
+        </div>
         <div class="cfg-field">
           <label class="cfg-label" for="cfgGuildId">Guild ID</label>
           <input class="cfg-input" id="cfgGuildId" type="text" autocomplete="off"
@@ -1024,8 +1047,12 @@
               <input type="checkbox" id="cfgCmdEightball" data-cmd="eightball" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
               <span><code>/eightball</code> - magische 8-Ball Antwort</span>
             </label>
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px">
+              <input type="checkbox" id="cfgCmdCleanup" data-cmd="cleanup" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
+              <span><code>/cleanup</code> - manuelle Kanal-Bereinigung (ManageGuild)</span>
+            </label>
           </div>
-          <input type="hidden" id="cfgEnabledCommands" value="status,uptime,refresh,help,coinflip,dice,eightball">
+          <input type="hidden" id="cfgEnabledCommands" value="status,uptime,refresh,help,coinflip,dice,eightball,cleanup">
           <div class="cfg-hint">Mindestens ein Kommando muss aktiv bleiben. Änderungen werden beim Neustart neu registriert.</div>
         </div>
       </div>
@@ -2557,7 +2584,7 @@
   }
 
   function _parseEnabledCommands(value) {
-    const allowed = ['status', 'uptime', 'refresh', 'help', 'coinflip', 'dice', 'eightball'];
+    const allowed = ['status', 'uptime', 'refresh', 'help', 'coinflip', 'dice', 'eightball', 'cleanup'];
     const entries = String(value || '')
       .split(',')
       .map(s => s.trim().toLowerCase())
@@ -2834,8 +2861,8 @@
       setCfg('cfgPresenceRotateMs', d.DISCORD_PRESENCE_ROTATE_MS || '90000');
       setCfg('cfgAutoReactionEmojis', d.DISCORD_AUTO_REACTION_EMOJIS || '👍');
       setCfg('cfgAutoReactionChannelIds', d.DISCORD_AUTO_REACTION_CHANNEL_IDS || '');
-      setCfg('cfgEnabledCommands', d.DISCORD_ENABLED_COMMANDS || 'status,uptime,refresh,help,coinflip,dice,eightball');
-      applyEnabledCommandsToCheckboxes(d.DISCORD_ENABLED_COMMANDS || 'status,uptime,refresh,help,coinflip,dice,eightball');
+      setCfg('cfgEnabledCommands', d.DISCORD_ENABLED_COMMANDS || 'status,uptime,refresh,help,coinflip,dice,eightball,cleanup');
+      applyEnabledCommandsToCheckboxes(d.DISCORD_ENABLED_COMMANDS || 'status,uptime,refresh,help,coinflip,dice,eightball,cleanup');
       setCfg('cfgNotifCh', d.DISCORD_NOTIFICATION_CHANNEL || '');
       setCfg('cfgKumaUrl', d.UPTIME_KUMA_URL || '');
       setCfg('cfgRenderMode', d.DISCORD_STATUS_RENDER_MODE || 'auto');
@@ -2846,6 +2873,10 @@
       setCfg('cfgCloudflareUrl', d.CLOUDFLARE_PUBLIC_URL || '');
       setCfg('cfgGuildId', d.GUILD_ID || '');
       setCfg('cfgServiceGuildId', d.SERVICE_GUILD_ID || '');
+      setCfg('cfgMsgCleanupChannelIds', d.MESSAGE_CLEANUP_CHANNEL_IDS || '');
+      setCfg('cfgMsgCleanupMaxMessages', d.MESSAGE_CLEANUP_MAX_MESSAGES || '4');
+      setCfg('cfgMsgCleanupMaxAgeHours', d.MESSAGE_CLEANUP_MAX_AGE_HOURS || '12');
+      setCfg('cfgMsgCleanupIntervalMs', d.MESSAGE_CLEANUP_INTERVAL_MS || '300000');
       setCfg('cfgServiceCategory', d.SERVICE_CATEGORY_NAME || '');
       setCfg('cfgServiceCategoryId', d.SERVICE_CATEGORY_ID || '');
       setCfg('cfgMonitoredServices', d.MONITORED_SERVICES || '');
@@ -2872,6 +2903,8 @@
         : 'Neues Passwort eingeben (optional)';
 
       setCheckboxValue('cfgChannelIndicator', (d.CHANNEL_STATUS_INDICATOR || 'true') !== 'false', { force });
+      setCheckboxValue('cfgMsgCleanupEnabled', (d.MESSAGE_CLEANUP_ENABLED || 'false') === 'true', { force });
+      setCheckboxValue('cfgMsgCleanupOnlyBot', (d.MESSAGE_CLEANUP_ONLY_BOT_MESSAGES || 'true') !== 'false', { force });
       setCheckboxValue('cfgServiceAutoCreate', (d.SERVICE_CHANNEL_AUTO_CREATE || 'true') !== 'false', { force });
       setCheckboxValue('cfgServiceAutoQuiet', (d.SERVICE_CHANNEL_AUTO_QUIET || 'true') !== 'false', { force });
       setCheckboxValue('cfgServiceChannelDebug', (d.SERVICE_CHANNEL_DEBUG || 'false') === 'true', { force });
@@ -2911,6 +2944,10 @@
     maybeSetChanged(body, 'DISCORD_ENABLED_COMMANDS', 'cfgEnabledCommands');
     maybeSetChanged(body, 'STATUS_CHANNEL_ID', 'cfgStatusCh');
     maybeSetChanged(body, 'DISCORD_NOTIFICATION_CHANNEL', 'cfgNotifCh');
+    maybeSetChanged(body, 'MESSAGE_CLEANUP_CHANNEL_IDS', 'cfgMsgCleanupChannelIds', { allowEmpty: true });
+    maybeSetChanged(body, 'MESSAGE_CLEANUP_MAX_MESSAGES', 'cfgMsgCleanupMaxMessages');
+    maybeSetChanged(body, 'MESSAGE_CLEANUP_MAX_AGE_HOURS', 'cfgMsgCleanupMaxAgeHours');
+    maybeSetChanged(body, 'MESSAGE_CLEANUP_INTERVAL_MS', 'cfgMsgCleanupIntervalMs');
     maybeSetChanged(body, 'UPTIME_KUMA_URL', 'cfgKumaUrl');
     maybeSetChanged(body, 'DISCORD_STATUS_RENDER_MODE', 'cfgRenderMode');
     maybeSetChanged(body, 'DISCORD_STATUS_MESSAGE_TITLE', 'cfgStatusTitle', { allowEmpty: true });
@@ -2945,6 +2982,20 @@
     const initialAutoReaction = autoReactionEl.dataset.initialValue || 'false';
     if (currentAutoReaction !== initialAutoReaction) {
       body.DISCORD_AUTO_REACTION_ENABLED = currentAutoReaction;
+    }
+
+    const msgCleanupEnabledEl = document.getElementById('cfgMsgCleanupEnabled');
+    const currentMsgCleanupEnabled = msgCleanupEnabledEl.checked ? 'true' : 'false';
+    const initialMsgCleanupEnabled = msgCleanupEnabledEl.dataset.initialValue || 'false';
+    if (currentMsgCleanupEnabled !== initialMsgCleanupEnabled) {
+      body.MESSAGE_CLEANUP_ENABLED = currentMsgCleanupEnabled;
+    }
+
+    const msgCleanupOnlyBotEl = document.getElementById('cfgMsgCleanupOnlyBot');
+    const currentMsgCleanupOnlyBot = msgCleanupOnlyBotEl.checked ? 'true' : 'false';
+    const initialMsgCleanupOnlyBot = msgCleanupOnlyBotEl.dataset.initialValue || 'true';
+    if (currentMsgCleanupOnlyBot !== initialMsgCleanupOnlyBot) {
+      body.MESSAGE_CLEANUP_ONLY_BOT_MESSAGES = currentMsgCleanupOnlyBot;
     }
 
     const autoCreateEl = document.getElementById('cfgServiceAutoCreate');

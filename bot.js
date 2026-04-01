@@ -696,6 +696,131 @@ async function enforceSingleStatusMessage(channel, keepMessageId) {
   }
 }
 
+function _toNonNegativeInt(value, fallback = 0) {
+  const n = Number.parseInt(value, 10);
+  return Number.isFinite(n) && n >= 0 ? n : fallback;
+}
+
+function getMessageCleanupChannelIds() {
+  const configured = String(config.get('discord.messageCleanupChannelIds') || '').trim();
+  const fallbackNotificationChannel = String(config.get('discord.notificationChannel') || '').trim();
+  const raw = configured || fallbackNotificationChannel;
+  if (!raw) return [];
+  return Array.from(new Set(raw
+    .split(/[;,]/)
+    .map(s => s.trim())
+    .filter(id => /^\d+$/.test(id))));
+}
+
+function getMessageCleanupOptions(overrides = {}) {
+  const configEnabled = config.get('discord.messageCleanupEnabled') === true;
+  const configOnlyBot = config.get('discord.messageCleanupOnlyBotMessages') !== false;
+
+  return {
+    enabled: overrides.enabled ?? configEnabled,
+    maxMessages: _toNonNegativeInt(overrides.maxMessages ?? config.get('discord.messageCleanupMaxMessages'), 0),
+    maxAgeHours: _toNonNegativeInt(overrides.maxAgeHours ?? config.get('discord.messageCleanupMaxAgeHours'), 0),
+    onlyBotMessages: overrides.onlyBotMessages ?? configOnlyBot,
+    dryRun: overrides.dryRun === true,
+  };
+}
+
+async function cleanupMessagesInChannel(channel, options = {}) {
+  if (!channel || !channel.isTextBased?.()) {
+    return { scanned: 0, eligible: 0, candidates: 0, deleted: 0, skipped: 0, reason: 'no-text-channel' };
+  }
+
+  const maxMessages = _toNonNegativeInt(options.maxMessages, 0);
+  const maxAgeHours = _toNonNegativeInt(options.maxAgeHours, 0);
+  const onlyBotMessages = options.onlyBotMessages !== false;
+  const dryRun = options.dryRun === true;
+
+  if (maxMessages === 0 && maxAgeHours === 0) {
+    return { scanned: 0, eligible: 0, candidates: 0, deleted: 0, skipped: 0, reason: 'no-policy' };
+  }
+
+  const cutoffTs = maxAgeHours > 0 ? Date.now() - (maxAgeHours * 60 * 60 * 1000) : 0;
+  let before = null;
+  let scanned = 0;
+  let eligible = 0;
+  let candidates = 0;
+  let deleted = 0;
+  let skipped = 0;
+
+  for (let page = 0; page < 20; page++) {
+    const batch = await channel.messages.fetch({
+      limit: 100,
+      ...(before ? { before } : {})
+    });
+    if (!batch.size) break;
+
+    for (const msg of batch.values()) {
+      scanned++;
+      if (msg.pinned) continue;
+      if (onlyBotMessages && !msg.author?.bot) continue;
+
+      eligible++;
+      const overCount = maxMessages > 0 && eligible > maxMessages;
+      const overAge = cutoffTs > 0 && msg.createdTimestamp < cutoffTs;
+      if (!overCount && !overAge) continue;
+
+      candidates++;
+      if (dryRun) continue;
+
+      try {
+        await msg.delete();
+        deleted++;
+      } catch (err) {
+        skipped++;
+        logger.warn(`Nachrichten-Cleanup: Nachricht ${msg.id} in #${channel.name || channel.id} konnte nicht gelöscht werden: ${err.message}`);
+      }
+    }
+
+    before = batch.last()?.id || null;
+    if (batch.size < 100) break;
+  }
+
+  return { scanned, eligible, candidates, deleted, skipped, reason: 'ok' };
+}
+
+async function runConfiguredMessageCleanup() {
+  try {
+    const options = getMessageCleanupOptions();
+    if (!options.enabled) return;
+
+    const channelIds = getMessageCleanupChannelIds();
+    if (!channelIds.length) {
+      logger.warn('Nachrichten-Cleanup: aktiviert, aber keine Channel-IDs konfiguriert');
+      return;
+    }
+
+    let totalDeleted = 0;
+    for (const channelId of channelIds) {
+      let channel = client.channels.cache.get(channelId);
+      if (!channel) {
+        try {
+          channel = await client.channels.fetch(channelId);
+        } catch (err) {
+          logger.warn(`Nachrichten-Cleanup: Kanal ${channelId} konnte nicht geladen werden: ${err.message}`);
+          continue;
+        }
+      }
+
+      const result = await cleanupMessagesInChannel(channel, options);
+      totalDeleted += result.deleted;
+      if (result.deleted > 0 || result.skipped > 0) {
+        logger.info(`Nachrichten-Cleanup: #${channel.name || channel.id} gescannt=${result.scanned} kandidat=${result.candidates} gelöscht=${result.deleted} fehler=${result.skipped}`);
+      }
+    }
+
+    if (totalDeleted > 0) {
+      logger.info(`Nachrichten-Cleanup: insgesamt ${totalDeleted} Nachricht(en) gelöscht`);
+    }
+  } catch (err) {
+    logger.error(`Nachrichten-Cleanup fehlgeschlagen: ${err.message}`);
+  }
+}
+
 function buildAsciiUptimeBar(percent, width = 18) {
   const p = Number.isFinite(percent) ? Math.max(0, Math.min(100, percent)) : 0;
   const filled = Math.round((p / 100) * width);
@@ -1649,7 +1774,7 @@ async function calculateUptimeMetrics() {
 // #endregion
 
 // #region 20. SLASH-COMMANDS REGISTRIEREN
-const AVAILABLE_SLASH_COMMANDS = ['status', 'uptime', 'refresh', 'help', 'coinflip', 'dice', 'eightball'];
+const AVAILABLE_SLASH_COMMANDS = ['status', 'uptime', 'refresh', 'help', 'coinflip', 'dice', 'eightball', 'cleanup'];
 
 function getEnabledSlashCommands() {
   const raw = String(config.get('discord.enabledCommands') || '').trim();
@@ -1735,6 +1860,45 @@ async function registerSlashCommands() {
           opt.setName('frage')
             .setDescription('Deine Frage an den 8-Ball')
             .setRequired(true)
+        )
+        .toJSON()
+    );
+  }
+
+  if (enabled.has('cleanup')) {
+    commands.push(
+      new SlashCommandBuilder()
+        .setName('cleanup')
+        .setDescription('Bereinigt Kanal-Nachrichten anhand der Cleanup-Regeln')
+        .addChannelOption(opt =>
+          opt.setName('kanal')
+            .setDescription('Optionaler Zielkanal (Standard: aktueller Kanal)')
+            .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)
+            .setRequired(false)
+        )
+        .addIntegerOption(opt =>
+          opt.setName('max_nachrichten')
+            .setDescription('Maximal erlaubte Nachrichten (0 = deaktiviert)')
+            .setMinValue(0)
+            .setMaxValue(200)
+            .setRequired(false)
+        )
+        .addIntegerOption(opt =>
+          opt.setName('max_alter_stunden')
+            .setDescription('Nachrichten älter als X Stunden löschen (0 = deaktiviert)')
+            .setMinValue(0)
+            .setMaxValue(720)
+            .setRequired(false)
+        )
+        .addBooleanOption(opt =>
+          opt.setName('nur_bot')
+            .setDescription('Nur Bot-Nachrichten löschen')
+            .setRequired(false)
+        )
+        .addBooleanOption(opt =>
+          opt.setName('dry_run')
+            .setDescription('Nur prüfen, nichts löschen')
+            .setRequired(false)
         )
         .toJSON()
     );
@@ -1911,6 +2075,7 @@ client.on('interactionCreate', async interaction => {
           '`/status` - aktueller Service-Status',
           '`/uptime` - Gesamt-Uptime',
           '`/refresh` - manueller Refresh (ManageGuild)',
+          '`/cleanup` - Nachrichten-Cleanup (ManageGuild)',
           '',
           '**Fun & Gadgets**',
           '`/coinflip` - Münzwurf',
@@ -1960,6 +2125,47 @@ client.on('interactionCreate', async interaction => {
       }]
     });
   }
+
+  if (interaction.commandName === 'cleanup') {
+    if (!interaction.memberPermissions?.has('ManageGuild')) {
+      return interaction.reply({ content: '❌ Keine Berechtigung (ManageGuild erforderlich).', ephemeral: true });
+    }
+
+    await interaction.deferReply({ ephemeral: true });
+    try {
+      const targetChannel = interaction.options.getChannel('kanal') || interaction.channel;
+      if (!targetChannel || !targetChannel.isTextBased?.()) {
+        return interaction.editReply('❌ Bitte einen gültigen Textkanal auswählen.');
+      }
+
+      const maxMessages = interaction.options.getInteger('max_nachrichten');
+      const maxAgeHours = interaction.options.getInteger('max_alter_stunden');
+      const onlyBot = interaction.options.getBoolean('nur_bot');
+      const dryRun = interaction.options.getBoolean('dry_run') === true;
+
+      const options = getMessageCleanupOptions({
+        enabled: true,
+        ...(maxMessages !== null ? { maxMessages } : {}),
+        ...(maxAgeHours !== null ? { maxAgeHours } : {}),
+        ...(onlyBot !== null ? { onlyBotMessages: onlyBot } : {}),
+        dryRun,
+      });
+
+      if (options.maxMessages === 0 && options.maxAgeHours === 0) {
+        return interaction.editReply('⚠️ Keine Regel aktiv: setze `max_nachrichten` oder `max_alter_stunden` größer als 0.');
+      }
+
+      const result = await cleanupMessagesInChannel(targetChannel, options);
+      const modeText = dryRun ? 'Dry-Run' : 'Live';
+      await interaction.editReply(
+        `✅ Cleanup (${modeText}) in #${targetChannel.name || targetChannel.id}: `
+        + `gescannt=${result.scanned}, kandidaten=${result.candidates}, gelöscht=${result.deleted}, fehler=${result.skipped}`
+      );
+    } catch (err) {
+      logger.error(`/cleanup Fehler: ${err.message}`);
+      await interaction.editReply('❌ Cleanup fehlgeschlagen. Details im Bot-Log.');
+    }
+  }
 });
 // #endregion
 
@@ -1988,9 +2194,12 @@ client.on('messageCreate', async (message) => {
 // #region 22. UPDATE-ZYKLUS
 function initializeUpdateCycle() {
   const interval = config.get('checkIntervalMs');
+  const cleanupIntervalMs = Math.max(60_000, _toNonNegativeInt(config.get('discord.messageCleanupIntervalMs'), 300000));
   logger.info(`Update-Zyklus gestartet (alle ${interval / 1000}s)`);
   updateStatusMessage();
   setInterval(updateStatusMessage, interval);
+  runConfiguredMessageCleanup();
+  setInterval(runConfiguredMessageCleanup, cleanupIntervalMs);
   // DB-Cleanup einmal täglich ausführen
   cleanupOldEntries();
   setInterval(cleanupOldEntries, 24 * 60 * 60 * 1000);

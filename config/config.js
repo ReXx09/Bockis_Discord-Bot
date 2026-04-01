@@ -99,9 +99,9 @@ const config = convict({
       env: 'DISCORD_AUTO_REACTION_CHANNEL_IDS'
     },
     enabledCommands: {
-      doc: 'Aktive Slash-Commands als Komma-Liste (status,uptime,refresh,help,coinflip,dice,eightball)',
+      doc: 'Aktive Slash-Commands als Komma-Liste (status,uptime,refresh,help,coinflip,dice,eightball,cleanup)',
       format: String,
-      default: 'status,uptime,refresh,help,coinflip,dice,eightball',
+      default: 'status,uptime,refresh,help,coinflip,dice,eightball,cleanup',
       env: 'DISCORD_ENABLED_COMMANDS'
     },
     statusChannelId: {
@@ -206,6 +206,42 @@ const config = convict({
       format: String,
       default: '',
       env: 'MONITORED_SERVICES'
+    },
+    messageCleanupEnabled: {
+      doc: 'Automatische Kanal-Nachrichtenbereinigung aktivieren',
+      format: Boolean,
+      default: false,
+      env: 'MESSAGE_CLEANUP_ENABLED'
+    },
+    messageCleanupChannelIds: {
+      doc: 'Komma-/Semikolon-getrennte Channel-IDs fuer Cleanup (leer = DISCORD_NOTIFICATION_CHANNEL)',
+      format: String,
+      default: '',
+      env: 'MESSAGE_CLEANUP_CHANNEL_IDS'
+    },
+    messageCleanupMaxMessages: {
+      doc: 'Maximal erlaubte Nachrichten pro Cleanup-Kanal (0 = deaktiviert)',
+      format: 'int',
+      default: 4,
+      env: 'MESSAGE_CLEANUP_MAX_MESSAGES'
+    },
+    messageCleanupMaxAgeHours: {
+      doc: 'Nachrichten aelter als X Stunden loeschen (0 = deaktiviert)',
+      format: 'int',
+      default: 12,
+      env: 'MESSAGE_CLEANUP_MAX_AGE_HOURS'
+    },
+    messageCleanupOnlyBotMessages: {
+      doc: 'Nur Bot-Nachrichten loeschen (empfohlen)',
+      format: Boolean,
+      default: true,
+      env: 'MESSAGE_CLEANUP_ONLY_BOT_MESSAGES'
+    },
+    messageCleanupIntervalMs: {
+      doc: 'Intervall in ms fuer automatische Nachrichtenbereinigung (min. 60000)',
+      format: 'int',
+      default: 300000,
+      env: 'MESSAGE_CLEANUP_INTERVAL_MS'
     },
     serviceChannelDebug: {
       doc: 'Zusatz-Debuglogs fuer Service-Kanal-Sync aktivieren',

@@ -1103,7 +1103,7 @@ module.exports = function startWebServer({
         DISCORD_AUTO_REACTION_ENABLED:get('DISCORD_AUTO_REACTION_ENABLED') || 'false',
         DISCORD_AUTO_REACTION_EMOJIS: get('DISCORD_AUTO_REACTION_EMOJIS') || '👍',
         DISCORD_AUTO_REACTION_CHANNEL_IDS: get('DISCORD_AUTO_REACTION_CHANNEL_IDS') || '',
-        DISCORD_ENABLED_COMMANDS:     get('DISCORD_ENABLED_COMMANDS') || 'status,uptime,refresh,help,coinflip,dice,eightball',
+        DISCORD_ENABLED_COMMANDS:     get('DISCORD_ENABLED_COMMANDS') || 'status,uptime,refresh,help,coinflip,dice,eightball,cleanup',
         STATUS_CHANNEL_ID:            get('STATUS_CHANNEL_ID'),
         DISCORD_NOTIFICATION_CHANNEL: get('DISCORD_NOTIFICATION_CHANNEL'),
         DISCORD_STATUS_RENDER_MODE:   get('DISCORD_STATUS_RENDER_MODE') || 'auto',
@@ -1125,6 +1125,12 @@ module.exports = function startWebServer({
         SERVICE_CHANNEL_AUTO_QUIET:   get('SERVICE_CHANNEL_AUTO_QUIET') || 'true',
         SERVICE_CHANNEL_MAP:          get('SERVICE_CHANNEL_MAP') || '',
         MONITORED_SERVICES:           get('MONITORED_SERVICES'),
+        MESSAGE_CLEANUP_ENABLED:      get('MESSAGE_CLEANUP_ENABLED') || 'false',
+        MESSAGE_CLEANUP_CHANNEL_IDS:  get('MESSAGE_CLEANUP_CHANNEL_IDS') || '',
+        MESSAGE_CLEANUP_MAX_MESSAGES: get('MESSAGE_CLEANUP_MAX_MESSAGES') || '4',
+        MESSAGE_CLEANUP_MAX_AGE_HOURS:get('MESSAGE_CLEANUP_MAX_AGE_HOURS') || '12',
+        MESSAGE_CLEANUP_ONLY_BOT_MESSAGES: get('MESSAGE_CLEANUP_ONLY_BOT_MESSAGES') || 'true',
+        MESSAGE_CLEANUP_INTERVAL_MS:  get('MESSAGE_CLEANUP_INTERVAL_MS') || '300000',
         SERVICE_CHANNEL_DEBUG:        get('SERVICE_CHANNEL_DEBUG') || 'false',
         SERVICE_CHANNEL_DEBUG_FILTER: get('SERVICE_CHANNEL_DEBUG_FILTER') || '',
         UPDATE_INTERVAL:              get('UPDATE_INTERVAL') || '300000',
@@ -1173,6 +1179,12 @@ module.exports = function startWebServer({
       'SERVICE_CHANNEL_AUTO_QUIET',
       'SERVICE_CHANNEL_MAP',
       'MONITORED_SERVICES',
+      'MESSAGE_CLEANUP_ENABLED',
+      'MESSAGE_CLEANUP_CHANNEL_IDS',
+      'MESSAGE_CLEANUP_MAX_MESSAGES',
+      'MESSAGE_CLEANUP_MAX_AGE_HOURS',
+      'MESSAGE_CLEANUP_ONLY_BOT_MESSAGES',
+      'MESSAGE_CLEANUP_INTERVAL_MS',
       'SERVICE_CHANNEL_DEBUG',
       'SERVICE_CHANNEL_DEBUG_FILTER',
       'UPDATE_INTERVAL',
@@ -1195,6 +1207,7 @@ module.exports = function startWebServer({
       'SERVICE_CATEGORY_ID',
       'SERVICE_CHANNEL_MAP',
       'MONITORED_SERVICES',
+      'MESSAGE_CLEANUP_CHANNEL_IDS',
       'SERVICE_CHANNEL_DEBUG_FILTER'
     ]);
     const envPath = path.join(rootDir, '.env');
@@ -1244,7 +1257,7 @@ module.exports = function startWebServer({
         if (invalid.length) return res.json({ ok: false, error: `DISCORD_AUTO_REACTION_CHANNEL_IDS ungueltig: ${invalid.join(', ')}` });
       }
       if (key === 'DISCORD_ENABLED_COMMANDS') {
-        const allowedCommands = new Set(['status', 'uptime', 'refresh', 'help', 'coinflip', 'dice', 'eightball']);
+        const allowedCommands = new Set(['status', 'uptime', 'refresh', 'help', 'coinflip', 'dice', 'eightball', 'cleanup']);
         const entries = val.split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
         const uniqueEntries = Array.from(new Set(entries));
         if (!uniqueEntries.length) {
@@ -1285,6 +1298,32 @@ module.exports = function startWebServer({
         return res.json({ ok: false, error: 'SERVICE_CHANNEL_AUTO_CREATE muss true oder false sein' });
       if (key === 'SERVICE_CHANNEL_AUTO_QUIET' && !['true', 'false'].includes(val))
         return res.json({ ok: false, error: 'SERVICE_CHANNEL_AUTO_QUIET muss true oder false sein' });
+      if (key === 'MESSAGE_CLEANUP_ENABLED' && !['true', 'false'].includes(val))
+        return res.json({ ok: false, error: 'MESSAGE_CLEANUP_ENABLED muss true oder false sein' });
+      if (key === 'MESSAGE_CLEANUP_ONLY_BOT_MESSAGES' && !['true', 'false'].includes(val))
+        return res.json({ ok: false, error: 'MESSAGE_CLEANUP_ONLY_BOT_MESSAGES muss true oder false sein' });
+      if (key === 'MESSAGE_CLEANUP_CHANNEL_IDS') {
+        const entries = val.split(/[;,]/).map(s => s.trim()).filter(Boolean);
+        const invalid = entries.filter(id => !/^\d+$/.test(id));
+        if (invalid.length) {
+          return res.json({ ok: false, error: `MESSAGE_CLEANUP_CHANNEL_IDS ungueltig: ${invalid.join(', ')}` });
+        }
+      }
+      if (key === 'MESSAGE_CLEANUP_MAX_MESSAGES') {
+        const n = parseInt(val, 10);
+        if (!Number.isFinite(n) || n < 0 || n > 200)
+          return res.json({ ok: false, error: 'MESSAGE_CLEANUP_MAX_MESSAGES muss zwischen 0 und 200 liegen' });
+      }
+      if (key === 'MESSAGE_CLEANUP_MAX_AGE_HOURS') {
+        const n = parseInt(val, 10);
+        if (!Number.isFinite(n) || n < 0 || n > 720)
+          return res.json({ ok: false, error: 'MESSAGE_CLEANUP_MAX_AGE_HOURS muss zwischen 0 und 720 liegen' });
+      }
+      if (key === 'MESSAGE_CLEANUP_INTERVAL_MS') {
+        const n = parseInt(val, 10);
+        if (!Number.isFinite(n) || n < 60000 || n > 86400000)
+          return res.json({ ok: false, error: 'MESSAGE_CLEANUP_INTERVAL_MS muss zwischen 60000 und 86400000 liegen' });
+      }
       if (key === 'SERVICE_CHANNEL_DEBUG' && !['true', 'false'].includes(val))
         return res.json({ ok: false, error: 'SERVICE_CHANNEL_DEBUG muss true oder false sein' });
       if (key === 'SERVICE_CHANNEL_DEBUG_FILTER') {
