@@ -612,6 +612,15 @@
       color: var(--yellow, #d4b60d);
     }
     .cfg-hint { font-size: 11px; color: var(--muted); margin-top: 4px; }
+    .cfg-inline-action {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 8px;
+      align-items: center;
+    }
+    .cfg-inline-action .cfg-input { flex: 1; min-width: 220px; }
+    .cfg-inline-action .btn { white-space: nowrap; }
     .cfg-actions { display: flex; gap: 10px; align-items: center; margin-top: 6px; }
     #cfgStatus { font-size: 12px; }
     #cfgStatus.ok  { color: var(--green); }
@@ -894,16 +903,20 @@
         </div>
         <div class="cfg-field" style="border:1px solid var(--border);border-radius:8px;padding:12px;background:rgba(255,255,255,.01)">
           <label class="cfg-label" for="cfgUnicodeInput">Unicode-Schrift Konverter (Copy &amp; Paste)</label>
-          <input class="cfg-input" id="cfgUnicodeInput" type="text" autocomplete="off"
-                 placeholder="Text eingeben, z. B. Next-Cloud" oninput="convertUnicodeStyledText()">
-          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
-            <select class="cfg-input" id="cfgUnicodeStyle" style="min-width:220px;flex:1" onchange="convertUnicodeStyledText()">
+          <div class="cfg-inline-action">
+            <input class="cfg-input" id="cfgUnicodeInput" type="text" autocomplete="off"
+                   placeholder="Text eingeben, z. B. Next-Cloud" oninput="convertUnicodeStyledText()">
+            <button class="btn" type="button" onclick="clearUnicodeConverter()">🧹 Eingabe leeren</button>
+          </div>
+          <div class="cfg-inline-action">
+            <select class="cfg-input" id="cfgUnicodeStyle" onchange="convertUnicodeStyledText()">
               <option value="mono">Monospace (𝙻𝚘𝚘𝚔)</option>
               <option value="sansbold">Sans Bold (𝗟𝗼𝗼𝗸)</option>
             </select>
+            <button class="btn" type="button" onclick="convertUnicodeStyledText()">🎨 Stil anwenden</button>
           </div>
-          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
-            <select class="cfg-input" id="cfgUnicodeSpecial" style="min-width:220px;flex:1">
+          <div class="cfg-inline-action">
+            <select class="cfg-input" id="cfgUnicodeSpecial">
               <option value="">Sonderzeichen wählen…</option>
               <option value="╔》">╔》 Start links</option>
               <option value="╠》">╠》 Mitte links</option>
@@ -921,7 +934,10 @@
               <option value="•">• Punkt</option>
               <option value="→">→ Pfeil rechts</option>
             </select>
-            <select class="cfg-input" id="cfgUnicodeEmoji" style="min-width:220px;flex:1">
+            <button class="btn" type="button" onclick="appendUnicodeSpecialChar()">➕ Sonderzeichen einfügen</button>
+          </div>
+          <div class="cfg-inline-action">
+            <select class="cfg-input" id="cfgUnicodeEmoji">
               <option value="">Smiley wählen…</option>
               <option value="😀">😀 Freude</option>
               <option value="😁">😁 Grinsen</option>
@@ -939,15 +955,13 @@
               <option value="⚠️">⚠️ Hinweis</option>
               <option value="❌">❌ Fehler</option>
             </select>
+            <button class="btn" type="button" onclick="appendUnicodeSmiley()">😊 Smiley einfügen</button>
           </div>
-          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
-            <button class="btn" onclick="appendUnicodeSpecialChar()">➕ Sonderzeichen einfügen</button>
-            <button class="btn" onclick="appendUnicodeSmiley()">😊 Smiley einfügen</button>
-            <button class="btn" onclick="copyUnicodeStyledText()">📋 Ergebnis kopieren</button>
-            <button class="btn" onclick="clearUnicodeConverter()">🧹 Eingabe leeren</button>
+          <div class="cfg-inline-action">
+            <input class="cfg-input" id="cfgUnicodeOutput" type="text" readonly
+                   placeholder="Hier erscheint der konvertierte Text">
+            <button class="btn" type="button" onclick="copyUnicodeStyledText()">📋 Ergebnis kopieren</button>
           </div>
-          <input class="cfg-input" id="cfgUnicodeOutput" type="text" readonly
-                 placeholder="Hier erscheint der konvertierte Text" style="margin-top:8px">
           <div class="cfg-hint">Nur ein Hilfswerkzeug für manuelles Copy/Paste in Discord. Nicht jede Unicode-Schrift wird in jedem Client gleich dargestellt.</div>
         </div>
         <div class="cfg-field" style="margin-bottom:0">
