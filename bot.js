@@ -1312,6 +1312,19 @@ function _serviceChannelName(monitorName, status, mode = 'strict_slug') {
   return `${dot}-${slug || 'service'}`;
 }
 
+function _withStatusDot(channelName, status, fallbackName) {
+  const dot = status === 1 ? '🟢' : status === 0 ? '🔴' : '🟡';
+  const current = String(channelName || '').trim();
+  if (!current) return fallbackName;
+
+  // Bestehenden Namen beibehalten und nur den führenden Statuspunkt ersetzen.
+  if (/^[🟢🟡🔴]/u.test(current)) {
+    return `${dot}${current.replace(/^[🟢🟡🔴]/u, '')}`;
+  }
+
+  return `${dot}${current}`;
+}
+
 function _parseServiceChannelMap(rawMap) {
   const map = {};
   const source = String(rawMap || '').trim();
@@ -1461,7 +1474,7 @@ async function syncServiceChannels(monitors) {
 
   for (const monitor of targets) {
     const monitorKey = _normalizeServiceKey(monitor.name || '');
-    const desiredName = _serviceChannelName(monitor.name, monitor.status, namingMode);
+    let desiredName = _serviceChannelName(monitor.name, monitor.status, namingMode);
     const fallbackName = _serviceChannelName(monitor.name, monitor.status, 'strict_slug');
     const topic       = `📈 Uptime: ${monitor.uptime ?? '–'}%  ⏱ Ping: ${monitor.ping != null ? monitor.ping + 'ms' : '–'}`;
     const mappedChannelId = manualChannelMap[monitorKey] || null;
@@ -1530,6 +1543,8 @@ async function syncServiceChannels(monitors) {
       logger.warn(`Service-Kanal-Manager: Kanal für "${monitor.name}" ist kein Textkanal (${channel.type})`);
       continue;
     }
+
+    desiredName = _withStatusDot(channel.name, monitor.status, desiredName);
 
     await ensureQuietPermissions(channel);
 
