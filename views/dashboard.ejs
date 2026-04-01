@@ -912,6 +912,11 @@
             <select class="cfg-input" id="cfgUnicodeStyle" onchange="convertUnicodeStyledText()">
               <option value="mono">Monospace (𝙻𝚘𝚘𝚔)</option>
               <option value="sansbold">Sans Bold (𝗟𝗼𝗼𝗸)</option>
+              <option value="serifbold">Serif Bold (𝐋𝐨𝐨𝐤)</option>
+              <option value="serifitalic">Serif Italic (𝐿𝑜𝑜𝑘)</option>
+              <option value="serifbolditalic">Serif Bold Italic (𝑳𝒐𝒐𝒌)</option>
+              <option value="sans">Sans Regular (𝖫𝗈𝗈𝗄)</option>
+              <option value="sansitalic">Sans Italic (𝘓𝘰𝘰𝘬)</option>
             </select>
             <button class="btn" type="button" onclick="convertUnicodeStyledText()">🎨 Stil anwenden</button>
           </div>
@@ -2350,6 +2355,11 @@
       const offset = code - 65;
       if (style === 'mono') return String.fromCodePoint(0x1D670 + offset);
       if (style === 'sansbold') return String.fromCodePoint(0x1D5D4 + offset);
+      if (style === 'serifbold') return String.fromCodePoint(0x1D400 + offset);
+      if (style === 'serifitalic') return String.fromCodePoint(0x1D434 + offset);
+      if (style === 'serifbolditalic') return String.fromCodePoint(0x1D468 + offset);
+      if (style === 'sans') return String.fromCodePoint(0x1D5A0 + offset);
+      if (style === 'sansitalic') return String.fromCodePoint(0x1D608 + offset);
     }
 
     // a-z
@@ -2357,6 +2367,11 @@
       const offset = code - 97;
       if (style === 'mono') return String.fromCodePoint(0x1D68A + offset);
       if (style === 'sansbold') return String.fromCodePoint(0x1D5EE + offset);
+      if (style === 'serifbold') return String.fromCodePoint(0x1D41A + offset);
+      if (style === 'serifitalic') return String.fromCodePoint(0x1D44E + offset);
+      if (style === 'serifbolditalic') return String.fromCodePoint(0x1D482 + offset);
+      if (style === 'sans') return String.fromCodePoint(0x1D5BA + offset);
+      if (style === 'sansitalic') return String.fromCodePoint(0x1D622 + offset);
     }
 
     // 0-9
@@ -2364,6 +2379,8 @@
       const offset = code - 48;
       if (style === 'mono') return String.fromCodePoint(0x1D7F6 + offset);
       if (style === 'sansbold') return String.fromCodePoint(0x1D7EC + offset);
+      if (style === 'serifbold') return String.fromCodePoint(0x1D7CE + offset);
+      if (style === 'sans') return String.fromCodePoint(0x1D7E2 + offset);
     }
 
     return ch;
