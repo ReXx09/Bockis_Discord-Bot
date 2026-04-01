@@ -1410,7 +1410,8 @@ async function syncServiceChannels(monitors) {
     logger.warn('Service-Kanal-Manager: Bot-Mitgliedsdaten konnten nicht geladen werden (Berechtigungen nicht prüfbar).');
   }
 
-  // Whitelist filtern (oder alle aktiven Dienste wenn leer)
+  // Zielmenge ermitteln: MONITORED_SERVICES hat Vorrang, sonst SERVICE_CHANNEL_MAP.
+  // Wenn beides leer ist, werden keine Service-Kanäle synchronisiert.
   const whitelist = (config.get('discord.monitoredServices') || '')
     .split(',').map(s => _normalizeServiceKey(s)).filter(Boolean);
 
@@ -1419,11 +1420,10 @@ async function syncServiceChannels(monitors) {
   const targetNames = whitelist.length
     ? new Set(whitelist)
     : new Set(Object.keys(manualChannelMap));
-  const useAllActiveServices = targetNames.size === 0;
 
-  const targets = useAllActiveServices
-    ? monitors.filter(m => m.active !== false)
-    : monitors.filter(m => targetNames.has(_normalizeServiceKey(m.name || '')));
+  if (!targetNames.size) return;
+
+  const targets = monitors.filter(m => targetNames.has(_normalizeServiceKey(m.name || '')));
 
   if (!targets.length) return;
 
