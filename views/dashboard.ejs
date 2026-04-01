@@ -892,6 +892,21 @@
           </div>
         </div>
         <div class="cfg-field">
+          <label class="cfg-label">Service-Kanal Debug-Log</label>
+          <div style="display:flex;align-items:center;gap:12px;margin-top:2px">
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px">
+              <input type="checkbox" id="cfgServiceChannelDebug" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
+              <span>Zusätzliche Sync-Debuglogs im Bot aktivieren</span>
+            </label>
+          </div>
+        </div>
+        <div class="cfg-field">
+          <label class="cfg-label" for="cfgServiceChannelDebugFilter">Debug-Filter (optional)</label>
+          <input class="cfg-input" id="cfgServiceChannelDebugFilter" type="text" autocomplete="off"
+                 placeholder="z. B. Ark-ASA-Svartalfheim (oder mehrere mit Komma)">
+          <div class="cfg-hint">Optional: nur diese Monitore loggen. Leer = alle Service-Kanäle.</div>
+        </div>
+        <div class="cfg-field">
           <label class="cfg-label" for="cfgServiceChannelNameMode">Dienst-Kanalname Modus</label>
           <select class="cfg-input" id="cfgServiceChannelNameMode">
             <option value="strict_slug">Strict (Discord-sicher: klein + slug)</option>
@@ -2835,6 +2850,7 @@
       setCfg('cfgServiceCategoryId', d.SERVICE_CATEGORY_ID || '');
       setCfg('cfgMonitoredServices', d.MONITORED_SERVICES || '');
       setCfg('cfgServiceChannelMap', d.SERVICE_CHANNEL_MAP || '');
+      setCfg('cfgServiceChannelDebugFilter', d.SERVICE_CHANNEL_DEBUG_FILTER || '');
       setCfg('cfgServiceChannelNameMode', d.SERVICE_CHANNEL_NAME_MODE || 'strict_slug');
       updateChannelNamePreview();
       setCfg('cfgUpdateInterval', d.UPDATE_INTERVAL || '300000');
@@ -2858,6 +2874,7 @@
       setCheckboxValue('cfgChannelIndicator', (d.CHANNEL_STATUS_INDICATOR || 'true') !== 'false', { force });
       setCheckboxValue('cfgServiceAutoCreate', (d.SERVICE_CHANNEL_AUTO_CREATE || 'true') !== 'false', { force });
       setCheckboxValue('cfgServiceAutoQuiet', (d.SERVICE_CHANNEL_AUTO_QUIET || 'true') !== 'false', { force });
+      setCheckboxValue('cfgServiceChannelDebug', (d.SERVICE_CHANNEL_DEBUG || 'false') === 'true', { force });
       setCheckboxValue('cfgAutoReactionEnabled', (d.DISCORD_AUTO_REACTION_ENABLED || 'false') === 'true', { force });
 
       if (force) clearConfigDirtyTracking();
@@ -2909,6 +2926,7 @@
     maybeSetChanged(body, 'SERVICE_CATEGORY_ID', 'cfgServiceCategoryId', { allowEmpty: true });
     maybeSetChanged(body, 'MONITORED_SERVICES', 'cfgMonitoredServices', { allowEmpty: true });
     maybeSetChanged(body, 'SERVICE_CHANNEL_MAP', 'cfgServiceChannelMap', { allowEmpty: true });
+    maybeSetChanged(body, 'SERVICE_CHANNEL_DEBUG_FILTER', 'cfgServiceChannelDebugFilter', { allowEmpty: true });
     maybeSetChanged(body, 'SERVICE_CHANNEL_NAME_MODE', 'cfgServiceChannelNameMode');
     maybeSetChanged(body, 'UPDATE_INTERVAL', 'cfgUpdateInterval');
     maybeSetChanged(body, 'WEB_PORT', 'cfgWebPort');
@@ -2941,6 +2959,13 @@
     const initialAutoQuiet = autoQuietEl.dataset.initialValue || 'true';
     if (currentAutoQuiet !== initialAutoQuiet) {
       body.SERVICE_CHANNEL_AUTO_QUIET = currentAutoQuiet;
+    }
+
+    const serviceDebugEl = document.getElementById('cfgServiceChannelDebug');
+    const currentServiceDebug = serviceDebugEl.checked ? 'true' : 'false';
+    const initialServiceDebug = serviceDebugEl.dataset.initialValue || 'false';
+    if (currentServiceDebug !== initialServiceDebug) {
+      body.SERVICE_CHANNEL_DEBUG = currentServiceDebug;
     }
 
     if (Object.keys(body).length === 0) {

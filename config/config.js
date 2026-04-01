@@ -206,6 +206,18 @@ const config = convict({
       format: String,
       default: '',
       env: 'MONITORED_SERVICES'
+    },
+    serviceChannelDebug: {
+      doc: 'Zusatz-Debuglogs fuer Service-Kanal-Sync aktivieren',
+      format: Boolean,
+      default: false,
+      env: 'SERVICE_CHANNEL_DEBUG'
+    },
+    serviceChannelDebugFilter: {
+      doc: 'Optionale Komma-Liste fuer Service-Debug-Filter (Monitornamen), leer = alle',
+      format: String,
+      default: '',
+      env: 'SERVICE_CHANNEL_DEBUG_FILTER'
     }
   },
   cloudflare: {

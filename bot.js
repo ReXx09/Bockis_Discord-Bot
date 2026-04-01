@@ -1365,6 +1365,18 @@ async function syncServiceChannels(monitors) {
   const autoQuiet = config.get('discord.serviceChannelAutoQuiet') !== false;
   const fixedCategoryId = String(config.get('discord.serviceCategoryId') || '').trim();
   const manualChannelMap = _parseServiceChannelMap(config.get('discord.serviceChannelMap') || '');
+  const debugEnabled = config.get('discord.serviceChannelDebug') === true;
+  const debugFilterSet = new Set(
+    String(config.get('discord.serviceChannelDebugFilter') || '')
+      .split(',')
+      .map(s => _normalizeServiceKey(s))
+      .filter(Boolean)
+  );
+  const shouldDebugMonitor = (monitorName) => {
+    if (!debugEnabled) return false;
+    if (!debugFilterSet.size) return true;
+    return debugFilterSet.has(_normalizeServiceKey(monitorName || ''));
+  };
 
   const quietDenyPerms = [
     PermissionFlagsBits.SendMessages,
@@ -1491,6 +1503,7 @@ async function syncServiceChannels(monitors) {
       .find(([name]) => _normalizeServiceKey(name) === monitorKey)?.[1] || null;
     let channelId     = mappedChannelId || stateChannelIdByName || stateChannelIdByKey || stateChannelIdByNormalizedMatch;
     let channel       = channelId ? guild.channels.cache.get(channelId) : null;
+    const debugThis = shouldDebugMonitor(monitor.name);
 
     if (channelId && !channel) {
       try {
@@ -1498,6 +1511,10 @@ async function syncServiceChannels(monitors) {
       } catch {
         channel = null;
       }
+    }
+
+    if (debugThis) {
+      logger.info(`Service-Kanal-Debug: monitor="${monitor.name}" key="${monitorKey}" status=${monitor.status} mapped=${mappedChannelId || '-'} stateByName=${stateChannelIdByName || '-'} stateByKey=${stateChannelIdByKey || '-'} stateByNormalized=${stateChannelIdByNormalizedMatch || '-'} resolved=${channelId || '-'} channel=${channel?.id || '-'} currentName="${channel?.name || '-'}" desiredName="${desiredName}"`);
     }
 
     if (mappedChannelId && !channel) {
@@ -1576,12 +1593,18 @@ async function syncServiceChannels(monitors) {
       if (now - lastRename < MIN_CHANNEL_RENAME_MS) {
         const cooldown = Math.ceil((MIN_CHANNEL_RENAME_MS - (now - lastRename)) / 1000);
         logger.warn(`Service-Kanal-Manager: "${monitor.name}" wartet noch ${cooldown}s (Rate-Limit)`);
+        if (debugThis) {
+          logger.info(`Service-Kanal-Debug: monitor="${monitor.name}" rename-blocked cooldown=${cooldown}s current="${channel.name}" target="${desiredName}"`);
+        }
         continue;
       }
       try {
         await channel.edit({ name: desiredName, topic });
         _svcRenameMs[channel.id] = now;
         logger.info(`Service-Kanal-Manager: "${channel.name}" → "${desiredName}"`);
+        if (debugThis) {
+          logger.info(`Service-Kanal-Debug: monitor="${monitor.name}" renamed channelId=${channel.id} newName="${desiredName}"`);
+        }
       } catch (err) {
         if (namingMode !== 'strict_slug' && fallbackName !== desiredName) {
           try {

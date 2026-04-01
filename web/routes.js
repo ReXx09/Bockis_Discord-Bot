@@ -1125,6 +1125,8 @@ module.exports = function startWebServer({
         SERVICE_CHANNEL_AUTO_QUIET:   get('SERVICE_CHANNEL_AUTO_QUIET') || 'true',
         SERVICE_CHANNEL_MAP:          get('SERVICE_CHANNEL_MAP') || '',
         MONITORED_SERVICES:           get('MONITORED_SERVICES'),
+        SERVICE_CHANNEL_DEBUG:        get('SERVICE_CHANNEL_DEBUG') || 'false',
+        SERVICE_CHANNEL_DEBUG_FILTER: get('SERVICE_CHANNEL_DEBUG_FILTER') || '',
         UPDATE_INTERVAL:              get('UPDATE_INTERVAL') || '300000',
         WEB_PORT:                     get('WEB_PORT') || '3000',
         DASHBOARD_PASSWORD:           maskSecret(dashboardPassword),
@@ -1171,6 +1173,8 @@ module.exports = function startWebServer({
       'SERVICE_CHANNEL_AUTO_QUIET',
       'SERVICE_CHANNEL_MAP',
       'MONITORED_SERVICES',
+      'SERVICE_CHANNEL_DEBUG',
+      'SERVICE_CHANNEL_DEBUG_FILTER',
       'UPDATE_INTERVAL',
       'WEB_PORT',
       'DASHBOARD_PASSWORD',
@@ -1190,7 +1194,8 @@ module.exports = function startWebServer({
       'DASHBOARD_PASSWORD',
       'SERVICE_CATEGORY_ID',
       'SERVICE_CHANNEL_MAP',
-      'MONITORED_SERVICES'
+      'MONITORED_SERVICES',
+      'SERVICE_CHANNEL_DEBUG_FILTER'
     ]);
     const envPath = path.join(rootDir, '.env');
     if (!fs.existsSync(envPath)) return res.json({ ok: false, error: '.env nicht gefunden' });
@@ -1280,6 +1285,14 @@ module.exports = function startWebServer({
         return res.json({ ok: false, error: 'SERVICE_CHANNEL_AUTO_CREATE muss true oder false sein' });
       if (key === 'SERVICE_CHANNEL_AUTO_QUIET' && !['true', 'false'].includes(val))
         return res.json({ ok: false, error: 'SERVICE_CHANNEL_AUTO_QUIET muss true oder false sein' });
+      if (key === 'SERVICE_CHANNEL_DEBUG' && !['true', 'false'].includes(val))
+        return res.json({ ok: false, error: 'SERVICE_CHANNEL_DEBUG muss true oder false sein' });
+      if (key === 'SERVICE_CHANNEL_DEBUG_FILTER') {
+        if (/[\n\r]/.test(val))
+          return res.json({ ok: false, error: 'SERVICE_CHANNEL_DEBUG_FILTER darf keine Zeilenumbrüche enthalten' });
+        if (val.length > 300)
+          return res.json({ ok: false, error: 'SERVICE_CHANNEL_DEBUG_FILTER darf maximal 300 Zeichen enthalten' });
+      }
       if (key === 'SERVICE_CHANNEL_MAP') {
         const entries = val.split(';').map(s => s.trim()).filter(Boolean);
         for (const entry of entries) {
