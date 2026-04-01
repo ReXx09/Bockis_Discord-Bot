@@ -1346,6 +1346,8 @@ function _parseServiceChannelMap(rawMap) {
 
 function _normalizeServiceKey(value) {
   return String(value || '')
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
     .replace(/[äöüß]/g, c => ({ ä: 'ae', ö: 'oe', ü: 'ue', ß: 'ss' })[c] ?? c)
     .replace(/[\s_]+/g, '-')
