@@ -1483,15 +1483,28 @@ async function syncServiceChannels(monitors) {
     const fallbackName = _serviceChannelName(monitor.name, monitor.status, 'strict_slug');
     const topic       = `📈 Uptime: ${monitor.uptime ?? '–'}%  ⏱ Ping: ${monitor.ping != null ? monitor.ping + 'ms' : '–'}`;
     const mappedChannelId = manualChannelMap[monitorKey] || null;
-    let channelId     = mappedChannelId || serviceChannels[monitor.name];
+    const stateChannelIdByName = serviceChannels[monitor.name] || null;
+    const stateChannelIdByKey = serviceChannels[monitorKey] || null;
+    const stateChannelIdByNormalizedMatch = Object.entries(serviceChannels)
+      .find(([name]) => _normalizeServiceKey(name) === monitorKey)?.[1] || null;
+    let channelId     = mappedChannelId || stateChannelIdByName || stateChannelIdByKey || stateChannelIdByNormalizedMatch;
     let channel       = channelId ? guild.channels.cache.get(channelId) : null;
+
+    if (channelId && !channel) {
+      try {
+        channel = await guild.channels.fetch(channelId);
+      } catch {
+        channel = null;
+      }
+    }
 
     if (mappedChannelId && !channel) {
       logger.warn(`Service-Kanal-Manager: Mapping für "${monitor.name}" auf Kanal ${mappedChannelId}, aber Kanal nicht gefunden`);
     }
 
-    if (mappedChannelId && channel && serviceChannels[monitor.name] !== mappedChannelId) {
+    if (mappedChannelId && channel && (serviceChannels[monitor.name] !== mappedChannelId || serviceChannels[monitorKey] !== mappedChannelId)) {
       serviceChannels[monitor.name] = mappedChannelId;
+      serviceChannels[monitorKey] = mappedChannelId;
       stateChanged = true;
     }
 
@@ -1516,6 +1529,7 @@ async function syncServiceChannels(monitors) {
             : [{ id: guild.roles.everyone, deny: [PermissionFlagsBits.SendMessages] }]
         });
         serviceChannels[monitor.name] = channel.id;
+        serviceChannels[monitorKey] = channel.id;
         stateChanged = true;
         logger.info(`Service-Kanal-Manager: Kanal "${desiredName}" erstellt`);
       } catch (err) {
@@ -1531,6 +1545,7 @@ async function syncServiceChannels(monitors) {
                 : [{ id: guild.roles.everyone, deny: [PermissionFlagsBits.SendMessages] }]
             });
             serviceChannels[monitor.name] = channel.id;
+            serviceChannels[monitorKey] = channel.id;
             stateChanged = true;
             logger.warn(`Service-Kanal-Manager: Modus "${namingMode}" abgelehnt, Fallback auf "${fallbackName}" für "${monitor.name}"`);
           } catch (fallbackErr) {
