@@ -510,6 +510,7 @@ module.exports = function startWebServer({
     try {
       const targetUrl = getPublicStatusUrl();
       const currentRenderMode = config.get('discord.statusRenderMode');
+      const modeUsesLinkPreview = ['auto', 'direct', 'graphical', 'link_preview'].includes(String(currentRenderMode || '').toLowerCase());
       if (!targetUrl) {
         return res.json({
           ok: false,
@@ -535,30 +536,33 @@ module.exports = function startWebServer({
       const richPreviewLikely = !!(hasOgTitle && (hasDescription || hasImage || hasTwitterCard));
 
       const hints = [];
+      if (!modeUsesLinkPreview) {
+        hints.push(`ℹ️ Render-Modus "${currentRenderMode}" nutzt keine OG-Link-Preview als Pflicht. Discord-/Meta-Checks sind hier nur informativ.`);
+      }
       if (!/^https:\/\//i.test(targetUrl)) {
         hints.push('🔴 Link-Preview benötigt HTTPS (nicht HTTP!).');
       }
 
       if (!discordProbe.ok) {
-        hints.push(`🔴 Discord-Probe FEHLER: ${discordProbe.error}`);
+        hints.push(`${modeUsesLinkPreview ? '🔴' : 'ℹ️'} Discord-Probe ${modeUsesLinkPreview ? 'FEHLER' : 'Hinweis'}: ${discordProbe.error}`);
       } else {
         if (!(discordProbe.status >= 200 && discordProbe.status < 400)) {
-          hints.push(`🔴 Discord-Crawler erhält HTTP ${discordProbe.status} (erwartet: 200-399).`);
+          hints.push(`${modeUsesLinkPreview ? '🔴' : 'ℹ️'} Discord-Crawler erhält HTTP ${discordProbe.status} (erwartet: 200-399).`);
         }
         if (!/text\/html/i.test(discordProbe.contentType || '')) {
-          hints.push(`🔴 Content-Type ist nicht text/html (${discordProbe.contentType || 'unbekannt'}).`);
+          hints.push(`${modeUsesLinkPreview ? '🔴' : 'ℹ️'} Content-Type ist nicht text/html (${discordProbe.contentType || 'unbekannt'}).`);
         }
-        if (!richPreviewLikely) {
+        if (modeUsesLinkPreview && !richPreviewLikely) {
           const missing = [];
           if (!hasOgTitle) missing.push('og:title');
           if (!hasDescription) missing.push('og:description oder <meta name="description">');
           if (!hasImage) missing.push('og:image oder twitter:image');
           hints.push(`🔴 UNZUREICHENDE METADATEN: Fehlend: ${missing.join(', ')}. Discord braucht mindestens Titel + (Beschreibung ODER Bild).`);
-        } else if (hasOgTitle && !hasImage) {
+        } else if (modeUsesLinkPreview && hasOgTitle && !hasImage) {
           hints.push('🟡 Vorschau ist grundsätzlich möglich, aber ohne Bild oft nur als Text-Link (og:image fehlt).');
         }
         if (discordProbe.challengeDetected) {
-          hints.push('🔴 Cloudflare-Challenge erkannt - Discord-Crawler wird möglicherweise blockiert!');
+          hints.push(`${modeUsesLinkPreview ? '🔴' : 'ℹ️'} Cloudflare-Challenge erkannt - Discord-Crawler wird möglicherweise blockiert!`);
         }
         if (discordProbe.isCloudflareServer && !discordProbe.challengeDetected) {
           hints.push('ℹ️ Server: Cloudflare (CDN). Browser und Discord sehen teils unterschiedliche Cache-Stände.');
@@ -571,7 +575,7 @@ module.exports = function startWebServer({
 
       // Konkrete Lösungsvorschläge
       const solutions = [];
-      if (!richPreviewLikely) {
+      if (modeUsesLinkPreview && !richPreviewLikely) {
         solutions.push('💡 LÖSUNG: Für zuverlässige Discord-Vorschau müssen Meta-Tags ergänzt werden.');
         solutions.push('  1️⃣ Pflicht: og:title + (og:description ODER og:image). Empfohlen: alle drei Tags setzen.');
         solutions.push('  2️⃣ Bei og:image: absolute HTTPS-URL verwenden (kein relativer Pfad).');
@@ -580,7 +584,7 @@ module.exports = function startWebServer({
           solutions.push('  4️⃣ Sofort-Workaround: DISCORD_STATUS_RENDER_MODE="embed" setzen (stabil, ohne OG-Abhängigkeit).');
         }
       }
-      if (discordProbe.challengeDetected) {
+      if (modeUsesLinkPreview && discordProbe.challengeDetected) {
         solutions.push('⚠️ CLOUDFLARE-HERAUSFORDERUNG: Cloudflare blockiert Discord-Crawler!');
         solutions.push('  → Lösung: In Cloudflare Dashboard Bot-Protection/Firewall-Regeln für Discordbot lockern.');
       }
@@ -594,6 +598,7 @@ module.exports = function startWebServer({
         currentRenderMode,
         checkedAt: new Date().toISOString(),
         diagnosis: {
+          modeUsesLinkPreview,
           richPreviewLikely,
           hasOgTitle,
           hasDescription,

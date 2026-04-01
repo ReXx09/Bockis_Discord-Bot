@@ -1409,6 +1409,7 @@
     const discord = d.probes?.discord || {};
     const browser = d.probes?.browser || {};
     const diag = d.diagnosis || {};
+    const modeUsesLinkPreview = diag.modeUsesLinkPreview !== false;
     const ynBadge = (ok, yes = 'OK', no = 'FEHLT') => ok
       ? `<span class="badge b-green">${yes}</span>`
       : `<span class="badge b-red">${no}</span>`;
@@ -1417,16 +1418,24 @@
       ? ynBadge(diag.richPreviewLikely, 'JA', 'NEIN')
       : (discord.richPreview ? '<span class="badge b-green">JA</span>' : '<span class="badge b-red">NEIN</span>');
 
+    const naBadge = '<span class="badge">N/A</span>';
+    const discordHttpCell = discord.ok
+      ? discord.status
+      : (modeUsesLinkPreview
+        ? `Fehler (${escapeHtml(discord.error || 'n/a')})`
+        : `Optional (${escapeHtml(discord.error || 'n/a')})`);
+    const contentTypeCell = modeUsesLinkPreview ? escapeHtml(discord.contentType || '–') : 'N/A (Modus-unabhängig)';
+
     summary.innerHTML =
       row('Ziel-URL', escapeHtml(d.targetUrl || '–')) +
       row('Render-Modus', escapeHtml(d.currentRenderMode || '–')) +
-      row('Discord HTTP', discord.ok ? discord.status : `Fehler (${escapeHtml(discord.error || 'n/a')})`) +
+      row('Discord HTTP', discordHttpCell) +
       row('Browser HTTP', browser.ok ? browser.status : `Fehler (${escapeHtml(browser.error || 'n/a')})`) +
-      row('Discord Rich Preview', richPreviewBadge) +
-      row('Discord Content-Type', escapeHtml(discord.contentType || '–')) +
-      row('Check: og:title', ynBadge(!!diag.hasOgTitle)) +
-      row('Check: Beschreibung', ynBadge(!!diag.hasDescription, 'OK', 'FEHLT (og:description/meta)')) +
-      row('Check: Bild', ynBadge(!!diag.hasImage, 'OK', 'FEHLT (og:image/twitter:image)'));
+      row('Discord Rich Preview', modeUsesLinkPreview ? richPreviewBadge : naBadge) +
+      row('Discord Content-Type', contentTypeCell) +
+      row('Check: og:title', modeUsesLinkPreview ? ynBadge(!!diag.hasOgTitle) : naBadge) +
+      row('Check: Beschreibung', modeUsesLinkPreview ? ynBadge(!!diag.hasDescription, 'OK', 'FEHLT (og:description/meta)') : naBadge) +
+      row('Check: Bild', modeUsesLinkPreview ? ynBadge(!!diag.hasImage, 'OK', 'FEHLT (og:image/twitter:image)') : naBadge);
 
     const lines = [];
     lines.push(`URL: ${d.targetUrl || '–'}`);
