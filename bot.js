@@ -1392,13 +1392,11 @@ async function syncServiceChannels(monitors) {
     .split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
 
   const targetNames = new Set([...whitelist, ...Object.keys(manualChannelMap)]);
+  const useAllActiveServices = targetNames.size === 0;
 
-  if (!targetNames.size) {
-    logger.warn('Service-Kanal-Manager: MONITORED_SERVICES und SERVICE_CHANNEL_MAP sind leer – Feature deaktiviert.');
-    return;
-  }
-
-  const targets = monitors.filter(m => targetNames.has(String(m.name || '').toLowerCase()));
+  const targets = useAllActiveServices
+    ? monitors.filter(m => m.active !== false)
+    : monitors.filter(m => targetNames.has(String(m.name || '').toLowerCase()));
 
   if (!targets.length) return;
 
