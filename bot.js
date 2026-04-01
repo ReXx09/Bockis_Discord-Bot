@@ -1414,7 +1414,11 @@ async function syncServiceChannels(monitors) {
   const whitelist = (config.get('discord.monitoredServices') || '')
     .split(',').map(s => _normalizeServiceKey(s)).filter(Boolean);
 
-  const targetNames = new Set([...whitelist, ...Object.keys(manualChannelMap)]);
+  // MONITORED_SERVICES hat Vorrang.
+  // SERVICE_CHANNEL_MAP dient nur als Quelle, wenn keine Whitelist gesetzt ist.
+  const targetNames = whitelist.length
+    ? new Set(whitelist)
+    : new Set(Object.keys(manualChannelMap));
   const useAllActiveServices = targetNames.size === 0;
 
   const targets = useAllActiveServices
