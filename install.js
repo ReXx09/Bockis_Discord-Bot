@@ -15,6 +15,9 @@
 const readline = require('readline');
 const { execSync, spawn } = require('child_process');
 const fs = require('fs');
+const path = require('path');
+
+const INSTALL_ROOT = __dirname;
 
 // ── ANSI-Farben ───────────────────────────────────────────────────────────────
 const C = {
@@ -527,20 +530,23 @@ async function finalize(rl, discord, kuma, optional) {
     `CLOUDFLARE_PUBLIC_URL=${optional.cloudflareUrl || ''}`,
   ].join('\n');
 
+  const envFilePath = path.join(INSTALL_ROOT, '.env');
+
   try {
-    fs.writeFileSync('.env', envContent, 'utf8');
-    print(`${SYM.ok}  .env-Datei erstellt`);
+    fs.writeFileSync(envFilePath, envContent, 'utf8');
+    print(`${SYM.ok}  .env-Datei erstellt: ${envFilePath}`);
   } catch (e) {
     print(`${SYM.fail}  .env konnte nicht geschrieben werden: ${e.message}`);
   }
 
   // Verzeichnisse anlegen
   for (const dir of ['data', 'logs']) {
+    const absDir = path.join(INSTALL_ROOT, dir);
     try {
-      fs.mkdirSync(dir, { recursive: true });
-      print(`${SYM.ok}  Verzeichnis "./${dir}/" angelegt`);
+      fs.mkdirSync(absDir, { recursive: true });
+      print(`${SYM.ok}  Verzeichnis angelegt: ${absDir}`);
     } catch (e) {
-      print(`${SYM.warn}  "./${dir}/" konnte nicht angelegt werden: ${e.message}`);
+      print(`${SYM.warn}  "${absDir}" konnte nicht angelegt werden: ${e.message}`);
     }
   }
 
@@ -550,7 +556,7 @@ async function finalize(rl, discord, kuma, optional) {
     '',
     `${C.bgrn}${C.b}   ✔  Installation erfolgreich abgeschlossen!${C.r}`,
     '',
-    `${C.dim}   Konfiguration gespeichert in: .env${C.r}`,
+    `${C.dim}   Konfiguration gespeichert in: ${envFilePath}${C.r}`,
     '',
   ]));
   nl();
