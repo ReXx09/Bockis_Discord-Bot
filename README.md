@@ -20,7 +20,7 @@ Optimiert für den Betrieb auf dem **Raspberry Pi** — mit interaktivem Install
 |---|---|
 | 📡 Live-Status | Automatisch aktualisierte Embed-Nachricht mit Status aller überwachten Services |
 | 🔔 Benachrichtigungen | Sofort-Alerts in Discord bei Service-Ausfall und Wiederherstellung |
-| 💬 Slash-Commands | `/status`, `/uptime`, `/refresh` — direkt in Discord nutzbar |
+| 💬 Slash-Commands | `/status`, `/uptime`, `/refresh`, `/cleanup`, `/help`, `/coinflip`, `/dice`, `/eightball` |
 | 📈 Web-Dashboard | Statusübersicht aller Checks unter `http://localhost:3000/dashboard` (passwortgeschützt) |
 | 📊 Prometheus-Metriken | Metriken unter `/metrics` für Grafana, Prometheus & Co. |
 | 🗄️ SQLite-Datenbank | Speichert Checks lokal, automatisches Cleanup nach 30 Tagen |
@@ -73,7 +73,12 @@ Der Assistent führt dich Schritt für Schritt durch:
 1. Prüft Voraussetzungen (Node.js, npm)
 2. Installiert alle Abhängigkeiten
 3. Fragt Discord-Token, Channel-IDs, Uptime Kuma URL ab
-4. Erstellt die `.env`-Datei automatisch
+4. Erstellt die `.env`-Datei automatisch (immer im Projektordner neben `bot.js`)
+
+> **Wichtig zu `.env` und `.env.example`:**
+> - `.env.example` ist nur die öffentliche Vorlage mit Platzhaltern.
+> - `.env` enthält deine lokalen echten Werte und darf nicht committed werden.
+> - Der Installer schreibt die `.env` explizit in den Repo-Ordner (nicht abhängig vom aktuellen Terminal-Ordner).
 
 ---
 
@@ -257,7 +262,7 @@ bash update.sh --mode native
 bash update.sh --yes
 ```
 
-Das Skript erledigt automatisch: git pull → npm ci → Service-Neustart. Eine `.env`-Sicherungskopie wird vor jedem Update angelegt.
+Das Skript erledigt automatisch: git pull → npm ci → Service-Neustart. Eine `.env`-Sicherungskopie wird vor jedem Update angelegt (`.env.backup.*`, per `.gitignore` ausgeschlossen).
 
 ---
 
