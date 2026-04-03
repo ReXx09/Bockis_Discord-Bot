@@ -3,6 +3,7 @@ node_modules/
 
 # Umgebungsvariablen – niemals committen!
 .env
+.env.backup.*
 
 # Datenbank
 data/
