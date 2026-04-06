@@ -806,6 +806,34 @@
           </div>
           <div class="cfg-hint">Optional nur bestimmte Textkanäle per Channel-ID. Leer = in allen Guild-Textkanälen.</div>
         </div>
+        <div class="cfg-field" style="border:1px solid var(--border);border-radius:8px;padding:12px;background:rgba(255,255,255,.01)">
+          <label class="cfg-label">Uebersetzer (/translate)</label>
+          <div style="display:flex;align-items:center;gap:12px;margin-top:2px;flex-wrap:wrap">
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px">
+              <input type="checkbox" id="cfgTranslateEnabled" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
+              <span>Slash-Command <code>/translate</code> aktivieren</span>
+            </label>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px;margin-top:8px">
+            <div>
+              <label class="cfg-label" for="cfgTranslateDefaultTarget" style="font-size:12px;margin-bottom:4px">Standard Zielsprache</label>
+              <input class="cfg-input" id="cfgTranslateDefaultTarget" type="text" autocomplete="off" placeholder="de">
+            </div>
+            <div>
+              <label class="cfg-label" for="cfgTranslateDefaultSource" style="font-size:12px;margin-bottom:4px">Standard Quellsprache</label>
+              <input class="cfg-input" id="cfgTranslateDefaultSource" type="text" autocomplete="off" placeholder="auto">
+            </div>
+            <div>
+              <label class="cfg-label" for="cfgTranslateMaxTextLength" style="font-size:12px;margin-bottom:4px">Max. Textlaenge</label>
+              <input class="cfg-input" id="cfgTranslateMaxTextLength" type="number" min="64" max="4000" step="1" placeholder="1800">
+            </div>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+            <input class="cfg-input" id="cfgTranslateAllowedGuildIds" type="text" autocomplete="off" style="min-width:260px;flex:1"
+                   placeholder="Optional: Guild-Whitelist IDs (Komma/Semikolon)">
+          </div>
+          <div class="cfg-hint">Leer bei Guild-Whitelist = in allen Servern und DMs nutzbar, in denen der Bot verfuegbar ist.</div>
+        </div>
         <div class="cfg-field">
           <label class="cfg-label" for="cfgStatusCh">Status-Channel ID</label>
           <input class="cfg-input" id="cfgStatusCh" type="text" autocomplete="off"
@@ -1061,8 +1089,12 @@
               <input type="checkbox" id="cfgCmdCleanup" data-cmd="cleanup" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
               <span><code>/cleanup</code> - manuelle Kanal-Bereinigung (ManageGuild)</span>
             </label>
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px">
+              <input type="checkbox" id="cfgCmdTranslate" data-cmd="translate" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
+              <span><code>/translate</code> - Text in eine andere Sprache uebersetzen</span>
+            </label>
           </div>
-          <input type="hidden" id="cfgEnabledCommands" value="status,uptime,refresh,help,coinflip,dice,eightball,cleanup">
+          <input type="hidden" id="cfgEnabledCommands" value="status,uptime,refresh,help,coinflip,dice,eightball,cleanup,translate">
           <div class="cfg-hint">Mindestens ein Kommando muss aktiv bleiben. Änderungen werden beim Neustart neu registriert.</div>
         </div>
       </div>
@@ -1130,6 +1162,16 @@
         <div class="cfg-field">
           <label class="cfg-label" for="cfgApiKey">Uptime Kuma API Key</label>
           <input class="cfg-input" id="cfgApiKey" type="password" autocomplete="off"
+                 placeholder="Neuen API Key eingeben (leer lassen = unverändert)">
+        </div>
+        <div class="cfg-field">
+          <label class="cfg-label" for="cfgTranslateApiUrl">Uebersetzer API URL (LibreTranslate kompatibel)</label>
+          <input class="cfg-input" id="cfgTranslateApiUrl" type="text" autocomplete="off"
+                 placeholder="https://libretranslate.com/translate">
+        </div>
+        <div class="cfg-field">
+          <label class="cfg-label" for="cfgTranslateApiKey">Uebersetzer API Key (optional)</label>
+          <input class="cfg-input" id="cfgTranslateApiKey" type="password" autocomplete="off"
                  placeholder="Neuen API Key eingeben (leer lassen = unverändert)">
         </div>
         <div class="cfg-field">
@@ -2603,13 +2645,13 @@
   }
 
   function _parseEnabledCommands(value) {
-    const allowed = ['status', 'uptime', 'refresh', 'help', 'coinflip', 'dice', 'eightball', 'cleanup'];
+    const allowed = ['status', 'uptime', 'refresh', 'help', 'coinflip', 'dice', 'eightball', 'cleanup', 'translate'];
     const entries = String(value || '')
       .split(',')
       .map(s => s.trim().toLowerCase())
       .filter(Boolean);
     const unique = Array.from(new Set(entries)).filter(cmd => allowed.includes(cmd));
-    return unique.length ? unique : ['status', 'uptime', 'refresh', 'help', 'coinflip', 'dice', 'eightball'];
+    return unique.length ? unique : ['status', 'uptime', 'refresh', 'help', 'coinflip', 'dice', 'eightball', 'translate'];
   }
 
   // ── Discord-Kanal-Browser für Mapping-Übernahme ──────────────────────────
@@ -2866,11 +2908,13 @@
       // Secret-Felder bleiben leer, Platzhalter zeigt maskierten Ist-Wert.
       setCfg('cfgToken', '');
       setCfg('cfgApiKey', '');
+      setCfg('cfgTranslateApiKey', '');
       setCfg('cfgWebhookUrl', '');
       setCfg('cfgDashPassword', '');
 
       document.getElementById('cfgToken').dataset.initialValue = d.DISCORD_TOKEN ? '__MASKED__' : '';
       document.getElementById('cfgApiKey').dataset.initialValue = d.UPTIME_KUMA_API_KEY ? '__MASKED__' : '';
+      document.getElementById('cfgTranslateApiKey').dataset.initialValue = d.DISCORD_TRANSLATE_API_KEY ? '__MASKED__' : '';
       document.getElementById('cfgWebhookUrl').dataset.initialValue = d.DISCORD_STATUS_WEBHOOK_URL ? '__MASKED__' : '';
       document.getElementById('cfgDashPassword').dataset.initialValue = d.DASHBOARD_PASSWORD ? '__MASKED__' : '';
 
@@ -2880,8 +2924,13 @@
       setCfg('cfgPresenceRotateMs', d.DISCORD_PRESENCE_ROTATE_MS || '90000');
       setCfg('cfgAutoReactionEmojis', d.DISCORD_AUTO_REACTION_EMOJIS || '👍');
       setCfg('cfgAutoReactionChannelIds', d.DISCORD_AUTO_REACTION_CHANNEL_IDS || '');
-      setCfg('cfgEnabledCommands', d.DISCORD_ENABLED_COMMANDS || 'status,uptime,refresh,help,coinflip,dice,eightball,cleanup');
-      applyEnabledCommandsToCheckboxes(d.DISCORD_ENABLED_COMMANDS || 'status,uptime,refresh,help,coinflip,dice,eightball,cleanup');
+      setCfg('cfgEnabledCommands', d.DISCORD_ENABLED_COMMANDS || 'status,uptime,refresh,help,coinflip,dice,eightball,cleanup,translate');
+      applyEnabledCommandsToCheckboxes(d.DISCORD_ENABLED_COMMANDS || 'status,uptime,refresh,help,coinflip,dice,eightball,cleanup,translate');
+      setCfg('cfgTranslateDefaultTarget', d.DISCORD_TRANSLATE_DEFAULT_TARGET || 'de');
+      setCfg('cfgTranslateDefaultSource', d.DISCORD_TRANSLATE_DEFAULT_SOURCE || 'auto');
+      setCfg('cfgTranslateApiUrl', d.DISCORD_TRANSLATE_API_URL || 'https://libretranslate.com/translate');
+      setCfg('cfgTranslateAllowedGuildIds', d.DISCORD_TRANSLATE_ALLOWED_GUILD_IDS || '');
+      setCfg('cfgTranslateMaxTextLength', d.DISCORD_TRANSLATE_MAX_TEXT_LENGTH || '1800');
       setCfg('cfgNotifCh', d.DISCORD_NOTIFICATION_CHANNEL || '');
       setCfg('cfgKumaUrl', d.UPTIME_KUMA_URL || '');
       setCfg('cfgRenderMode', d.DISCORD_STATUS_RENDER_MODE || 'auto');
@@ -2914,6 +2963,9 @@
       document.getElementById('cfgApiKey').placeholder = d.UPTIME_KUMA_API_KEY
         ? `Aktuell: ${d.UPTIME_KUMA_API_KEY} — leer lassen = unverändert`
         : 'Neuen API Key eingeben';
+      document.getElementById('cfgTranslateApiKey').placeholder = d.DISCORD_TRANSLATE_API_KEY
+        ? `Aktuell: ${d.DISCORD_TRANSLATE_API_KEY} — leer lassen = unverändert`
+        : 'Neuen API Key eingeben (optional)';
       document.getElementById('cfgWebhookUrl').placeholder = d.DISCORD_STATUS_WEBHOOK_URL
         ? `Aktuell: ${d.DISCORD_STATUS_WEBHOOK_URL} — leer lassen = unverändert`
         : 'Webhook URL (optional)';
@@ -2928,6 +2980,7 @@
       setCheckboxValue('cfgServiceAutoQuiet', (d.SERVICE_CHANNEL_AUTO_QUIET || 'true') !== 'false', { force });
       setCheckboxValue('cfgServiceChannelDebug', (d.SERVICE_CHANNEL_DEBUG || 'false') === 'true', { force });
       setCheckboxValue('cfgAutoReactionEnabled', (d.DISCORD_AUTO_REACTION_ENABLED || 'false') === 'true', { force });
+      setCheckboxValue('cfgTranslateEnabled', (d.DISCORD_TRANSLATE_ENABLED || 'false') === 'true', { force });
 
       if (force) clearConfigDirtyTracking();
     } catch (e) {
@@ -2961,6 +3014,12 @@
     maybeSetChanged(body, 'DISCORD_AUTO_REACTION_EMOJIS', 'cfgAutoReactionEmojis', { allowEmpty: true });
     maybeSetChanged(body, 'DISCORD_AUTO_REACTION_CHANNEL_IDS', 'cfgAutoReactionChannelIds', { allowEmpty: true });
     maybeSetChanged(body, 'DISCORD_ENABLED_COMMANDS', 'cfgEnabledCommands');
+    maybeSetChanged(body, 'DISCORD_TRANSLATE_DEFAULT_TARGET', 'cfgTranslateDefaultTarget');
+    maybeSetChanged(body, 'DISCORD_TRANSLATE_DEFAULT_SOURCE', 'cfgTranslateDefaultSource');
+    maybeSetChanged(body, 'DISCORD_TRANSLATE_API_URL', 'cfgTranslateApiUrl');
+    maybeSetChanged(body, 'DISCORD_TRANSLATE_API_KEY', 'cfgTranslateApiKey', { allowEmpty: true });
+    maybeSetChanged(body, 'DISCORD_TRANSLATE_ALLOWED_GUILD_IDS', 'cfgTranslateAllowedGuildIds', { allowEmpty: true });
+    maybeSetChanged(body, 'DISCORD_TRANSLATE_MAX_TEXT_LENGTH', 'cfgTranslateMaxTextLength');
     maybeSetChanged(body, 'STATUS_CHANNEL_ID', 'cfgStatusCh');
     maybeSetChanged(body, 'DISCORD_NOTIFICATION_CHANNEL', 'cfgNotifCh');
     maybeSetChanged(body, 'MESSAGE_CLEANUP_CHANNEL_IDS', 'cfgMsgCleanupChannelIds', { allowEmpty: true });
@@ -3001,6 +3060,13 @@
     const initialAutoReaction = autoReactionEl.dataset.initialValue || 'false';
     if (currentAutoReaction !== initialAutoReaction) {
       body.DISCORD_AUTO_REACTION_ENABLED = currentAutoReaction;
+    }
+
+    const translateEnabledEl = document.getElementById('cfgTranslateEnabled');
+    const currentTranslateEnabled = translateEnabledEl.checked ? 'true' : 'false';
+    const initialTranslateEnabled = translateEnabledEl.dataset.initialValue || 'false';
+    if (currentTranslateEnabled !== initialTranslateEnabled) {
+      body.DISCORD_TRANSLATE_ENABLED = currentTranslateEnabled;
     }
 
     const msgCleanupEnabledEl = document.getElementById('cfgMsgCleanupEnabled');

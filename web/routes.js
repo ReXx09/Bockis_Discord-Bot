@@ -1098,6 +1098,7 @@ module.exports = function startWebServer({
       const apiKey = get('UPTIME_KUMA_API_KEY');
       const webhookUrl = get('DISCORD_STATUS_WEBHOOK_URL');
       const dashboardPassword = get('DASHBOARD_PASSWORD');
+      const translateApiKey = get('DISCORD_TRANSLATE_API_KEY');
 
       res.json({
         ok: true,
@@ -1108,7 +1109,14 @@ module.exports = function startWebServer({
         DISCORD_AUTO_REACTION_ENABLED:get('DISCORD_AUTO_REACTION_ENABLED') || 'false',
         DISCORD_AUTO_REACTION_EMOJIS: get('DISCORD_AUTO_REACTION_EMOJIS') || '👍',
         DISCORD_AUTO_REACTION_CHANNEL_IDS: get('DISCORD_AUTO_REACTION_CHANNEL_IDS') || '',
-        DISCORD_ENABLED_COMMANDS:     get('DISCORD_ENABLED_COMMANDS') || 'status,uptime,refresh,help,coinflip,dice,eightball,cleanup',
+        DISCORD_ENABLED_COMMANDS:     get('DISCORD_ENABLED_COMMANDS') || 'status,uptime,refresh,help,coinflip,dice,eightball,cleanup,translate',
+        DISCORD_TRANSLATE_ENABLED:    get('DISCORD_TRANSLATE_ENABLED') || 'false',
+        DISCORD_TRANSLATE_DEFAULT_TARGET: get('DISCORD_TRANSLATE_DEFAULT_TARGET') || 'de',
+        DISCORD_TRANSLATE_DEFAULT_SOURCE: get('DISCORD_TRANSLATE_DEFAULT_SOURCE') || 'auto',
+        DISCORD_TRANSLATE_API_URL:    get('DISCORD_TRANSLATE_API_URL') || 'https://libretranslate.com/translate',
+        DISCORD_TRANSLATE_API_KEY:    maskSecret(translateApiKey),
+        DISCORD_TRANSLATE_ALLOWED_GUILD_IDS: get('DISCORD_TRANSLATE_ALLOWED_GUILD_IDS') || '',
+        DISCORD_TRANSLATE_MAX_TEXT_LENGTH: get('DISCORD_TRANSLATE_MAX_TEXT_LENGTH') || '1800',
         STATUS_CHANNEL_ID:            get('STATUS_CHANNEL_ID'),
         DISCORD_NOTIFICATION_CHANNEL: get('DISCORD_NOTIFICATION_CHANNEL'),
         DISCORD_STATUS_RENDER_MODE:   get('DISCORD_STATUS_RENDER_MODE') || 'auto',
@@ -1162,6 +1170,13 @@ module.exports = function startWebServer({
       'DISCORD_AUTO_REACTION_EMOJIS',
       'DISCORD_AUTO_REACTION_CHANNEL_IDS',
       'DISCORD_ENABLED_COMMANDS',
+      'DISCORD_TRANSLATE_ENABLED',
+      'DISCORD_TRANSLATE_DEFAULT_TARGET',
+      'DISCORD_TRANSLATE_DEFAULT_SOURCE',
+      'DISCORD_TRANSLATE_API_URL',
+      'DISCORD_TRANSLATE_API_KEY',
+      'DISCORD_TRANSLATE_ALLOWED_GUILD_IDS',
+      'DISCORD_TRANSLATE_MAX_TEXT_LENGTH',
       'STATUS_CHANNEL_ID',
       'DISCORD_NOTIFICATION_CHANNEL',
       'DISCORD_STATUS_RENDER_MODE',
@@ -1206,6 +1221,7 @@ module.exports = function startWebServer({
       'DISCORD_STATUS_BUTTON_LABEL',
       'DISCORD_WEBUI_BUTTON_LABEL',
       'DISCORD_STATUS_WEBHOOK_URL',
+      'DISCORD_TRANSLATE_API_KEY',
       'UPTIME_KUMA_API_KEY',
       'CLOUDFLARE_PUBLIC_URL',
       'DASHBOARD_PASSWORD',
@@ -1213,7 +1229,8 @@ module.exports = function startWebServer({
       'SERVICE_CHANNEL_MAP',
       'MONITORED_SERVICES',
       'MESSAGE_CLEANUP_CHANNEL_IDS',
-      'SERVICE_CHANNEL_DEBUG_FILTER'
+      'SERVICE_CHANNEL_DEBUG_FILTER',
+      'DISCORD_TRANSLATE_ALLOWED_GUILD_IDS'
     ]);
     const envPath = path.join(rootDir, '.env');
     if (!fs.existsSync(envPath)) return res.json({ ok: false, error: '.env nicht gefunden' });
@@ -1231,7 +1248,7 @@ module.exports = function startWebServer({
       if (raw === '') continue;
 
       const val = String(raw).trim();
-      if (key === 'DISCORD_TOKEN' || key === 'UPTIME_KUMA_API_KEY' || key === 'DISCORD_STATUS_WEBHOOK_URL' || key === 'DASHBOARD_PASSWORD') {
+      if (key === 'DISCORD_TOKEN' || key === 'UPTIME_KUMA_API_KEY' || key === 'DISCORD_STATUS_WEBHOOK_URL' || key === 'DASHBOARD_PASSWORD' || key === 'DISCORD_TRANSLATE_API_KEY') {
         if (val.includes('*')) continue;
         if (/[\n\r]/.test(val)) return res.json({ ok: false, error: 'Ungültiger Token (enthält Zeilenumbruch)' });
       }
@@ -1262,7 +1279,7 @@ module.exports = function startWebServer({
         if (invalid.length) return res.json({ ok: false, error: `DISCORD_AUTO_REACTION_CHANNEL_IDS ungueltig: ${invalid.join(', ')}` });
       }
       if (key === 'DISCORD_ENABLED_COMMANDS') {
-        const allowedCommands = new Set(['status', 'uptime', 'refresh', 'help', 'coinflip', 'dice', 'eightball', 'cleanup']);
+        const allowedCommands = new Set(['status', 'uptime', 'refresh', 'help', 'coinflip', 'dice', 'eightball', 'cleanup', 'translate']);
         const entries = val.split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
         const uniqueEntries = Array.from(new Set(entries));
         if (!uniqueEntries.length) {
@@ -1274,6 +1291,25 @@ module.exports = function startWebServer({
         }
         updates[key] = uniqueEntries.join(',');
         continue;
+      }
+      if (key === 'DISCORD_TRANSLATE_ENABLED' && !['true', 'false'].includes(val))
+        return res.json({ ok: false, error: 'DISCORD_TRANSLATE_ENABLED muss true oder false sein' });
+      if ((key === 'DISCORD_TRANSLATE_DEFAULT_TARGET' || key === 'DISCORD_TRANSLATE_DEFAULT_SOURCE')) {
+        if (!/^[a-z]{2,3}(?:-[a-z]{2,4})?$/i.test(val) && !(key === 'DISCORD_TRANSLATE_DEFAULT_SOURCE' && val.toLowerCase() === 'auto')) {
+          return res.json({ ok: false, error: `${key} muss auto (nur Quelle) oder Sprachcode wie de/en/fr sein` });
+        }
+      }
+      if (key === 'DISCORD_TRANSLATE_API_URL' && !/^https?:\/\/.+/.test(val))
+        return res.json({ ok: false, error: 'DISCORD_TRANSLATE_API_URL muss mit http:// oder https:// beginnen' });
+      if (key === 'DISCORD_TRANSLATE_ALLOWED_GUILD_IDS') {
+        const entries = val.split(/[;,]/).map(s => s.trim()).filter(Boolean);
+        const invalid = entries.filter(id => !/^\d+$/.test(id));
+        if (invalid.length) return res.json({ ok: false, error: `DISCORD_TRANSLATE_ALLOWED_GUILD_IDS ungueltig: ${invalid.join(', ')}` });
+      }
+      if (key === 'DISCORD_TRANSLATE_MAX_TEXT_LENGTH') {
+        const n = parseInt(val, 10);
+        if (!Number.isFinite(n) || n < 64 || n > 4000)
+          return res.json({ ok: false, error: 'DISCORD_TRANSLATE_MAX_TEXT_LENGTH muss zwischen 64 und 4000 liegen' });
       }
       if ((key === 'STATUS_CHANNEL_ID' || key === 'DISCORD_NOTIFICATION_CHANNEL') && !/^\d+$/.test(val))
         return res.json({ ok: false, error: `${key}: Nur Zahlen erlaubt (Discord ID)` });

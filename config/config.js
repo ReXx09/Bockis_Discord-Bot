@@ -99,10 +99,53 @@ const config = convict({
       env: 'DISCORD_AUTO_REACTION_CHANNEL_IDS'
     },
     enabledCommands: {
-      doc: 'Aktive Slash-Commands als Komma-Liste (status,uptime,refresh,help,coinflip,dice,eightball,cleanup)',
+      doc: 'Aktive Slash-Commands als Komma-Liste (status,uptime,refresh,help,coinflip,dice,eightball,cleanup,translate)',
       format: String,
-      default: 'status,uptime,refresh,help,coinflip,dice,eightball,cleanup',
+      default: 'status,uptime,refresh,help,coinflip,dice,eightball,cleanup,translate',
       env: 'DISCORD_ENABLED_COMMANDS'
+    },
+    translateEnabled: {
+      doc: 'Aktiviert den /translate Slash-Command',
+      format: Boolean,
+      default: false,
+      env: 'DISCORD_TRANSLATE_ENABLED'
+    },
+    translateDefaultTarget: {
+      doc: 'Standard-Zielsprache fuer /translate (z.B. de, en, fr)',
+      format: String,
+      default: 'de',
+      env: 'DISCORD_TRANSLATE_DEFAULT_TARGET'
+    },
+    translateDefaultSource: {
+      doc: 'Standard-Quellsprache fuer /translate (auto oder Sprachcode wie en)',
+      format: String,
+      default: 'auto',
+      env: 'DISCORD_TRANSLATE_DEFAULT_SOURCE'
+    },
+    translateApiUrl: {
+      doc: 'HTTP-Endpoint fuer Uebersetzungen (LibreTranslate kompatibel)',
+      format: String,
+      default: 'https://libretranslate.com/translate',
+      env: 'DISCORD_TRANSLATE_API_URL'
+    },
+    translateApiKey: {
+      doc: 'Optionaler API-Key fuer den Uebersetzungsdienst',
+      format: String,
+      default: '',
+      env: 'DISCORD_TRANSLATE_API_KEY',
+      sensitive: true
+    },
+    translateAllowedGuildIds: {
+      doc: 'Optionale Guild-Whitelist fuer /translate (Komma/Semikolon). Leer = alle Guilds + DMs',
+      format: String,
+      default: '',
+      env: 'DISCORD_TRANSLATE_ALLOWED_GUILD_IDS'
+    },
+    translateMaxTextLength: {
+      doc: 'Maximale Textlaenge fuer /translate',
+      format: 'int',
+      default: 1800,
+      env: 'DISCORD_TRANSLATE_MAX_TEXT_LENGTH'
     },
     statusChannelId: {
       doc: 'Channel-ID für die gepinnte Status-Nachricht',

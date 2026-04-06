@@ -1774,7 +1774,7 @@ async function calculateUptimeMetrics() {
 // #endregion
 
 // #region 20. SLASH-COMMANDS REGISTRIEREN
-const AVAILABLE_SLASH_COMMANDS = ['status', 'uptime', 'refresh', 'help', 'coinflip', 'dice', 'eightball', 'cleanup'];
+const AVAILABLE_SLASH_COMMANDS = ['status', 'uptime', 'refresh', 'help', 'coinflip', 'dice', 'eightball', 'cleanup', 'translate'];
 
 function getEnabledSlashCommands() {
   const raw = String(config.get('discord.enabledCommands') || '').trim();
@@ -1904,6 +1904,30 @@ async function registerSlashCommands() {
     );
   }
 
+  if (enabled.has('translate')) {
+    commands.push(
+      new SlashCommandBuilder()
+        .setName('translate')
+        .setDescription('Uebersetzt Text (z. B. Englisch <-> Deutsch)')
+        .addStringOption(opt =>
+          opt.setName('text')
+            .setDescription('Zu uebersetzender Text')
+            .setRequired(true)
+        )
+        .addStringOption(opt =>
+          opt.setName('ziel')
+            .setDescription('Zielsprache, z. B. de, en, fr (leer = Standard)')
+            .setRequired(false)
+        )
+        .addStringOption(opt =>
+          opt.setName('quelle')
+            .setDescription('Quellsprache, z. B. auto, en, de (leer = Standard)')
+            .setRequired(false)
+        )
+        .toJSON()
+    );
+  }
+
   try {
     const rest = new REST({ version: '10' }).setToken(config.get('discord.token'));
 
@@ -1987,6 +2011,78 @@ function getConfiguredAutoReactionChannelIds() {
       .map(s => s.trim())
       .filter(id => /^\d+$/.test(id))
   ));
+}
+
+function isTranslationEnabled() {
+  return config.get('discord.translateEnabled') === true;
+}
+
+function getConfiguredTranslateAllowedGuildIds() {
+  const raw = String(config.get('discord.translateAllowedGuildIds') || '').trim();
+  if (!raw) return [];
+  return Array.from(new Set(
+    raw.split(/[;,]/)
+      .map(s => s.trim())
+      .filter(id => /^\d+$/.test(id))
+  ));
+}
+
+function getConfiguredTranslateSource() {
+  const raw = String(config.get('discord.translateDefaultSource') || 'auto').trim().toLowerCase();
+  return raw || 'auto';
+}
+
+function getConfiguredTranslateTarget() {
+  const raw = String(config.get('discord.translateDefaultTarget') || 'de').trim().toLowerCase();
+  return raw || 'de';
+}
+
+function getConfiguredTranslateMaxTextLength() {
+  const raw = Number(config.get('discord.translateMaxTextLength'));
+  if (!Number.isFinite(raw)) return 1800;
+  return Math.max(64, Math.min(raw, 4000));
+}
+
+function isValidLanguageCode(code) {
+  if (!code) return false;
+  if (code === 'auto') return true;
+  return /^[a-z]{2,3}(?:-[a-z]{2,4})?$/i.test(code);
+}
+
+function isTranslationAllowedForGuild(guildId) {
+  if (!guildId) return true; // DMs sind immer erlaubt
+  const allowed = getConfiguredTranslateAllowedGuildIds();
+  if (!allowed.length) return true;
+  return allowed.includes(guildId);
+}
+
+async function translateTextViaApi({ text, source, target }) {
+  const url = String(config.get('discord.translateApiUrl') || '').trim();
+  const apiKey = String(config.get('discord.translateApiKey') || '').trim();
+  if (!url) throw new Error('DISCORD_TRANSLATE_API_URL ist leer');
+
+  const body = {
+    q: text,
+    source,
+    target,
+    format: 'text'
+  };
+  if (apiKey) body.api_key = apiKey;
+
+  const resp = await axios.post(url, body, {
+    timeout: 15000,
+    headers: { 'Content-Type': 'application/json' },
+    validateStatus: () => true
+  });
+
+  if (resp.status < 200 || resp.status >= 300) {
+    const detail = typeof resp.data === 'string' ? resp.data : JSON.stringify(resp.data || {});
+    throw new Error(`Translate API Fehler (${resp.status}): ${detail.slice(0, 220)}`);
+  }
+
+  const translated = String(resp.data?.translatedText || '').trim();
+  if (!translated) throw new Error('Translate API lieferte keinen translatedText-Wert');
+  return translated;
 }
 
 function applyConfiguredPresenceNow() {
@@ -2094,6 +2190,7 @@ client.on('interactionCreate', async interaction => {
           '`/uptime` - Gesamt-Uptime',
           '`/refresh` - manueller Refresh (ManageGuild)',
           '`/cleanup` - Nachrichten-Cleanup (ManageGuild)',
+          '`/translate <text> [ziel] [quelle]` - Text uebersetzen',
           '',
           '**Fun & Gadgets**',
           '`/coinflip` - Münzwurf',
@@ -2105,6 +2202,57 @@ client.on('interactionCreate', async interaction => {
         timestamp: new Date().toISOString()
       }]
     });
+  }
+
+  if (interaction.commandName === 'translate') {
+    if (!isTranslationEnabled()) {
+      return interaction.reply({ content: '❌ Uebersetzer ist aktuell deaktiviert.', ephemeral: true });
+    }
+    if (!isTranslationAllowedForGuild(interaction.guildId || null)) {
+      return interaction.reply({ content: '❌ Uebersetzer ist in dieser Guild nicht freigegeben.', ephemeral: true });
+    }
+
+    await interaction.deferReply({ ephemeral: true });
+    try {
+      const rawText = String(interaction.options.getString('text', true) || '').trim();
+      const maxLen = getConfiguredTranslateMaxTextLength();
+      if (!rawText) return interaction.editReply('❌ Bitte gib einen Text an.');
+      if (rawText.length > maxLen) {
+        return interaction.editReply(`❌ Text zu lang (${rawText.length}/${maxLen}).`);
+      }
+
+      const sourceInput = String(interaction.options.getString('quelle') || '').trim().toLowerCase();
+      const targetInput = String(interaction.options.getString('ziel') || '').trim().toLowerCase();
+      const source = sourceInput || getConfiguredTranslateSource();
+      const target = targetInput || getConfiguredTranslateTarget();
+
+      if (!isValidLanguageCode(source)) {
+        return interaction.editReply('❌ Ungueltige Quellsprache. Erlaubt: auto oder Sprachcode wie en, de, fr.');
+      }
+      if (!isValidLanguageCode(target) || target === 'auto') {
+        return interaction.editReply('❌ Ungueltige Zielsprache. Bitte Sprachcode wie de, en oder fr verwenden.');
+      }
+      if (source !== 'auto' && source === target) {
+        return interaction.editReply('⚠️ Quelle und Ziel sind identisch. Bitte unterschiedliche Sprachen waehlen.');
+      }
+
+      const translated = await translateTextViaApi({ text: rawText, source, target });
+      return interaction.editReply({
+        embeds: [{
+          color: 0x388bfd,
+          title: '🌍 Uebersetzung',
+          fields: [
+            { name: `Original (${source})`, value: rawText.slice(0, 1024) },
+            { name: `Uebersetzt (${target})`, value: translated.slice(0, 1024) }
+          ],
+          footer: { text: `Quelle: ${interaction.guildId ? 'Server' : 'DM'} · Max-Laenge ${maxLen}` },
+          timestamp: new Date().toISOString()
+        }]
+      });
+    } catch (err) {
+      logger.error(`/translate Fehler: ${err.message}`);
+      return interaction.editReply('❌ Uebersetzung fehlgeschlagen. Pruefe API-URL/API-Key und versuche es erneut.');
+    }
   }
 
   if (interaction.commandName === 'coinflip') {
