@@ -1465,6 +1465,79 @@ module.exports = function startWebServer({
 
   // ── API: Cloudflare Tunnel Status ───────────────────────────────────────────
 
+  // ── API: Container-/Service-Erkennung ─────────────────────────────────────
+  app.get('/api/container-detection', dashboardAuth, async (req, res) => {
+    const result = {
+      ok: true,
+      docker: { available: false, version: null },
+      uptimeKuma:     { found: false, via: null, name: null, status: null, ports: null, reachable: false, url: null },
+      libretranslate: { found: false, via: null, name: null, status: null, ports: null, reachable: false, url: null, languageCount: null }
+    };
+
+    // Docker verfügbar?
+    try {
+      const v = execFileSync('docker', ['version', '--format', '{{.Server.Version}}'],
+        { timeout: 4000, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+      result.docker.available = true;
+      result.docker.version = v || 'vorhanden';
+    } catch { /* Docker nicht installiert */ }
+
+    // Laufende Container prüfen
+    if (result.docker.available) {
+      try {
+        const out = execFileSync('docker', ['ps', '--format', '{{.Names}}|||{{.Status}}|||{{.Ports}}'],
+          { timeout: 5000 }).toString().trim();
+        for (const line of out.split('\n').filter(Boolean)) {
+          const [name = '', status = '', ports = ''] = line.split('|||');
+          const nl = name.toLowerCase();
+          if (nl.includes('uptime') || nl.includes('kuma')) {
+            result.uptimeKuma = { found: true, via: 'docker', name, status, ports };
+          }
+          if (nl.includes('libretranslate') || nl.includes('libre-translate')) {
+            result.libretranslate = { found: true, via: 'docker', name, status, ports };
+          }
+        }
+      } catch { /* docker ps optional */ }
+    }
+
+    // Systemd-Fallback für uptime-kuma
+    if (!result.uptimeKuma.found) {
+      try {
+        const state = execFileSync('systemctl', ['is-active', 'uptime-kuma'], { timeout: 4000 }).toString().trim();
+        if (state === 'active') {
+          result.uptimeKuma = { found: true, via: 'systemd', name: 'uptime-kuma', status: state, ports: null };
+        }
+      } catch { /* kein systemd-Service */ }
+    }
+
+    // HTTP-Probe: Uptime Kuma
+    const kumaBase = (config.get('uptimeKuma.url') || '').replace(/\/$/, '');
+    if (kumaBase) {
+      result.uptimeKuma.url = kumaBase;
+      try {
+        await axios.get(kumaBase, { timeout: 3000 });
+        result.uptimeKuma.reachable = true;
+      } catch (e) {
+        result.uptimeKuma.reachable = !!(e.response); // HTTP-Antwort = erreichbar
+      }
+    }
+
+    // HTTP-Probe: LibreTranslate
+    const ltBase = (config.get('discord.translateApiUrl') || '').replace(/\/translate$/, '').replace(/\/$/, '');
+    if (ltBase) {
+      result.libretranslate.url = ltBase;
+      try {
+        const r = await axios.get(`${ltBase}/languages`, { timeout: 3000 });
+        result.libretranslate.reachable = true;
+        result.libretranslate.languageCount = Array.isArray(r.data) ? r.data.length : null;
+      } catch (e) {
+        result.libretranslate.reachable = !!(e.response);
+      }
+    }
+
+    res.json(result);
+  });
+
   app.get('/api/tunnel-status', dashboardAuth, (req, res) => {
     const publicUrl = config.get('cloudflare.publicUrl') || null;
     execFile('systemctl', ['is-active', 'cloudflared'], { timeout: 4000 }, (err, stdout) => {

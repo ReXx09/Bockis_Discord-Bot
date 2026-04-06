@@ -723,6 +723,15 @@
   </div>
 </div>
 
+<!-- ── ROW 1d: SERVICE-ERKENNUNG ─────────────────────── -->
+<div class="card" id="containersCard" data-span="12" data-pane="overview">
+  <div class="card-title">🐳 Service-Erkennung</div>
+  <div id="containersInfo">
+    <div class="sk"></div>
+    <div class="sk" style="width:66%"></div>
+  </div>
+</div>
+
 <!-- ── ROW 1c: DISCORD KONFIGURATION ───────────────────── -->
 <div class="card" id="cfgCard" data-span="12" data-pane="settings">
   <div class="card-title">⚙️ Einstellungen</div>
@@ -1757,7 +1766,13 @@
     try {
       const t = await fetch('/api/tunnel-status').then(r => r.json());
       renderTunnel(t);
-    } catch { /* cloudflared nicht zwingend installiert */ }    // Service-Status laden
+    } catch { /* cloudflared nicht zwingend installiert */ }
+    // Container-/Service-Erkennung (non-blocking)
+    try {
+      const c = await fetch('/api/container-detection').then(r => r.json());
+      renderContainers(c);
+    } catch { /* optional */ }
+    // Service-Status laden
     fetchServiceStatus();
   }
 
@@ -1835,6 +1850,55 @@
       html += row('Tunnel', '<span class="muted">kein Tunnel konfiguriert</span>');
     }
     el.innerHTML = html;
+  }
+
+  // ── Container-/Service-Erkennung ─────────────────────
+  function renderContainers(d) {
+    const el = document.getElementById('containersInfo');
+    const card = document.getElementById('containersCard');
+    if (!el) return;
+    if (!d || !d.ok) {
+      el.innerHTML = row('Fehler', '<span class="muted">Erkennung nicht verfügbar</span>');
+      return;
+    }
+
+    const safe = v => String(v ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+    const dockerBadge = d.docker.available
+      ? `<span class="badge b-green">VERFÜGBAR</span> <span class="muted" style="font-size:12px">v${safe(d.docker.version)}</span>`
+      : `<span class="badge" style="background:var(--surface2);color:var(--muted)">nicht installiert</span>`;
+
+    const svcRowHtml = (label, svc) => {
+      let status;
+      if (svc.found) {
+        const via = svc.via === 'docker' ? '🐳 Docker' : '⚙️ systemd';
+        status = `<span class="badge b-green">LÄUFT</span> <span class="muted">${via}</span>`;
+        if (svc.name) status += ` <span class="commit-hash">${safe(svc.name)}</span>`;
+        if (svc.ports) status += ` <span class="muted" style="font-size:11px">${safe(svc.ports)}</span>`;
+      } else {
+        status = `<span class="badge b-gray">NICHT GEFUNDEN</span>`;
+      }
+      if (svc.url) {
+        const urlSafe = safe(svc.url);
+        if (svc.reachable) {
+          status += ` · <span class="badge b-green" style="font-size:11px">HTTP OK</span> <a href="${urlSafe}" target="_blank" rel="noopener noreferrer" style="color:var(--blue);font-size:12px">${urlSafe}</a>`;
+          if (svc.languageCount) status += ` <span class="muted" style="font-size:11px">(${svc.languageCount} Sprachen)</span>`;
+        } else {
+          status += ` · <span class="badge b-red" style="font-size:11px">NICHT ERREICHBAR</span> <span class="muted" style="font-size:12px">${urlSafe}</span>`;
+        }
+      }
+      return row(label, status);
+    };
+
+    // Karten-Rahmenfarbe: grün wenn beide erreichbar, gelb wenn einer fehlt
+    const allOk = d.uptimeKuma.reachable && d.libretranslate.reachable;
+    const anyOk = d.uptimeKuma.reachable || d.libretranslate.reachable;
+    if (card) card.style.borderTop = allOk ? '3px solid var(--green)' : anyOk ? '3px solid var(--yellow)' : '';
+
+    el.innerHTML =
+      row('Docker Engine', dockerBadge) +
+      svcRowHtml('Uptime Kuma', d.uptimeKuma) +
+      svcRowHtml('LibreTranslate', d.libretranslate);
   }
 
   // ── Manual Refresh ───────────────────────────────────
