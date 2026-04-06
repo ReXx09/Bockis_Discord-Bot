@@ -45,6 +45,7 @@ Optimiert für den Betrieb auf dem **Raspberry Pi** — mit interaktivem Install
 ├── update.sh               # Auto-Updater (native systemd & Docker)
 ├── raspi-menu.sh           # Interaktives whiptail-Verwaltungsmenü
 ├── docker-compose.yml      # Docker-Deployment
+├── Dockerfile              # Container-Build für Docker-Deployment
 ├── config/
 │   └── config.js           # Konfigurationsschema (convict)
 ├── models/
@@ -269,6 +270,8 @@ Das Skript erledigt automatisch: git pull → npm ci → Service-Neustart. Eine 
 ### Option: Mit Docker auf dem Raspberry Pi
 
 Falls Docker auf dem Pi installiert ist:
+
+Diese Option ist nur nötig, wenn du den Bot in einer Docker-Umgebung betreiben willst (z. B. statt der nativen Installer-/systemd-Variante).
 
 ```bash
 # Docker installieren (falls noch nicht vorhanden)
