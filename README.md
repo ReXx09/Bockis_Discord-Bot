@@ -20,7 +20,11 @@ Optimiert für den Betrieb auf dem **Raspberry Pi** — mit interaktivem Install
 |---|---|
 | 📡 Live-Status | Automatisch aktualisierte Embed-Nachricht mit Status aller überwachten Services |
 | 🔔 Benachrichtigungen | Sofort-Alerts in Discord bei Service-Ausfall und Wiederherstellung |
-| 💬 Slash-Commands | `/status`, `/uptime`, `/refresh`, `/cleanup`, `/help`, `/coinflip`, `/dice`, `/eightball` |
+| 💬 Slash-Commands | `/status`, `/uptime`, `/refresh`, `/cleanup`, `/help`, `/coinflip`, `/dice`, `/eightball`, `/translate` |
+| 🌍 Übersetzer | Optionaler Discord-Übersetzer via `/translate` (z. B. EN → DE), inkl. API-URL/API-Key-Konfiguration |
+| 😀 Auto-Reactions | Optional automatische Emoji-Reaktionen auf neue Nachrichten (globale oder Channel-begrenzte IDs) |
+| 🧹 Nachrichten-Cleanup | Regelbasiertes Auto-Cleanup + manueller `/cleanup` Command mit Dry-Run |
+| 🧩 Command-Management | Aktivierbare Slash-Commands über `DISCORD_ENABLED_COMMANDS` oder Web-UI |
 | 📈 Web-Dashboard | Statusübersicht aller Checks unter `http://localhost:3000/dashboard` (passwortgeschützt) |
 | 📊 Prometheus-Metriken | Metriken unter `/metrics` für Grafana, Prometheus & Co. |
 | 🗄️ SQLite-Datenbank | Speichert Checks lokal, automatisches Cleanup nach 30 Tagen |
@@ -396,8 +400,25 @@ bash ~/bockis-bot/start-bot.sh
 | Variable | Pflicht | Beschreibung |
 |----------|---------|-------------|
 | `DISCORD_TOKEN` | ✅ | Bot-Token aus dem [Discord Developer Portal](https://discord.com/developers/applications) |
+| `DISCORD_ENABLED_COMMANDS` | ❌ | Komma-Liste aktiver Slash-Commands (inkl. `translate`) |
 | `STATUS_CHANNEL_ID` | ✅ | Channel-ID für die Live-Status-Nachricht |
 | `DISCORD_NOTIFICATION_CHANNEL` | ✅ | Channel-ID für Statusänderungs-Alerts |
+| `DISCORD_AUTO_REACTION_ENABLED` | ❌ | Auto-Reactions aktivieren (`true`/`false`) |
+| `DISCORD_AUTO_REACTION_EMOJIS` | ❌ | Emoji-Liste für Auto-Reactions (`;`/`,` getrennt) |
+| `DISCORD_AUTO_REACTION_CHANNEL_IDS` | ❌ | Optionale Channel-ID-Whitelist für Auto-Reactions |
+| `MESSAGE_CLEANUP_ENABLED` | ❌ | Automatisches Nachrichten-Cleanup aktivieren |
+| `MESSAGE_CLEANUP_CHANNEL_IDS` | ❌ | Zielkanäle für Cleanup (leer = Notification-Channel) |
+| `MESSAGE_CLEANUP_MAX_MESSAGES` | ❌ | Maximal erlaubte Nachrichten pro Kanal |
+| `MESSAGE_CLEANUP_MAX_AGE_HOURS` | ❌ | Nachrichten älter als X Stunden löschen |
+| `MESSAGE_CLEANUP_ONLY_BOT_MESSAGES` | ❌ | Nur Bot-Nachrichten bereinigen (`true` empfohlen) |
+| `MESSAGE_CLEANUP_INTERVAL_MS` | ❌ | Cleanup-Intervall in Millisekunden |
+| `DISCORD_TRANSLATE_ENABLED` | ❌ | Übersetzer-Command `/translate` aktivieren |
+| `DISCORD_TRANSLATE_DEFAULT_TARGET` | ❌ | Standard-Zielsprache (z. B. `de`) |
+| `DISCORD_TRANSLATE_DEFAULT_SOURCE` | ❌ | Standard-Quellsprache (`auto` oder z. B. `en`) |
+| `DISCORD_TRANSLATE_API_URL` | ❌ | Übersetzungs-API-Endpoint (LibreTranslate-kompatibel) |
+| `DISCORD_TRANSLATE_API_KEY` | ❌ | Optionaler API-Key für die Übersetzungs-API |
+| `DISCORD_TRANSLATE_ALLOWED_GUILD_IDS` | ❌ | Optionale Guild-Whitelist für `/translate` (leer = alle Guilds/DMs) |
+| `DISCORD_TRANSLATE_MAX_TEXT_LENGTH` | ❌ | Maximal erlaubte Zeichenlänge pro Übersetzung |
 | `UPTIME_KUMA_URL` | ✅ | Basis-URL der Uptime Kuma Instanz |
 | `UPTIME_KUMA_API_KEY` | ❌ | API-Key (nur bei passwortgeschützter Status-Seite) |
 | `STATUS_PAGE_SLUG` | ❌ | Slug der Status-Seite (Standard: `dienste`) |
@@ -415,6 +436,20 @@ bash ~/bockis-bot/start-bot.sh
 | `/status` | Alle | Zeigt alle Services mit Uptime als Embed |
 | `/uptime` | Alle | Zeigt die Gesamt-Uptime aus der Datenbank |
 | `/refresh` | ManageGuild | Erzwingt sofortigen Status-Update |
+| `/cleanup` | ManageGuild | Bereinigt Kanalnachrichten anhand Cleanup-Regeln (inkl. Dry-Run) |
+| `/help` | Alle | Zeigt aktive Bot-Kommandos und Kurzbeschreibung |
+| `/coinflip` | Alle | Münzwurf (Kopf/Zahl) |
+| `/dice` | Alle | Würfel mit konfigurierbarer Seitenzahl |
+| `/eightball` | Alle | Magische 8-Ball-Antwort auf eine Frage |
+| `/translate` | Alle (konfigurierbar) | Übersetzt Text zwischen Sprachen; Quelle/Ziel optional übergebbar |
+
+### 🌍 Übersetzer schnell einrichten
+
+1. In `.env` oder im Dashboard den Übersetzer aktivieren: `DISCORD_TRANSLATE_ENABLED=true`
+2. Übersetzungs-API setzen: `DISCORD_TRANSLATE_API_URL=...`
+3. Falls der Provider einen Key verlangt: `DISCORD_TRANSLATE_API_KEY=...`
+4. Optional eingrenzen: `DISCORD_TRANSLATE_ALLOWED_GUILD_IDS=...`
+5. Bot neu starten
 
 > Slash-Commands werden beim ersten Bot-Start automatisch registriert.  
 > Es kann bis zu **1 Stunde** dauern, bis sie in Discord erscheinen.
