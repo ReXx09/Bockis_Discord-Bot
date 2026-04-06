@@ -1891,10 +1891,13 @@
           ? '<span class="badge b-green">VERFÜGBAR</span>'
           : '<span class="badge b-gray">NICHT INSTALLIERT</span>';
       }
-      if (svc?.found && svc?.reachable) return '<span class="badge b-green">VERFÜGBAR · HTTP OK</span>';
-      if (svc?.found && !svc?.reachable) return '<span class="badge b-yellow">NUR INTERN</span>';
-      if (!svc?.found && svc?.reachable) return '<span class="badge b-yellow">NUR EXTERN · HTTP OK</span>';
-      return '<span class="badge b-gray">INAKTIV</span>';
+      if (svc?.reachable) {
+        return svc?.found
+          ? '<span class="badge b-green">VERFÜGBAR · HTTP OK</span>'
+          : '<span class="badge b-green">HTTP OK</span>';
+      }
+      if (svc?.found) return '<span class="badge b-yellow">NUR INTERN</span>';
+      return '<span class="badge b-red">NICHT ERREICHBAR</span>';
     };
 
     const rows = [
