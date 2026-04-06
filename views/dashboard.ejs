@@ -834,11 +834,42 @@
           <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px;margin-top:8px">
             <div>
               <label class="cfg-label" for="cfgTranslateDefaultTarget" style="font-size:12px;margin-bottom:4px">Standard Zielsprache</label>
-              <input class="cfg-input" id="cfgTranslateDefaultTarget" type="text" autocomplete="off" placeholder="de">
+              <select class="cfg-input" id="cfgTranslateDefaultTarget">
+                <option value="de">de - Deutsch</option>
+                <option value="en">en - English</option>
+                <option value="fr">fr - Francais</option>
+                <option value="es">es - Espanol</option>
+                <option value="it">it - Italiano</option>
+                <option value="nl">nl - Nederlands</option>
+                <option value="pl">pl - Polski</option>
+                <option value="pt">pt - Portugues</option>
+                <option value="ru">ru - Russian</option>
+                <option value="tr">tr - Turkish</option>
+                <option value="uk">uk - Ukrainian</option>
+                <option value="ja">ja - Japanese</option>
+                <option value="ko">ko - Korean</option>
+                <option value="zh">zh - Chinese</option>
+              </select>
             </div>
             <div>
               <label class="cfg-label" for="cfgTranslateDefaultSource" style="font-size:12px;margin-bottom:4px">Standard Quellsprache</label>
-              <input class="cfg-input" id="cfgTranslateDefaultSource" type="text" autocomplete="off" placeholder="auto">
+              <select class="cfg-input" id="cfgTranslateDefaultSource">
+                <option value="auto">auto - Auto detect</option>
+                <option value="de">de - Deutsch</option>
+                <option value="en">en - English</option>
+                <option value="fr">fr - Francais</option>
+                <option value="es">es - Espanol</option>
+                <option value="it">it - Italiano</option>
+                <option value="nl">nl - Nederlands</option>
+                <option value="pl">pl - Polski</option>
+                <option value="pt">pt - Portugues</option>
+                <option value="ru">ru - Russian</option>
+                <option value="tr">tr - Turkish</option>
+                <option value="uk">uk - Ukrainian</option>
+                <option value="ja">ja - Japanese</option>
+                <option value="ko">ko - Korean</option>
+                <option value="zh">zh - Chinese</option>
+              </select>
             </div>
             <div>
               <label class="cfg-label" for="cfgTranslateMaxTextLength" style="font-size:12px;margin-bottom:4px">Max. Textlaenge</label>
@@ -3051,6 +3082,17 @@
       if (!d.ok) { document.getElementById('cfgStatus').textContent = d.error; return; }
 
       const setCfg = (id, value) => setFieldValue(id, value, { force });
+      const ensureSelectOption = (id, value) => {
+        const el = document.getElementById(id);
+        if (!el || !value || el.tagName !== 'SELECT') return;
+        const exists = Array.from(el.options).some(o => o.value === value);
+        if (!exists) {
+          const opt = document.createElement('option');
+          opt.value = value;
+          opt.textContent = `${value} - custom`;
+          el.appendChild(opt);
+        }
+      };
 
       // Secret-Felder bleiben leer, Platzhalter zeigt maskierten Ist-Wert.
       setCfg('cfgToken', '');
@@ -3073,6 +3115,8 @@
       setCfg('cfgAutoReactionChannelIds', d.DISCORD_AUTO_REACTION_CHANNEL_IDS || '');
       setCfg('cfgEnabledCommands', d.DISCORD_ENABLED_COMMANDS || 'status,uptime,refresh,help,coinflip,dice,eightball,cleanup,translate');
       applyEnabledCommandsToCheckboxes(d.DISCORD_ENABLED_COMMANDS || 'status,uptime,refresh,help,coinflip,dice,eightball,cleanup,translate');
+      ensureSelectOption('cfgTranslateDefaultTarget', d.DISCORD_TRANSLATE_DEFAULT_TARGET || 'de');
+      ensureSelectOption('cfgTranslateDefaultSource', d.DISCORD_TRANSLATE_DEFAULT_SOURCE || 'auto');
       setCfg('cfgTranslateDefaultTarget', d.DISCORD_TRANSLATE_DEFAULT_TARGET || 'de');
       setCfg('cfgTranslateDefaultSource', d.DISCORD_TRANSLATE_DEFAULT_SOURCE || 'auto');
       setCfg('cfgTranslateApiUrl', d.DISCORD_TRANSLATE_API_URL || 'https://libretranslate.com/translate');
