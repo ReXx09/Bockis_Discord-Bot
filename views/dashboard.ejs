@@ -1864,41 +1864,75 @@
 
     const safe = v => String(v ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 
-    const dockerBadge = d.docker.available
-      ? `<span class="badge b-green">VERFÜGBAR</span> <span class="muted" style="font-size:12px">v${safe(d.docker.version)}</span>`
-      : `<span class="badge" style="background:var(--surface2);color:var(--muted)">nicht installiert</span>`;
-
-    const svcRowHtml = (label, svc) => {
-      let status;
-      if (svc.found) {
-        const via = svc.via === 'docker' ? '🐳 Docker' : '⚙️ systemd';
-        status = `<span class="badge b-green">LÄUFT</span> <span class="muted">${via}</span>`;
-        if (svc.name) status += ` <span class="commit-hash">${safe(svc.name)}</span>`;
-        if (svc.ports) status += ` <span class="muted" style="font-size:11px">${safe(svc.ports)}</span>`;
-      } else {
-        status = `<span class="badge b-gray">NICHT GEFUNDEN</span>`;
-      }
-      if (svc.url) {
-        const urlSafe = safe(svc.url);
-        if (svc.reachable) {
-          status += ` · <span class="badge b-green" style="font-size:11px">HTTP OK</span> <a href="${urlSafe}" target="_blank" rel="noopener noreferrer" style="color:var(--blue);font-size:12px">${urlSafe}</a>`;
-          if (svc.languageCount) status += ` <span class="muted" style="font-size:11px">(${svc.languageCount} Sprachen)</span>`;
-        } else {
-          status += ` · <span class="badge b-red" style="font-size:11px">NICHT ERREICHBAR</span> <span class="muted" style="font-size:12px">${urlSafe}</span>`;
-        }
-      }
-      return row(label, status);
+    const fmtInternal = (svc, fallback = '–') => {
+      if (!svc?.found) return '<span class="badge b-gray">NICHT GEFUNDEN</span>';
+      const via = svc.via === 'docker' ? '🐳 Docker' : svc.via === 'systemd' ? '⚙️ systemd' : fallback;
+      let html = `<span class="badge b-green">LÄUFT</span> <span class="muted">${safe(via)}</span>`;
+      if (svc.name) html += `<div class="muted" style="font-size:12px;margin-top:4px">Name: <span class="commit-hash">${safe(svc.name)}</span></div>`;
+      if (svc.ports) html += `<div class="muted" style="font-size:12px">Ports: ${safe(svc.ports)}</div>`;
+      if (svc.status) html += `<div class="muted" style="font-size:12px">Status: ${safe(svc.status)}</div>`;
+      return html;
     };
+
+    const fmtExternal = (svc) => {
+      if (!svc?.url) return '<span class="muted">nicht konfiguriert</span>';
+      const urlSafe = safe(svc.url);
+      let html = svc.reachable
+        ? `<span class="badge b-green">HTTP OK</span>`
+        : `<span class="badge b-red">NICHT ERREICHBAR</span>`;
+      html += `<div style="margin-top:4px"><a href="${urlSafe}" target="_blank" rel="noopener noreferrer" style="color:var(--blue);font-size:12px">${urlSafe}</a></div>`;
+      if (svc.languageCount) html += `<div class="muted" style="font-size:12px">${safe(svc.languageCount)} Sprachen erkannt</div>`;
+      return html;
+    };
+
+    const rows = [
+      {
+        category: 'Intern',
+        service: 'Docker Engine',
+        internal: d.docker.available
+          ? `<span class="badge b-green">VERFÜGBAR</span><div class="muted" style="font-size:12px;margin-top:4px">Version: ${safe(d.docker.version || 'vorhanden')}</div>`
+          : '<span class="badge b-gray">NICHT INSTALLIERT</span>',
+        external: '<span class="muted">–</span>',
+        details: '<span class="muted">Basis für lokale Container-Erkennung</span>'
+      },
+      {
+        category: 'Intern',
+        service: 'Uptime Kuma',
+        internal: fmtInternal(d.uptimeKuma),
+        external: fmtExternal(d.uptimeKuma),
+        details: '<span class="muted">Lokal per Docker oder systemd, extern per UPTIME_KUMA_URL</span>'
+      },
+      {
+        category: 'Extern',
+        service: 'LibreTranslate',
+        internal: fmtInternal(d.libretranslate),
+        external: fmtExternal(d.libretranslate),
+        details: '<span class="muted">Lokal per Docker-Erkennung, extern per DISCORD_TRANSLATE_API_URL</span>'
+      }
+    ].map(item => `
+      <tr>
+        <td><span class="dep-name">${item.category}</span></td>
+        <td><span class="dep-name">${item.service}</span></td>
+        <td>${item.internal}</td>
+        <td>${item.external}</td>
+        <td>${item.details}</td>
+      </tr>`).join('');
 
     // Karten-Rahmenfarbe: grün wenn beide erreichbar, gelb wenn einer fehlt
     const allOk = d.uptimeKuma.reachable && d.libretranslate.reachable;
     const anyOk = d.uptimeKuma.reachable || d.libretranslate.reachable;
     if (card) card.style.borderTop = allOk ? '3px solid var(--green)' : anyOk ? '3px solid var(--yellow)' : '';
 
-    el.innerHTML =
-      row('Docker Engine', dockerBadge) +
-      svcRowHtml('Uptime Kuma', d.uptimeKuma) +
-      svcRowHtml('LibreTranslate', d.libretranslate);
+    el.innerHTML = `
+      <div class="muted" style="margin-bottom:10px;font-size:12px">
+        Intern = lokale Erkennung auf diesem Host. Extern = Erreichbarkeit über die konfigurierte URL.
+      </div>
+      <table class="deps-table">
+        <thead><tr>
+          <th>Kategorie</th><th>Service</th><th>Intern</th><th>Extern</th><th>Hinweis</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`;
   }
 
   // ── Manual Refresh ───────────────────────────────────
