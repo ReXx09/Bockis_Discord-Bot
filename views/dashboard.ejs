@@ -1885,9 +1885,20 @@
       return html;
     };
 
+    const getServiceStatus = (svc, kind = 'service') => {
+      if (kind === 'docker') {
+        return d.docker.available
+          ? '<span class="badge b-green">VERFÜGBAR</span>'
+          : '<span class="badge b-gray">NICHT INSTALLIERT</span>';
+      }
+      if (svc?.found && svc?.reachable) return '<span class="badge b-green">AKTIV</span>';
+      if (svc?.found || svc?.reachable) return '<span class="badge b-yellow">TEILWEISE</span>';
+      return '<span class="badge b-gray">INAKTIV</span>';
+    };
+
     const rows = [
       {
-        category: 'Intern',
+        status: getServiceStatus(null, 'docker'),
         service: 'Docker Engine',
         internal: d.docker.available
           ? `<span class="badge b-green">VERFÜGBAR</span><div class="muted" style="font-size:12px;margin-top:4px">Version: ${safe(d.docker.version || 'vorhanden')}</div>`
@@ -1896,14 +1907,14 @@
         details: '<span class="muted">Basis für lokale Container-Erkennung</span>'
       },
       {
-        category: 'Intern',
+        status: getServiceStatus(d.uptimeKuma),
         service: 'Uptime Kuma',
         internal: fmtInternal(d.uptimeKuma),
         external: fmtExternal(d.uptimeKuma),
         details: '<span class="muted">Lokal per Docker oder systemd, extern per UPTIME_KUMA_URL</span>'
       },
       {
-        category: 'Extern',
+        status: getServiceStatus(d.libretranslate),
         service: 'LibreTranslate',
         internal: fmtInternal(d.libretranslate),
         external: fmtExternal(d.libretranslate),
@@ -1911,7 +1922,7 @@
       }
     ].map(item => `
       <tr>
-        <td><span class="dep-name">${item.category}</span></td>
+        <td>${item.status}</td>
         <td><span class="dep-name">${item.service}</span></td>
         <td>${item.internal}</td>
         <td>${item.external}</td>
@@ -1929,7 +1940,7 @@
       </div>
       <table class="deps-table">
         <thead><tr>
-          <th>Kategorie</th><th>Service</th><th>Intern</th><th>Extern</th><th>Hinweis</th>
+          <th>Status</th><th>Service</th><th>Intern</th><th>Extern</th><th>Hinweis</th>
         </tr></thead>
         <tbody>${rows}</tbody>
       </table>`;
