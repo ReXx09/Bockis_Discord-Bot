@@ -1888,12 +1888,21 @@
     const getServiceStatus = (svc, kind = 'service') => {
       if (kind === 'docker') {
         return d.docker.available
-          ? '<span class="badge b-green">VERFÜGBAR</span>'
-          : '<span class="badge b-gray">NICHT INSTALLIERT</span>';
+          ? '<span class="badge b-green">INTERN: VERFÜGBAR</span>'
+          : '<span class="badge b-gray">INTERN: NICHT INSTALLIERT</span>';
       }
-      if (svc?.found && svc?.reachable) return '<span class="badge b-green">AKTIV</span>';
-      if (svc?.found || svc?.reachable) return '<span class="badge b-yellow">TEILWEISE</span>';
-      return '<span class="badge b-gray">INAKTIV</span>';
+
+      const internalBadge = svc?.found
+        ? '<span class="badge b-green" style="margin-right:6px">INTERN: VERFÜGBAR</span>'
+        : '<span class="badge b-gray" style="margin-right:6px">INTERN: NICHT GEFUNDEN</span>';
+
+      const externalBadge = !svc?.url
+        ? '<span class="badge b-gray">EXTERN: NICHT KONFIGURIERT</span>'
+        : svc?.reachable
+          ? '<span class="badge b-green">EXTERN: HTTP OK</span>'
+          : '<span class="badge b-red">EXTERN: NICHT ERREICHBAR</span>';
+
+      return `${internalBadge}${externalBadge}`;
     };
 
     const rows = [
