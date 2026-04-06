@@ -2251,7 +2251,14 @@ client.on('interactionCreate', async interaction => {
       });
     } catch (err) {
       logger.error(`/translate Fehler: ${err.message}`);
-      return interaction.editReply('❌ Uebersetzung fehlgeschlagen. Pruefe API-URL/API-Key und versuche es erneut.');
+      const msg = String(err?.message || 'Unbekannter Fehler');
+      if (/api key|get an api key|visit .*portal\.libretranslate\.com/i.test(msg)) {
+        return interaction.editReply('❌ Die Translate-API verlangt einen API-Key. Bitte in der Web-UI bei "Uebersetzer API Key" setzen und neu versuchen.');
+      }
+      if (/timeout|timed out|econn|enotfound|network/i.test(msg)) {
+        return interaction.editReply('❌ Uebersetzung fehlgeschlagen: API nicht erreichbar (Netzwerk/URL/Timeout).');
+      }
+      return interaction.editReply(`❌ Uebersetzung fehlgeschlagen: ${msg.slice(0, 180)}`);
     }
   }
 
