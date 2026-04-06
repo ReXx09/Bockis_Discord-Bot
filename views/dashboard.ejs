@@ -1544,9 +1544,8 @@
       cd--;
       document.getElementById('timer').textContent = `Auto-Refresh in ${cd}s`;
       if (cd <= 0) {
-        const ae = document.activeElement;
-        const inputFocused = ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.tagName === 'SELECT');
-        if (!inputFocused) {
+        const activePane = localStorage.getItem(STORAGE_KEY_ACTIVE_PANE) || 'overview';
+        if (activePane === 'overview') {
           fetchAll();
         }
         resetCd();
