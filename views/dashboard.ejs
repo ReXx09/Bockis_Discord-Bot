@@ -1867,7 +1867,7 @@
     const fmtInternal = (svc, fallback = '–') => {
       if (!svc?.found) return '<span class="badge b-gray">NICHT GEFUNDEN</span>';
       const via = svc.via === 'docker' ? '🐳 Docker' : svc.via === 'systemd' ? '⚙️ systemd' : fallback;
-      let html = `<span class="badge b-green">LÄUFT</span> <span class="muted">${safe(via)}</span>`;
+      let html = `<span class="muted">${safe(via)}</span>`;
       if (svc.name) html += `<div class="muted" style="font-size:12px;margin-top:4px">Name: <span class="commit-hash">${safe(svc.name)}</span></div>`;
       if (svc.ports) html += `<div class="muted" style="font-size:12px">Ports: ${safe(svc.ports)}</div>`;
       if (svc.status) html += `<div class="muted" style="font-size:12px">Status: ${safe(svc.status)}</div>`;
@@ -1878,8 +1878,8 @@
       if (!svc?.url) return '<span class="muted">nicht konfiguriert</span>';
       const urlSafe = safe(svc.url);
       let html = svc.reachable
-        ? `<span class="badge b-green">HTTP OK</span>`
-        : `<span class="badge b-red">NICHT ERREICHBAR</span>`;
+        ? `<span class="muted">Erreichbar</span>`
+        : `<span class="muted">Nicht erreichbar</span>`;
       html += `<div style="margin-top:4px"><a href="${urlSafe}" target="_blank" rel="noopener noreferrer" style="color:var(--blue);font-size:12px">${urlSafe}</a></div>`;
       if (svc.languageCount) html += `<div class="muted" style="font-size:12px">${safe(svc.languageCount)} Sprachen erkannt</div>`;
       return html;
@@ -1888,21 +1888,13 @@
     const getServiceStatus = (svc, kind = 'service') => {
       if (kind === 'docker') {
         return d.docker.available
-          ? '<span class="badge b-green">INTERN: VERFÜGBAR</span>'
-          : '<span class="badge b-gray">INTERN: NICHT INSTALLIERT</span>';
+          ? '<span class="badge b-green">VERFÜGBAR</span>'
+          : '<span class="badge b-gray">NICHT INSTALLIERT</span>';
       }
-
-      const internalBadge = svc?.found
-        ? '<span class="badge b-green" style="margin-right:6px">INTERN: VERFÜGBAR</span>'
-        : '<span class="badge b-gray" style="margin-right:6px">INTERN: NICHT GEFUNDEN</span>';
-
-      const externalBadge = !svc?.url
-        ? '<span class="badge b-gray">EXTERN: NICHT KONFIGURIERT</span>'
-        : svc?.reachable
-          ? '<span class="badge b-green">EXTERN: HTTP OK</span>'
-          : '<span class="badge b-red">EXTERN: NICHT ERREICHBAR</span>';
-
-      return `${internalBadge}${externalBadge}`;
+      if (svc?.found && svc?.reachable) return '<span class="badge b-green">VERFÜGBAR · HTTP OK</span>';
+      if (svc?.found && !svc?.reachable) return '<span class="badge b-yellow">NUR INTERN</span>';
+      if (!svc?.found && svc?.reachable) return '<span class="badge b-yellow">NUR EXTERN · HTTP OK</span>';
+      return '<span class="badge b-gray">INAKTIV</span>';
     };
 
     const rows = [
@@ -1910,8 +1902,8 @@
         status: getServiceStatus(null, 'docker'),
         service: 'Docker Engine',
         internal: d.docker.available
-          ? `<span class="badge b-green">VERFÜGBAR</span><div class="muted" style="font-size:12px;margin-top:4px">Version: ${safe(d.docker.version || 'vorhanden')}</div>`
-          : '<span class="badge b-gray">NICHT INSTALLIERT</span>',
+          ? `<span class="muted">Installiert</span><div class="muted" style="font-size:12px;margin-top:4px">Version: ${safe(d.docker.version || 'vorhanden')}</div>`
+          : '<span class="muted">Nicht installiert</span>',
         external: '<span class="muted">–</span>',
         details: '<span class="muted">Basis für lokale Container-Erkennung</span>'
       },
