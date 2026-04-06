@@ -2057,9 +2057,14 @@ function isTranslationAllowedForGuild(guildId) {
 }
 
 async function translateTextViaApi({ text, source, target }) {
-  const url = String(config.get('discord.translateApiUrl') || '').trim();
+  let url = String(config.get('discord.translateApiUrl') || '').trim();
   const apiKey = String(config.get('discord.translateApiKey') || '').trim();
   if (!url) throw new Error('DISCORD_TRANSLATE_API_URL ist leer');
+
+  // Sicherheitsnetz: URL muss auf /translate enden
+  if (!url.endsWith('/translate')) {
+    url = url.replace(/\/+$/, '') + '/translate';
+  }
 
   const body = {
     q: text,
@@ -2074,6 +2079,10 @@ async function translateTextViaApi({ text, source, target }) {
     headers: { 'Content-Type': 'application/json' },
     validateStatus: () => true
   });
+
+  if (resp.status === 405) {
+    throw new Error(`Translate API Fehler (405): Endpunkt akzeptiert kein POST – URL prüfen, muss auf /translate enden (aktuell: ${url})`);
+  }
 
   if (resp.status < 200 || resp.status >= 300) {
     const detail = typeof resp.data === 'string' ? resp.data : JSON.stringify(resp.data || {});
