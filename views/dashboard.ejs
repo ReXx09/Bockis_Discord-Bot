@@ -659,7 +659,15 @@
     <button class="subnav-btn" data-pane-btn="diagnostics" onclick="setActivePane('diagnostics')" title="Logs & Link-Preview-Diagnose">🧪 Diagnose</button>
   </div>
   
-  <div class="header-right">
+  <div class="header-right" data-pane="overview">
+    <select id="refreshIntervalSelect" onchange="setRefreshInterval(this.value)" title="Auto-Refresh Intervall" style="background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:13px;cursor:pointer">
+      <option value="0">↺ Aus</option>
+      <option value="15">15s</option>
+      <option value="30">30s</option>
+      <option value="60">1 Min</option>
+      <option value="120">2 Min</option>
+      <option value="300">5 Min</option>
+    </select>
     <span class="timer" id="timer">Auto-Refresh in 30s</span>
     <button class="btn btn-green" id="btnRefresh" onclick="manualRefresh()">
       ↺ Discord Refresh
@@ -1535,14 +1543,30 @@
   }
 
   // ── Countdown ────────────────────────────────────────
+  const STORAGE_KEY_REFRESH_INTERVAL = 'dashboard-refresh-interval';
   let cd = 30, cdTimer = null;
 
+  function getRefreshInterval() {
+    return parseInt(localStorage.getItem(STORAGE_KEY_REFRESH_INTERVAL) || '30', 10);
+  }
+
+  function setRefreshInterval(val) {
+    localStorage.setItem(STORAGE_KEY_REFRESH_INTERVAL, parseInt(val, 10));
+    resetCd();
+  }
+
   function resetCd() {
-    cd = 30;
     clearInterval(cdTimer);
+    cd = getRefreshInterval();
+    const timerEl = document.getElementById('timer');
+    if (cd === 0) {
+      if (timerEl) timerEl.textContent = 'Auto-Refresh: Aus';
+      return;
+    }
+    if (timerEl) timerEl.textContent = `Auto-Refresh in ${cd}s`;
     cdTimer = setInterval(() => {
       cd--;
-      document.getElementById('timer').textContent = `Auto-Refresh in ${cd}s`;
+      if (timerEl) timerEl.textContent = `Auto-Refresh in ${cd}s`;
       if (cd <= 0) {
         const activePane = localStorage.getItem(STORAGE_KEY_ACTIVE_PANE) || 'overview';
         if (activePane === 'overview') {
@@ -1835,6 +1859,10 @@
 
   // ── Init ─────────────────────────────────────────────
   fetchAll();
+  // Interval-Dropdown mit gespeichertem Wert vorbelegen
+  const _savedInterval = localStorage.getItem(STORAGE_KEY_REFRESH_INTERVAL) || '30';
+  const _intervalSel = document.getElementById('refreshIntervalSelect');
+  if (_intervalSel) _intervalSel.value = _savedInterval;
   resetCd();
   checkUpdate();
   checkDeps();
