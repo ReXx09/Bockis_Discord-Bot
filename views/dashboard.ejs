@@ -1543,7 +1543,14 @@
     cdTimer = setInterval(() => {
       cd--;
       document.getElementById('timer').textContent = `Auto-Refresh in ${cd}s`;
-      if (cd <= 0) { fetchAll(); resetCd(); }
+      if (cd <= 0) {
+        const ae = document.activeElement;
+        const inputFocused = ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.tagName === 'SELECT');
+        if (!inputFocused) {
+          fetchAll();
+        }
+        resetCd();
+      }
     }, 1000);
   }
 
