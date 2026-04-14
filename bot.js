@@ -724,6 +724,7 @@ function getMessageCleanupChannels() {
       const v = part.slice(eqIdx + 1).trim();
       if (k === 'maxmessages') overrides.maxMessages = _toNonNegativeInt(v, undefined);
       else if (k === 'maxagehours') overrides.maxAgeHours = _toNonNegativeInt(v, undefined);
+      else if (k === 'cleanupintervalms') overrides.cleanupIntervalMs = _toNonNegativeInt(v, undefined);
     }
     // Remove undefined values so they don't overwrite global defaults
     Object.keys(overrides).forEach(k => overrides[k] === undefined && delete overrides[k]);
@@ -2448,14 +2449,57 @@ client.on('messageCreate', async (message) => {
 });
 
 // #region 22. UPDATE-ZYKLUS
+function initializeCleanupTimers() {
+  const globalIntervalMs = Math.max(60_000, _toNonNegativeInt(config.get('discord.messageCleanupIntervalMs'), 300000));
+  const channels = getMessageCleanupChannels();
+
+  if (!channels.length) {
+    // Kein Kanal konfiguriert – globaler Fallback (nutzt DISCORD_NOTIFICATION_CHANNEL falls gesetzt)
+    runConfiguredMessageCleanup();
+    setInterval(runConfiguredMessageCleanup, globalIntervalMs);
+    return;
+  }
+
+  // Kanäle nach ihrem effektiven Intervall gruppieren und separate Timer erstellen
+  const byInterval = new Map();
+  for (const ch of channels) {
+    const ms = Math.max(60_000, ch.overrides.cleanupIntervalMs ?? globalIntervalMs);
+    if (!byInterval.has(ms)) byInterval.set(ms, []);
+    byInterval.get(ms).push(ch);
+  }
+
+  for (const [ms, group] of byInterval) {
+    const runGroup = async () => {
+      const globalOptions = getMessageCleanupOptions();
+      if (!globalOptions.enabled) return;
+      for (const { id: channelId, overrides } of group) {
+        const channelOptions = Object.assign({}, globalOptions, overrides);
+        let channel = client.channels.cache.get(channelId);
+        if (!channel) {
+          try {
+            channel = await client.channels.fetch(channelId);
+          } catch (err) {
+            logger.warn(`Nachrichten-Cleanup: Kanal ${channelId} konnte nicht geladen werden: ${err.message}`);
+            continue;
+          }
+        }
+        const result = await cleanupMessagesInChannel(channel, channelOptions);
+        if (result.deleted > 0 || result.skipped > 0) {
+          logger.info(`Nachrichten-Cleanup: #${channel.name || channel.id} gescannt=${result.scanned} kandidat=${result.candidates} gelöscht=${result.deleted} fehler=${result.skipped}`);
+        }
+      }
+    };
+    runGroup();
+    setInterval(runGroup, ms);
+  }
+}
+
 function initializeUpdateCycle() {
   const interval = config.get('checkIntervalMs');
-  const cleanupIntervalMs = Math.max(60_000, _toNonNegativeInt(config.get('discord.messageCleanupIntervalMs'), 300000));
   logger.info(`Update-Zyklus gestartet (alle ${interval / 1000}s)`);
   updateStatusMessage();
   setInterval(updateStatusMessage, interval);
-  runConfiguredMessageCleanup();
-  setInterval(runConfiguredMessageCleanup, cleanupIntervalMs);
+  initializeCleanupTimers();
   // DB-Cleanup einmal täglich ausführen
   cleanupOldEntries();
   setInterval(cleanupOldEntries, 24 * 60 * 60 * 1000);
