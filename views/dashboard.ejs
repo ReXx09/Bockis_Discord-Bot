@@ -297,6 +297,35 @@
       text-overflow: ellipsis;
     }
     .mc-group { font-size: 11px; color: var(--muted); margin-bottom: 10px; }
+
+    /* METRIC KACHELN */
+    .metric-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      gap: 10px;
+      margin-bottom: 0;
+    }
+    .metric-tile {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px 16px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      min-width: 0;
+    }
+    .metric-icon { font-size: 18px; line-height: 1; }
+    .metric-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+    .metric-value { font-size: 22px; font-weight: 700; line-height: 1.1; color: var(--text); }
+    .metric-sub   { font-size: 11px; color: var(--muted); }
+    .metric-bar-wrap { height: 4px; background: var(--surface); border-radius: 2px; overflow: hidden; margin-top: 2px; }
+    .metric-bar { height: 100%; border-radius: 2px; transition: width .6s ease; }
+    .metric-bar.ok   { background: var(--green); }
+    .metric-bar.warn { background: var(--yellow); }
+    .metric-bar.crit { background: var(--red); }
+    .metric-na { font-size: 13px; color: var(--muted); font-style: italic; }
+
     .uptime-bar {
       height: 4px;
       background: var(--surface2);
@@ -711,6 +740,62 @@
     <div class="sk"></div>
     <div class="sk" style="width:70%"></div>
     <div class="sk" style="width:50%"></div>
+  </div>
+</div>
+
+<!-- ── HARDWARE-METRIKEN ───────────────────────────────── -->
+<div class="card" id="hwMetricsCard" data-span="12" data-pane="overview">
+  <div class="card-title">🖥️ Hardware-Metriken</div>
+  <div class="metric-grid" id="hwMetricGrid">
+    <!-- CPU % -->
+    <div class="metric-tile" id="mtCpuPct">
+      <span class="metric-icon">⚡</span>
+      <span class="metric-label">CPU Auslastung</span>
+      <span class="metric-value metric-na" id="mtCpuPctVal">…</span>
+      <div class="metric-bar-wrap"><div class="metric-bar ok" id="mtCpuPctBar" style="width:0%"></div></div>
+      <span class="metric-sub" id="mtCpuPctSub"></span>
+    </div>
+    <!-- RAM -->
+    <div class="metric-tile" id="mtRam">
+      <span class="metric-icon">🧠</span>
+      <span class="metric-label">RAM</span>
+      <span class="metric-value" id="mtRamVal">…</span>
+      <div class="metric-bar-wrap"><div class="metric-bar ok" id="mtRamBar" style="width:0%"></div></div>
+      <span class="metric-sub" id="mtRamSub"></span>
+    </div>
+    <!-- CPU Temperatur -->
+    <div class="metric-tile" id="mtCpuTemp">
+      <span class="metric-icon">🌡️</span>
+      <span class="metric-label">CPU Temperatur</span>
+      <span class="metric-value" id="mtCpuTempVal">…</span>
+      <div class="metric-bar-wrap"><div class="metric-bar ok" id="mtCpuTempBar" style="width:0%"></div></div>
+      <span class="metric-sub" id="mtCpuTempSub"></span>
+    </div>
+    <!-- GPU Temperatur -->
+    <div class="metric-tile" id="mtGpuTemp">
+      <span class="metric-icon">🎮</span>
+      <span class="metric-label">GPU Temperatur</span>
+      <span class="metric-value" id="mtGpuTempVal">…</span>
+      <div class="metric-bar-wrap"><div class="metric-bar ok" id="mtGpuTempBar" style="width:0%"></div></div>
+      <span class="metric-sub" id="mtGpuTempSub"></span>
+    </div>
+    <!-- Netzwerk -->
+    <div class="metric-tile" id="mtNet">
+      <span class="metric-icon">🌐</span>
+      <span class="metric-label">Netzwerk</span>
+      <span class="metric-value" id="mtNetDown">…</span>
+      <span class="metric-sub" id="mtNetDownSub">↓ Download</span>
+      <span class="metric-value" id="mtNetUp" style="margin-top:4px">…</span>
+      <span class="metric-sub" id="mtNetUpSub">↑ Upload</span>
+    </div>
+    <!-- Disk -->
+    <div class="metric-tile" id="mtDisk">
+      <span class="metric-icon">💾</span>
+      <span class="metric-label">Festplatte</span>
+      <span class="metric-value" id="mtDiskVal">…</span>
+      <div class="metric-bar-wrap"><div class="metric-bar ok" id="mtDiskBar" style="width:0%"></div></div>
+      <span class="metric-sub" id="mtDiskSub"></span>
+    </div>
   </div>
 </div>
 
@@ -1755,6 +1840,14 @@
       : '–';
     const platform = raspi?.platform || navigator.platform || '–';
 
+    const systemRam = raspi
+      ? `${raspi.memUsedMb} / ${raspi.memTotalMb} MB (${raspi.memUsedPercent}%)`
+      : '–';
+    const load = raspi
+      ? `${raspi.load1} / ${raspi.load5} / ${raspi.load15}`
+      : '–';
+    const platform = raspi?.platform || navigator.platform || '–';
+
     document.getElementById('sysInfo').innerHTML =
       row('CPU-Temperatur', tempBadge(raspi?.cpuTempC ?? null)) +
       row('RAM (Raspberry)', systemRam) +
@@ -1763,6 +1856,92 @@
       row('RAM (Prozess)', bot.memUsedMb + ' MB') +
       row('Heap (genutzt)', bot.memHeapMb + ' MB') +
       row('Plattform', platform);
+  }
+
+  // ── Render: Hardware-Metriken ─────────────────────────
+  function _metricBarClass(pct) {
+    if (pct >= 90) return 'crit';
+    if (pct >= 70) return 'warn';
+    return 'ok';
+  }
+  function _setMetricTile(ids, value, pct, sub, na = false) {
+    const valEl = document.getElementById(ids.val);
+    const barEl = document.getElementById(ids.bar);
+    const subEl = document.getElementById(ids.sub);
+    if (valEl) valEl.textContent = na ? 'N/V' : value;
+    if (barEl && !na) {
+      const p = Math.min(100, Math.max(0, pct));
+      barEl.style.width = p + '%';
+      barEl.className = 'metric-bar ' + _metricBarClass(p);
+    }
+    if (subEl) subEl.textContent = sub || '';
+  }
+  function fmtKBps(kbps) {
+    if (kbps == null) return 'N/V';
+    if (kbps >= 1024) return (kbps / 1024).toFixed(1) + ' MB/s';
+    return kbps.toFixed(1) + ' KB/s';
+  }
+  function renderHwMetrics(r) {
+    if (!r || !r.ok) {
+      ['mtCpuPctVal','mtRamVal','mtCpuTempVal','mtGpuTempVal','mtNetDown','mtNetUp','mtDiskVal']
+        .forEach(id => { const el = document.getElementById(id); if (el) el.textContent = 'N/V'; });
+      return;
+    }
+
+    // CPU %
+    if (r.cpuPercent != null) {
+      _setMetricTile({ val:'mtCpuPctVal', bar:'mtCpuPctBar', sub:'mtCpuPctSub' },
+        r.cpuPercent.toFixed(1) + '%', r.cpuPercent, `Load: ${r.load1} / ${r.load5} / ${r.load15}`);
+    } else {
+      _setMetricTile({ val:'mtCpuPctVal', bar:'mtCpuPctBar', sub:'mtCpuPctSub' },
+        '', 0, `Load: ${r.load1} / ${r.load5} / ${r.load15}`, true);
+    }
+
+    // RAM
+    _setMetricTile({ val:'mtRamVal', bar:'mtRamBar', sub:'mtRamSub' },
+      r.memUsedPercent.toFixed(0) + '%', r.memUsedPercent,
+      `${r.memUsedMb} / ${r.memTotalMb} MB`);
+
+    // CPU Temperatur
+    if (r.cpuTempC != null) {
+      const pct = Math.min(100, (r.cpuTempC / 100) * 100);
+      _setMetricTile({ val:'mtCpuTempVal', bar:'mtCpuTempBar', sub:'mtCpuTempSub' },
+        r.cpuTempC.toFixed(1) + ' °C', pct, r.cpuTempC >= 75 ? '⚠ Heiß' : r.cpuTempC >= 65 ? '▲ Warm' : '✓ Normal');
+    } else {
+      _setMetricTile({ val:'mtCpuTempVal', bar:'mtCpuTempBar', sub:'mtCpuTempSub' }, '', 0, '', true);
+    }
+
+    // GPU Temperatur
+    if (r.gpuTempC != null) {
+      const pct = Math.min(100, (r.gpuTempC / 100) * 100);
+      const src = r.gpuTempSource === 'nvidia' ? 'Nvidia' : r.gpuTempSource === 'vcgencmd' ? 'RPi VideoCore' : r.gpuTempSource;
+      _setMetricTile({ val:'mtGpuTempVal', bar:'mtGpuTempBar', sub:'mtGpuTempSub' },
+        r.gpuTempC.toFixed(1) + ' °C', pct, src);
+    } else {
+      const el = document.getElementById('mtGpuTempVal');
+      if (el) el.textContent = 'N/V';
+      const sub = document.getElementById('mtGpuTempSub');
+      if (sub) sub.textContent = 'Kein GPU erkannt';
+    }
+
+    // Netzwerk
+    const downEl = document.getElementById('mtNetDown');
+    const upEl   = document.getElementById('mtNetUp');
+    const downSub = document.getElementById('mtNetDownSub');
+    const upSub   = document.getElementById('mtNetUpSub');
+    if (downEl) downEl.textContent = r.netRxKBps != null ? fmtKBps(r.netRxKBps) : 'N/V';
+    if (upEl)   upEl.textContent   = r.netTxKBps != null ? fmtKBps(r.netTxKBps) : 'N/V';
+    if (downSub) downSub.textContent = '↓ Download';
+    if (upSub)   upSub.textContent   = '↑ Upload';
+
+    // Disk
+    if (r.diskUsedPercent != null) {
+      _setMetricTile({ val:'mtDiskVal', bar:'mtDiskBar', sub:'mtDiskSub' },
+        r.diskUsedPercent.toFixed(0) + '%', r.diskUsedPercent,
+        `${r.diskUsedGb} / ${r.diskTotalGb} GB (${r.diskAvailGb} GB frei)`);
+    } else {
+      _setMetricTile({ val:'mtDiskVal', bar:'mtDiskBar', sub:'mtDiskSub' }, '', 0, '', true);
+    }
   }
 
   // ── Render: Monitors ─────────────────────────────────
@@ -1870,6 +2049,7 @@
         fetch('/api/time-context').then(r => r.json()).catch(() => ({ ok: false }))
       ]);
       if (bot.ok)    { renderBot(bot); renderSys(bot, raspi?.ok ? raspi : null); }
+      renderHwMetrics(raspi?.ok ? raspi : null);
       if (status.ok) renderMonitors(status.monitors);
       if (logs.ok)   renderLogs(logs);
       renderLogTimeContext(timeCtx);

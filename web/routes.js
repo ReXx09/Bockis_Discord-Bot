@@ -96,6 +96,95 @@ module.exports = function startWebServer({
     return null;
   }
 
+  function readGpuTempC() {
+    // Nvidia
+    try {
+      const out = execSync('nvidia-smi --query-gpu=temperature.gpu --format=csv,noheader', { timeout: 2000 }).toString().trim();
+      const v = parseFloat(out.split('\n')[0]);
+      if (Number.isFinite(v)) return { source: 'nvidia', tempC: v };
+    } catch { /* ignore */ }
+    // RPi VideoCore (vcgencmd measure_temp gibt selbe Temp wie CPU zurück)
+    try {
+      const out = execSync('vcgencmd measure_temp', { timeout: 1200 }).toString();
+      const match = out.match(/temp=([0-9.]+)/i);
+      if (match) return { source: 'vcgencmd', tempC: parseFloat(match[1]) };
+    } catch { /* ignore */ }
+    return null;
+  }
+
+  // CPU-% messen: zwei /proc/stat-Snapshots mit kurzem Abstand
+  let _cpuSnapshot = null;
+  function _readProcStat() {
+    try {
+      const line = fs.readFileSync('/proc/stat', 'utf8').split('\n')[0];
+      const parts = line.trim().split(/\s+/).slice(1).map(Number);
+      const idle = parts[3] + (parts[4] || 0); // idle + iowait
+      const total = parts.reduce((a, b) => a + b, 0);
+      return { idle, total };
+    } catch { return null; }
+  }
+  function readCpuPercent() {
+    const now = _readProcStat();
+    if (!now) return null;
+    if (!_cpuSnapshot) { _cpuSnapshot = now; return null; }
+    const dTotal = now.total - _cpuSnapshot.total;
+    const dIdle  = now.idle  - _cpuSnapshot.idle;
+    _cpuSnapshot = now;
+    if (dTotal <= 0) return null;
+    return Number(((1 - dIdle / dTotal) * 100).toFixed(1));
+  }
+  // Alle 5s Snapshot nehmen damit der erste API-Aufruf schon einen Wert hat
+  setInterval(() => { try { _cpuSnapshot = _readProcStat(); } catch { /* ignore */ } }, 5000);
+
+  // Netzwerk-Delta (bytes/s)
+  let _netSnapshot = null;
+  function _readNetDev() {
+    try {
+      const lines = fs.readFileSync('/proc/net/dev', 'utf8').split('\n');
+      let rxBytes = 0, txBytes = 0;
+      for (const line of lines.slice(2)) {
+        const parts = line.trim().split(/\s+/);
+        if (!parts[0] || parts[0].startsWith('lo:')) continue; // skip loopback
+        rxBytes += Number(parts[1]) || 0;
+        txBytes += Number(parts[9]) || 0;
+      }
+      return { rxBytes, txBytes, ts: Date.now() };
+    } catch { return null; }
+  }
+  let _netPrev = null;
+  function readNetworkKBps() {
+    const now = _readNetDev();
+    if (!now) return null;
+    if (!_netPrev) { _netPrev = now; return { rxKBps: 0, txKBps: 0 }; }
+    const dtSec = (now.ts - _netPrev.ts) / 1000;
+    if (dtSec <= 0) return { rxKBps: 0, txKBps: 0 };
+    const rxKBps = Number(((now.rxBytes - _netPrev.rxBytes) / 1024 / dtSec).toFixed(1));
+    const txKBps = Number(((now.txBytes - _netPrev.txBytes) / 1024 / dtSec).toFixed(1));
+    _netPrev = now;
+    return { rxKBps: Math.max(0, rxKBps), txKBps: Math.max(0, txKBps) };
+  }
+  setInterval(() => { try { _netPrev = _readNetDev(); } catch { /* ignore */ } }, 5000);
+
+  function readDiskUsage() {
+    // Linux: df -P / gibt Blöcke, wir parsen
+    try {
+      const out = execSync('df -P /', { timeout: 2000 }).toString();
+      const line = out.split('\n')[1];
+      if (!line) return null;
+      const parts = line.trim().split(/\s+/);
+      const total = Number(parts[1]) * 1024;
+      const used  = Number(parts[2]) * 1024;
+      const avail = Number(parts[3]) * 1024;
+      const usedPct = total > 0 ? Number(((used / total) * 100).toFixed(1)) : 0;
+      return {
+        totalGb: Number((total / 1073741824).toFixed(1)),
+        usedGb:  Number((used  / 1073741824).toFixed(1)),
+        availGb: Number((avail / 1073741824).toFixed(1)),
+        usedPercent: usedPct
+      };
+    } catch { return null; }
+  }
+
   function getPublicStatusUrl() {
     const cloudflareUrl = config.get('cloudflare.publicUrl');
     const slug = config.get('uptimeKuma.statusPageSlug');
@@ -254,6 +343,10 @@ module.exports = function startWebServer({
       const usedPct = total > 0 ? (used / total) * 100 : 0;
       const load = os.loadavg();
       const cpuTemp = readCpuTempC();
+      const gpu = readGpuTempC();
+      const cpuPercent = readCpuPercent();
+      const net = readNetworkKBps();
+      const disk = readDiskUsage();
 
       res.json({
         ok: true,
@@ -267,7 +360,16 @@ module.exports = function startWebServer({
         load1: Number(load[0].toFixed(2)),
         load5: Number(load[1].toFixed(2)),
         load15: Number(load[2].toFixed(2)),
-        cpuTempC: cpuTemp != null ? Number(cpuTemp.toFixed(1)) : null
+        cpuTempC: cpuTemp != null ? Number(cpuTemp.toFixed(1)) : null,
+        cpuPercent: cpuPercent,
+        gpuTempC: gpu?.tempC ?? null,
+        gpuTempSource: gpu?.source ?? null,
+        netRxKBps: net?.rxKBps ?? null,
+        netTxKBps: net?.txKBps ?? null,
+        diskTotalGb: disk?.totalGb ?? null,
+        diskUsedGb: disk?.usedGb ?? null,
+        diskAvailGb: disk?.availGb ?? null,
+        diskUsedPercent: disk?.usedPercent ?? null
       });
     } catch (err) {
       logger.error(`/api/raspi-status Fehler: ${err.message}`);
@@ -1113,7 +1215,10 @@ module.exports = function startWebServer({
         DISCORD_TRANSLATE_ENABLED:    get('DISCORD_TRANSLATE_ENABLED') || 'false',
         DISCORD_TRANSLATE_DEFAULT_TARGET: get('DISCORD_TRANSLATE_DEFAULT_TARGET') || 'de',
         DISCORD_TRANSLATE_DEFAULT_SOURCE: get('DISCORD_TRANSLATE_DEFAULT_SOURCE') || 'auto',
-        DISCORD_TRANSLATE_API_URL:    get('DISCORD_TRANSLATE_API_URL') || 'https://libretranslate.com/translate',
+        DISCORD_USE_DEEPL:            get('DISCORD_USE_DEEPL') || 'false',
+        DISCORD_DEEPL_API_KEY:        maskSecret(get('DISCORD_DEEPL_API_KEY')),
+        DISCORD_DEEPL_API_URL:        get('DISCORD_DEEPL_API_URL') || 'https://api-free.deepl.com',
+        DISCORD_TRANSLATE_API_URL:    get('DISCORD_TRANSLATE_API_URL') || 'http://localhost:5000/translate',
         DISCORD_TRANSLATE_API_KEY:    maskSecret(translateApiKey),
         DISCORD_TRANSLATE_ALLOWED_GUILD_IDS: get('DISCORD_TRANSLATE_ALLOWED_GUILD_IDS') || '',
         DISCORD_TRANSLATE_MAX_TEXT_LENGTH: get('DISCORD_TRANSLATE_MAX_TEXT_LENGTH') || '1800',
@@ -1173,6 +1278,9 @@ module.exports = function startWebServer({
       'DISCORD_TRANSLATE_ENABLED',
       'DISCORD_TRANSLATE_DEFAULT_TARGET',
       'DISCORD_TRANSLATE_DEFAULT_SOURCE',
+      'DISCORD_USE_DEEPL',
+      'DISCORD_DEEPL_API_KEY',
+      'DISCORD_DEEPL_API_URL',
       'DISCORD_TRANSLATE_API_URL',
       'DISCORD_TRANSLATE_API_KEY',
       'DISCORD_TRANSLATE_ALLOWED_GUILD_IDS',
