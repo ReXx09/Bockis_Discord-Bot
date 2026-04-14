@@ -881,6 +881,36 @@
                    placeholder="Optional: Guild-Whitelist IDs (Komma/Semikolon)">
           </div>
           <div class="cfg-hint">Leer bei Guild-Whitelist = in allen Servern und DMs nutzbar, in denen der Bot verfuegbar ist.</div>
+          <div style="border-top:1px solid var(--border);margin-top:12px;padding-top:12px">
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;margin-bottom:8px">
+              <input type="checkbox" id="cfgUseDeepL" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
+              <span>DeepL als primaerer Uebersetzer nutzen (falls API-Key gesetzt)</span>
+            </label>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px;margin-top:8px">
+              <div>
+                <label class="cfg-label" for="cfgDeepLApiKey" style="font-size:12px;margin-bottom:4px">DeepL API Key</label>
+                <input class="cfg-input" id="cfgDeepLApiKey" type="password" autocomplete="off" placeholder="Leer = nicht genutzt">
+              </div>
+              <div>
+                <label class="cfg-label" for="cfgDeepLApiUrl" style="font-size:12px;margin-bottom:4px">DeepL API URL</label>
+                <select class="cfg-input" id="cfgDeepLApiUrl">
+                  <option value="https://api-free.deepl.com">api-free.deepl.com (Free)</option>
+                  <option value="https://api.deepl.com">api.deepl.com (Pro)</option>
+                </select>
+              </div>
+            </div>
+            <div class="cfg-hint">DeepL bietet hoehere Qualitaet. Fallback: LibreTranslate. API-Key unter https://www.deepl.com/pro-account/summary erhältlich.</div>
+          </div>
+          <div style="border-top:1px solid var(--border);margin-top:12px;padding-top:12px">
+            <label class="cfg-label" style="font-size:12px;margin-bottom:4px">Fallback: LibreTranslate</label>
+            <label class="cfg-label" for="cfgTranslateApiUrl" style="font-size:12px;margin-bottom:4px">API URL</label>
+            <input class="cfg-input" id="cfgTranslateApiUrl" type="text" autocomplete="off"
+                   placeholder="http://localhost:5000/translate">
+            <label class="cfg-label" for="cfgTranslateApiKey" style="font-size:12px;margin-bottom:4px;margin-top:8px">API Key (optional)</label>
+            <input class="cfg-input" id="cfgTranslateApiKey" type="password" autocomplete="off"
+                   placeholder="Leer = nicht noetig">
+            <div class="cfg-hint">Wird als Fallback genutzt, wenn DeepL nicht verfuegbar oder deaktiviert ist.</div>
+          </div>
         </div>
         <div class="cfg-field">
           <label class="cfg-label" for="cfgStatusCh">Status-Channel ID</label>
@@ -919,11 +949,14 @@
             </div>
           </div>
           <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
-            <label class="cfg-label" for="cfgMsgCleanupChannelIds" style="font-size:12px;width:100%;margin-bottom:0">Channel-IDs für Cleanup (optional)</label>
+            <label class="cfg-label" for="cfgMsgCleanupChannelIds" style="font-size:12px;width:100%;margin-bottom:0">Channel-IDs für Cleanup (optional) – pro Kanal konfigurierbar</label>
             <input class="cfg-input" id="cfgMsgCleanupChannelIds" type="text" autocomplete="off" style="min-width:260px;flex:1"
-                   placeholder="Channel-IDs, z. B. 123456789012345678,234567890123456789">
+                   placeholder="z. B. 123456789012345678,234567890123456789:maxMessages=10:maxAgeHours=0">
           </div>
-          <div class="cfg-hint">Leer bei Channel-IDs = nutzt automatisch <code>DISCORD_NOTIFICATION_CHANNEL</code>. Setze <code>0</code> bei max. Nachrichten oder max. Alter, um die jeweilige Regel zu deaktivieren.</div>
+          <div class="cfg-hint">
+            Leer = nutzt automatisch <code>DISCORD_NOTIFICATION_CHANNEL</code>. Setze <code>0</code> bei max. Nachrichten oder max. Alter, um die jeweilige Regel zu deaktivieren.<br>
+            <strong>Pro-Kanal-Overrides:</strong> <code>ChannelID:maxMessages=10:maxAgeHours=0</code> – überschreibt nur die angegebenen Werte, der Rest kommt aus den globalen Einstellungen oben. Mehrere Kanäle mit Komma trennen.
+          </div>
         </div>
         <div class="cfg-field">
           <label class="cfg-label" for="cfgGuildId">Guild ID</label>
@@ -3097,12 +3130,14 @@
       // Secret-Felder bleiben leer, Platzhalter zeigt maskierten Ist-Wert.
       setCfg('cfgToken', '');
       setCfg('cfgApiKey', '');
+      setCfg('cfgDeepLApiKey', '');
       setCfg('cfgTranslateApiKey', '');
       setCfg('cfgWebhookUrl', '');
       setCfg('cfgDashPassword', '');
 
       document.getElementById('cfgToken').dataset.initialValue = d.DISCORD_TOKEN ? '__MASKED__' : '';
       document.getElementById('cfgApiKey').dataset.initialValue = d.UPTIME_KUMA_API_KEY ? '__MASKED__' : '';
+      document.getElementById('cfgDeepLApiKey').dataset.initialValue = d.DISCORD_DEEPL_API_KEY ? '__MASKED__' : '';
       document.getElementById('cfgTranslateApiKey').dataset.initialValue = d.DISCORD_TRANSLATE_API_KEY ? '__MASKED__' : '';
       document.getElementById('cfgWebhookUrl').dataset.initialValue = d.DISCORD_STATUS_WEBHOOK_URL ? '__MASKED__' : '';
       document.getElementById('cfgDashPassword').dataset.initialValue = d.DASHBOARD_PASSWORD ? '__MASKED__' : '';
@@ -3119,7 +3154,9 @@
       ensureSelectOption('cfgTranslateDefaultSource', d.DISCORD_TRANSLATE_DEFAULT_SOURCE || 'auto');
       setCfg('cfgTranslateDefaultTarget', d.DISCORD_TRANSLATE_DEFAULT_TARGET || 'de');
       setCfg('cfgTranslateDefaultSource', d.DISCORD_TRANSLATE_DEFAULT_SOURCE || 'auto');
-      setCfg('cfgTranslateApiUrl', d.DISCORD_TRANSLATE_API_URL || 'https://libretranslate.com/translate');
+      setCheckboxValue('cfgUseDeepL', d.DISCORD_USE_DEEPL || false);
+      setCfg('cfgDeepLApiUrl', d.DISCORD_DEEPL_API_URL || 'https://api-free.deepl.com');
+      setCfg('cfgTranslateApiUrl', d.DISCORD_TRANSLATE_API_URL || 'http://localhost:5000/translate');
       setCfg('cfgTranslateAllowedGuildIds', d.DISCORD_TRANSLATE_ALLOWED_GUILD_IDS || '');
       setCfg('cfgTranslateMaxTextLength', d.DISCORD_TRANSLATE_MAX_TEXT_LENGTH || '1800');
       setCfg('cfgNotifCh', d.DISCORD_NOTIFICATION_CHANNEL || '');
@@ -3154,6 +3191,8 @@
       document.getElementById('cfgApiKey').placeholder = d.UPTIME_KUMA_API_KEY
         ? `Aktuell: ${d.UPTIME_KUMA_API_KEY} — leer lassen = unverändert`
         : 'Neuen API Key eingeben';
+      document.getElementById('cfgDeepLApiKey').placeholder = d.DISCORD_DEEPL_API_KEY
+        ? '••••••••••••••••••••••••••••' : '';
       document.getElementById('cfgTranslateApiKey').placeholder = d.DISCORD_TRANSLATE_API_KEY
         ? `Aktuell: ${d.DISCORD_TRANSLATE_API_KEY} — leer lassen = unverändert`
         : 'Neuen API Key eingeben (optional)';
@@ -3207,6 +3246,9 @@
     maybeSetChanged(body, 'DISCORD_ENABLED_COMMANDS', 'cfgEnabledCommands');
     maybeSetChanged(body, 'DISCORD_TRANSLATE_DEFAULT_TARGET', 'cfgTranslateDefaultTarget');
     maybeSetChanged(body, 'DISCORD_TRANSLATE_DEFAULT_SOURCE', 'cfgTranslateDefaultSource');
+    maybeSetChanged(body, 'DISCORD_USE_DEEPL', 'cfgUseDeepL');
+    maybeSetChanged(body, 'DISCORD_DEEPL_API_KEY', 'cfgDeepLApiKey', { allowEmpty: true });
+    maybeSetChanged(body, 'DISCORD_DEEPL_API_URL', 'cfgDeepLApiUrl');
     maybeSetChanged(body, 'DISCORD_TRANSLATE_API_URL', 'cfgTranslateApiUrl');
     maybeSetChanged(body, 'DISCORD_TRANSLATE_API_KEY', 'cfgTranslateApiKey', { allowEmpty: true });
     maybeSetChanged(body, 'DISCORD_TRANSLATE_ALLOWED_GUILD_IDS', 'cfgTranslateAllowedGuildIds', { allowEmpty: true });

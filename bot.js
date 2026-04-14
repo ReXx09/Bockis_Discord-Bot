@@ -701,15 +701,37 @@ function _toNonNegativeInt(value, fallback = 0) {
   return Number.isFinite(n) && n >= 0 ? n : fallback;
 }
 
-function getMessageCleanupChannelIds() {
+function getMessageCleanupChannels() {
   const configured = String(config.get('discord.messageCleanupChannelIds') || '').trim();
   const fallbackNotificationChannel = String(config.get('discord.notificationChannel') || '').trim();
   const raw = configured || fallbackNotificationChannel;
   if (!raw) return [];
-  return Array.from(new Set(raw
-    .split(/[;,]/)
-    .map(s => s.trim())
-    .filter(id => /^\d+$/.test(id))));
+
+  const seen = new Set();
+  const result = [];
+
+  for (const entry of raw.split(/[;,]/)) {
+    const parts = entry.trim().split(':');
+    const id = parts[0].trim();
+    if (!/^\d+$/.test(id) || seen.has(id)) continue;
+    seen.add(id);
+
+    const overrides = {};
+    for (const part of parts.slice(1)) {
+      const eqIdx = part.indexOf('=');
+      if (eqIdx < 1) continue;
+      const k = part.slice(0, eqIdx).trim().toLowerCase();
+      const v = part.slice(eqIdx + 1).trim();
+      if (k === 'maxmessages') overrides.maxMessages = _toNonNegativeInt(v, undefined);
+      else if (k === 'maxagehours') overrides.maxAgeHours = _toNonNegativeInt(v, undefined);
+    }
+    // Remove undefined values so they don't overwrite global defaults
+    Object.keys(overrides).forEach(k => overrides[k] === undefined && delete overrides[k]);
+
+    result.push({ id, overrides });
+  }
+
+  return result;
 }
 
 function getMessageCleanupOptions(overrides = {}) {
@@ -785,17 +807,20 @@ async function cleanupMessagesInChannel(channel, options = {}) {
 
 async function runConfiguredMessageCleanup() {
   try {
-    const options = getMessageCleanupOptions();
-    if (!options.enabled) return;
+    const globalOptions = getMessageCleanupOptions();
+    if (!globalOptions.enabled) return;
 
-    const channelIds = getMessageCleanupChannelIds();
-    if (!channelIds.length) {
+    const channels = getMessageCleanupChannels();
+    if (!channels.length) {
       logger.warn('Nachrichten-Cleanup: aktiviert, aber keine Channel-IDs konfiguriert');
       return;
     }
 
     let totalDeleted = 0;
-    for (const channelId of channelIds) {
+    for (const { id: channelId, overrides } of channels) {
+      // Globale Optionen mit pro-Kanal-Overrides zusammenführen
+      const channelOptions = Object.assign({}, globalOptions, overrides);
+
       let channel = client.channels.cache.get(channelId);
       if (!channel) {
         try {
@@ -806,7 +831,7 @@ async function runConfiguredMessageCleanup() {
         }
       }
 
-      const result = await cleanupMessagesInChannel(channel, options);
+      const result = await cleanupMessagesInChannel(channel, channelOptions);
       totalDeleted += result.deleted;
       if (result.deleted > 0 || result.skipped > 0) {
         logger.info(`Nachrichten-Cleanup: #${channel.name || channel.id} gescannt=${result.scanned} kandidat=${result.candidates} gelöscht=${result.deleted} fehler=${result.skipped}`);
@@ -2056,7 +2081,42 @@ function isTranslationAllowedForGuild(guildId) {
   return allowed.includes(guildId);
 }
 
-async function translateTextViaApi({ text, source, target }) {
+async function translateViaDeepL({ text, source, target }) {
+  const useDeepL = config.get('discord.useDeepL');
+  const apiKey = String(config.get('discord.deepLApiKey') || '').trim();
+  if (!useDeepL || !apiKey) return null;
+
+  const baseUrl = String(config.get('discord.deepLApiUrl') || '').trim() || 'https://api-free.deepl.com';
+  const normalTarget = String(target || 'de').toUpperCase(); // DeepL: uppercase codes + optional -US suffix
+  const normalSource = source && source !== 'auto' ? String(source).toUpperCase() : 'AUTO';
+
+  const body = {
+    text: text,
+    source_lang: normalSource,
+    target_lang: normalTarget
+  };
+
+  const resp = await axios.post(`${baseUrl}/v2/translate`, body, {
+    timeout: 15000,
+    headers: {
+      'Authorization': `DeepL-Auth-Key ${apiKey}`,
+      'Content-Type': 'application/json'
+    },
+    validateStatus: () => true
+  });
+
+  if (resp.status < 200 || resp.status >= 300) {
+    const msg = resp.data?.message || JSON.stringify(resp.data);
+    logger.warn(`DeepL Fallback: ${resp.status} ${msg.slice(0, 100)}`);
+    return null; // Fallback zu LibreTranslate
+  }
+
+  const translated = resp.data?.translations?.[0]?.text;
+  if (translated) return String(translated).trim();
+  return null;
+}
+
+async function translateViaLibreTranslate({ text, source, target }) {
   let url = String(config.get('discord.translateApiUrl') || '').trim();
   const apiKey = String(config.get('discord.translateApiKey') || '').trim();
   if (!url) throw new Error('DISCORD_TRANSLATE_API_URL ist leer');
@@ -2092,6 +2152,20 @@ async function translateTextViaApi({ text, source, target }) {
   const translated = String(resp.data?.translatedText || '').trim();
   if (!translated) throw new Error('Translate API lieferte keinen translatedText-Wert');
   return translated;
+}
+
+async function translateTextViaApi({ text, source, target }) {
+  // Versuche zuerst DeepL (wenn aktiviert)
+  if (config.get('discord.useDeepL')) {
+    try {
+      const result = await translateViaDeepL({ text, source, target });
+      if (result) return result;
+    } catch (e) {
+      logger.warn(`DeepL Error: ${e.message}`);
+    }
+  }
+  // Fallback: LibreTranslate
+  return await translateViaLibreTranslate({ text, source, target });
 }
 
 function applyConfiguredPresenceNow() {
