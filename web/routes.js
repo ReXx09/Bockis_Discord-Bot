@@ -86,31 +86,78 @@ module.exports = function startWebServer({
         if (Number.isFinite(milli)) return milli / 1000;
       }
     } catch { /* ignore */ }
-
+    // vcgencmd nur aufrufen wenn /sys-Datei nicht existiert (RPi ohne Standard-Zone)
     try {
-      const out = execSync('vcgencmd measure_temp', { timeout: 1200 }).toString();
+      const out = execSync('vcgencmd measure_temp', { timeout: 800, stdio: ['ignore','pipe','ignore'] }).toString();
       const match = out.match(/temp=([0-9.]+)/i);
       if (match) return parseFloat(match[1]);
     } catch { /* ignore */ }
-
     return null;
   }
 
-  function readGpuTempC() {
+  // ── Gecachte Hintergrundwerte (nie blockierend im Request-Handler) ──────────
+
+  const _hwCache = {
+    gpuTempC: null, gpuTempSource: null,
+    diskTotalGb: null, diskUsedGb: null, diskAvailGb: null, diskUsedPercent: null,
+    cpuTempC: null,
+  };
+
+  function _refreshCpuTemp() {
+    try { _hwCache.cpuTempC = readCpuTempC(); } catch { /* ignore */ }
+  }
+
+  function _refreshGpuTemp() {
     // Nvidia
     try {
-      const out = execSync('nvidia-smi --query-gpu=temperature.gpu --format=csv,noheader', { timeout: 2000 }).toString().trim();
+      const out = execSync('nvidia-smi --query-gpu=temperature.gpu --format=csv,noheader',
+        { timeout: 3000, stdio: ['ignore','pipe','ignore'] }).toString().trim();
       const v = parseFloat(out.split('\n')[0]);
-      if (Number.isFinite(v)) return { source: 'nvidia', tempC: v };
+      if (Number.isFinite(v)) {
+        _hwCache.gpuTempC = v;
+        _hwCache.gpuTempSource = 'nvidia';
+        return;
+      }
     } catch { /* ignore */ }
-    // RPi VideoCore (vcgencmd measure_temp gibt selbe Temp wie CPU zurück)
+    // RPi VideoCore – benutzt selbe Temp wie CPU
     try {
-      const out = execSync('vcgencmd measure_temp', { timeout: 1200 }).toString();
+      const out = execSync('vcgencmd measure_temp',
+        { timeout: 800, stdio: ['ignore','pipe','ignore'] }).toString();
       const match = out.match(/temp=([0-9.]+)/i);
-      if (match) return { source: 'vcgencmd', tempC: parseFloat(match[1]) };
+      if (match) {
+        _hwCache.gpuTempC = parseFloat(match[1]);
+        _hwCache.gpuTempSource = 'vcgencmd';
+        return;
+      }
     } catch { /* ignore */ }
-    return null;
+    _hwCache.gpuTempC = null;
+    _hwCache.gpuTempSource = null;
   }
+
+  function _refreshDisk() {
+    try {
+      const out = execSync('df -P /',
+        { timeout: 2000, stdio: ['ignore','pipe','ignore'] }).toString();
+      const line = out.split('\n')[1];
+      if (!line) return;
+      const parts = line.trim().split(/\s+/);
+      const total = Number(parts[1]) * 1024;
+      const used  = Number(parts[2]) * 1024;
+      const avail = Number(parts[3]) * 1024;
+      _hwCache.diskTotalGb    = Number((total / 1073741824).toFixed(1));
+      _hwCache.diskUsedGb     = Number((used  / 1073741824).toFixed(1));
+      _hwCache.diskAvailGb    = Number((avail / 1073741824).toFixed(1));
+      _hwCache.diskUsedPercent = total > 0 ? Number(((used / total) * 100).toFixed(1)) : 0;
+    } catch { /* ignore */ }
+  }
+
+  // Initial sofort ausführen, danach in moderaten Intervallen im Hintergrund
+  _refreshCpuTemp();
+  _refreshGpuTemp();
+  _refreshDisk();
+  setInterval(_refreshCpuTemp, 10_000);
+  setInterval(_refreshGpuTemp, 30_000);   // GPU-Abfrage selten – kann langsam sein
+  setInterval(_refreshDisk,    60_000);   // Disk ändert sich kaum
 
   // CPU-% messen: zwei /proc/stat-Snapshots mit kurzem Abstand
   let _cpuSnapshot = null;
@@ -118,7 +165,7 @@ module.exports = function startWebServer({
     try {
       const line = fs.readFileSync('/proc/stat', 'utf8').split('\n')[0];
       const parts = line.trim().split(/\s+/).slice(1).map(Number);
-      const idle = parts[3] + (parts[4] || 0); // idle + iowait
+      const idle  = parts[3] + (parts[4] || 0); // idle + iowait
       const total = parts.reduce((a, b) => a + b, 0);
       return { idle, total };
     } catch { return null; }
@@ -133,18 +180,16 @@ module.exports = function startWebServer({
     if (dTotal <= 0) return null;
     return Number(((1 - dIdle / dTotal) * 100).toFixed(1));
   }
-  // Alle 5s Snapshot nehmen damit der erste API-Aufruf schon einen Wert hat
   setInterval(() => { try { _cpuSnapshot = _readProcStat(); } catch { /* ignore */ } }, 5000);
 
   // Netzwerk-Delta (bytes/s)
-  let _netSnapshot = null;
   function _readNetDev() {
     try {
       const lines = fs.readFileSync('/proc/net/dev', 'utf8').split('\n');
       let rxBytes = 0, txBytes = 0;
       for (const line of lines.slice(2)) {
         const parts = line.trim().split(/\s+/);
-        if (!parts[0] || parts[0].startsWith('lo:')) continue; // skip loopback
+        if (!parts[0] || parts[0].startsWith('lo:')) continue;
         rxBytes += Number(parts[1]) || 0;
         txBytes += Number(parts[9]) || 0;
       }
@@ -164,26 +209,6 @@ module.exports = function startWebServer({
     return { rxKBps: Math.max(0, rxKBps), txKBps: Math.max(0, txKBps) };
   }
   setInterval(() => { try { _netPrev = _readNetDev(); } catch { /* ignore */ } }, 5000);
-
-  function readDiskUsage() {
-    // Linux: df -P / gibt Blöcke, wir parsen
-    try {
-      const out = execSync('df -P /', { timeout: 2000 }).toString();
-      const line = out.split('\n')[1];
-      if (!line) return null;
-      const parts = line.trim().split(/\s+/);
-      const total = Number(parts[1]) * 1024;
-      const used  = Number(parts[2]) * 1024;
-      const avail = Number(parts[3]) * 1024;
-      const usedPct = total > 0 ? Number(((used / total) * 100).toFixed(1)) : 0;
-      return {
-        totalGb: Number((total / 1073741824).toFixed(1)),
-        usedGb:  Number((used  / 1073741824).toFixed(1)),
-        availGb: Number((avail / 1073741824).toFixed(1)),
-        usedPercent: usedPct
-      };
-    } catch { return null; }
-  }
 
   function getPublicStatusUrl() {
     const cloudflareUrl = config.get('cloudflare.publicUrl');
@@ -342,11 +367,7 @@ module.exports = function startWebServer({
       const used = Math.max(0, total - free);
       const usedPct = total > 0 ? (used / total) * 100 : 0;
       const load = os.loadavg();
-      const cpuTemp = readCpuTempC();
-      const gpu = readGpuTempC();
-      const cpuPercent = readCpuPercent();
       const net = readNetworkKBps();
-      const disk = readDiskUsage();
 
       res.json({
         ok: true,
@@ -360,16 +381,17 @@ module.exports = function startWebServer({
         load1: Number(load[0].toFixed(2)),
         load5: Number(load[1].toFixed(2)),
         load15: Number(load[2].toFixed(2)),
-        cpuTempC: cpuTemp != null ? Number(cpuTemp.toFixed(1)) : null,
-        cpuPercent: cpuPercent,
-        gpuTempC: gpu?.tempC ?? null,
-        gpuTempSource: gpu?.source ?? null,
+        // gecachte Werte – niemals blockierend
+        cpuTempC: _hwCache.cpuTempC,
+        cpuPercent: readCpuPercent(),
+        gpuTempC: _hwCache.gpuTempC,
+        gpuTempSource: _hwCache.gpuTempSource,
         netRxKBps: net?.rxKBps ?? null,
         netTxKBps: net?.txKBps ?? null,
-        diskTotalGb: disk?.totalGb ?? null,
-        diskUsedGb: disk?.usedGb ?? null,
-        diskAvailGb: disk?.availGb ?? null,
-        diskUsedPercent: disk?.usedPercent ?? null
+        diskTotalGb: _hwCache.diskTotalGb,
+        diskUsedGb: _hwCache.diskUsedGb,
+        diskAvailGb: _hwCache.diskAvailGb,
+        diskUsedPercent: _hwCache.diskUsedPercent
       });
     } catch (err) {
       logger.error(`/api/raspi-status Fehler: ${err.message}`);
