@@ -1840,14 +1840,6 @@
       : '–';
     const platform = raspi?.platform || navigator.platform || '–';
 
-    const systemRam = raspi
-      ? `${raspi.memUsedMb} / ${raspi.memTotalMb} MB (${raspi.memUsedPercent}%)`
-      : '–';
-    const load = raspi
-      ? `${raspi.load1} / ${raspi.load5} / ${raspi.load15}`
-      : '–';
-    const platform = raspi?.platform || navigator.platform || '–';
-
     document.getElementById('sysInfo').innerHTML =
       row('CPU-Temperatur', tempBadge(raspi?.cpuTempC ?? null)) +
       row('RAM (Raspberry)', systemRam) +
