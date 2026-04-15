@@ -86,12 +86,6 @@ module.exports = function startWebServer({
         if (Number.isFinite(milli)) return milli / 1000;
       }
     } catch { /* ignore */ }
-    // vcgencmd nur aufrufen wenn /sys-Datei nicht existiert (RPi ohne Standard-Zone)
-    try {
-      const out = execSync('vcgencmd measure_temp', { timeout: 800, stdio: ['ignore','pipe','ignore'] }).toString();
-      const match = out.match(/temp=([0-9.]+)/i);
-      if (match) return parseFloat(match[1]);
-    } catch { /* ignore */ }
     return null;
   }
 
@@ -102,44 +96,59 @@ module.exports = function startWebServer({
     diskTotalGb: null, diskUsedGb: null, diskAvailGb: null, diskUsedPercent: null,
     cpuTempC: null,
   };
+  let _gpuProbeRunning = false;
+  let _diskProbeRunning = false;
 
   function _refreshCpuTemp() {
     try { _hwCache.cpuTempC = readCpuTempC(); } catch { /* ignore */ }
   }
 
-  function _refreshGpuTemp() {
+  async function _refreshGpuTemp() {
+    if (_gpuProbeRunning) return;
+    _gpuProbeRunning = true;
     // Nvidia
     try {
-      const out = execSync('nvidia-smi --query-gpu=temperature.gpu --format=csv,noheader',
-        { timeout: 3000, stdio: ['ignore','pipe','ignore'] }).toString().trim();
+      const { stdout } = await execFilePromise('nvidia-smi', ['--query-gpu=temperature.gpu', '--format=csv,noheader'],
+        { timeout: 3000, windowsHide: true });
+      const out = String(stdout || '').trim();
       const v = parseFloat(out.split('\n')[0]);
       if (Number.isFinite(v)) {
         _hwCache.gpuTempC = v;
         _hwCache.gpuTempSource = 'nvidia';
+        _gpuProbeRunning = false;
         return;
       }
     } catch { /* ignore */ }
     // RPi VideoCore – benutzt selbe Temp wie CPU
     try {
-      const out = execSync('vcgencmd measure_temp',
-        { timeout: 800, stdio: ['ignore','pipe','ignore'] }).toString();
+      const { stdout } = await execFilePromise('vcgencmd', ['measure_temp'],
+        { timeout: 800, windowsHide: true });
+      const out = String(stdout || '');
       const match = out.match(/temp=([0-9.]+)/i);
       if (match) {
         _hwCache.gpuTempC = parseFloat(match[1]);
         _hwCache.gpuTempSource = 'vcgencmd';
+        _gpuProbeRunning = false;
         return;
       }
     } catch { /* ignore */ }
     _hwCache.gpuTempC = null;
     _hwCache.gpuTempSource = null;
+    _gpuProbeRunning = false;
   }
 
-  function _refreshDisk() {
+  async function _refreshDisk() {
+    if (_diskProbeRunning) return;
+    _diskProbeRunning = true;
     try {
-      const out = execSync('df -P /',
-        { timeout: 2000, stdio: ['ignore','pipe','ignore'] }).toString();
+      const { stdout } = await execFilePromise('df', ['-P', '/'],
+        { timeout: 2000, windowsHide: true });
+      const out = String(stdout || '');
       const line = out.split('\n')[1];
-      if (!line) return;
+      if (!line) {
+        _diskProbeRunning = false;
+        return;
+      }
       const parts = line.trim().split(/\s+/);
       const total = Number(parts[1]) * 1024;
       const used  = Number(parts[2]) * 1024;
@@ -149,15 +158,16 @@ module.exports = function startWebServer({
       _hwCache.diskAvailGb    = Number((avail / 1073741824).toFixed(1));
       _hwCache.diskUsedPercent = total > 0 ? Number(((used / total) * 100).toFixed(1)) : 0;
     } catch { /* ignore */ }
+    _diskProbeRunning = false;
   }
 
   // Initial sofort ausführen, danach in moderaten Intervallen im Hintergrund
   _refreshCpuTemp();
-  _refreshGpuTemp();
-  _refreshDisk();
+  void _refreshGpuTemp();
+  void _refreshDisk();
   setInterval(_refreshCpuTemp, 10_000);
-  setInterval(_refreshGpuTemp, 30_000);   // GPU-Abfrage selten – kann langsam sein
-  setInterval(_refreshDisk,    60_000);   // Disk ändert sich kaum
+  setInterval(() => { void _refreshGpuTemp(); }, 30_000);   // GPU-Abfrage selten – kann langsam sein
+  setInterval(() => { void _refreshDisk(); }, 60_000);      // Disk ändert sich kaum
 
   // CPU-% messen: zwei /proc/stat-Snapshots mit kurzem Abstand
   let _cpuSnapshot = null;
