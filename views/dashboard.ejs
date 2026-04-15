@@ -3816,17 +3816,21 @@
 
   function normalizeCardSpan(span) {
     const raw = String(span || '').trim();
+    const allowed = new Set(['3', '4', '6', '8', '9', '12', '15', '16', '18', '20', '21', '24']);
+    return allowed.has(raw) ? raw : '24';
+  }
+
+  function normalizeLegacyCardSpan(span) {
+    const raw = String(span || '').trim();
     const migrated = {
       '3': '6',
       '4': '8',
       '6': '12',
       '8': '16',
-      '9': '16',
+      '9': '18',
       '12': '24'
     };
-    const allowed = new Set(['3', '4', '6', '8', '9', '12', '15', '16', '18', '20', '21', '24']);
-    const normalized = migrated[raw] || raw;
-    return allowed.has(normalized) ? normalized : '24';
+    return normalizeCardSpan(migrated[raw] || raw);
   }
 
   function getAvailableCardSpans(card) {
@@ -3865,7 +3869,7 @@
         e.preventDefault();
         if (!dragSrc || !dropPlaceholder) return;
         if (e.target === grid) {
-          dropPlaceholder.dataset.span = dragSrc.dataset.span || '12';
+          dropPlaceholder.dataset.span = dragSrc.dataset.span || '24';
           grid.appendChild(dropPlaceholder);
         }
       });
@@ -3937,7 +3941,7 @@
 
         // Nur DOM-Änderung wenn sich Position wirklich geändert hat
         if (lastDragOverCard !== card || lastPlacerBefore !== placeBefore) {
-          dropPlaceholder.dataset.span = dragSrc.dataset.span || '12';
+          dropPlaceholder.dataset.span = dragSrc.dataset.span || '24';
           if (placeBefore) {
             if (card !== dropPlaceholder.nextElementSibling) {
               grid.insertBefore(dropPlaceholder, card);
@@ -3976,7 +3980,7 @@
       dropPlaceholder.className = 'drop-placeholder';
       dropPlaceholder.setAttribute('aria-hidden', 'true');
     }
-    dropPlaceholder.dataset.span = card.dataset.span || '12';
+    dropPlaceholder.dataset.span = card.dataset.span || '24';
     const grid = document.getElementById('dashboardGrid');
     if (grid && dropPlaceholder.parentNode !== grid) {
       grid.appendChild(dropPlaceholder);
@@ -4003,7 +4007,7 @@
     header.appendChild(left);
 
     const availableSpans = getAvailableCardSpans(card);
-    const currentSpan = normalizeCardSpan(card.dataset.span || '24');
+    const currentSpan = normalizeLegacyCardSpan(card.dataset.span || '24');
     const fallbackSpan = availableSpans.some(({ span }) => span === currentSpan)
       ? currentSpan
       : availableSpans[0].span;
