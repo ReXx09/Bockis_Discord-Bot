@@ -2038,15 +2038,39 @@
     }
   }
 
+  async function fetchJsonSafe(url, timeoutMs = 4500) {
+    try {
+      if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {
+        const r = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
+        return await r.json();
+      }
+
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        const r = await fetch(url, { signal: controller.signal });
+        return await r.json();
+      } finally {
+        clearTimeout(timer);
+      }
+    } catch {
+      return { ok: false };
+    }
+  }
+
+  let _fetchAllInFlight = false;
+
   // ── Fetch All ────────────────────────────────────────
   async function fetchAll() {
+    if (_fetchAllInFlight) return;
+    _fetchAllInFlight = true;
     try {
       const [bot, status, logs, raspi, timeCtx] = await Promise.all([
-        fetch('/api/bot-info').then(r => r.json()),
-        fetch('/api/status').then(r => r.json()),
-        fetch('/api/logs').then(r => r.json()),
-        fetch('/api/raspi-status').then(r => r.json()).catch(() => ({ ok: false })),
-        fetch('/api/time-context').then(r => r.json()).catch(() => ({ ok: false }))
+        fetchJsonSafe('/api/bot-info'),
+        fetchJsonSafe('/api/status'),
+        fetchJsonSafe('/api/logs', 6000),
+        fetchJsonSafe('/api/raspi-status'),
+        fetchJsonSafe('/api/time-context')
       ]);
       if (bot.ok)    { renderBot(bot); renderSys(bot, raspi?.ok ? raspi : null); }
       renderHwMetrics(raspi?.ok ? raspi : null);
@@ -2055,15 +2079,17 @@
       renderLogTimeContext(timeCtx);
     } catch (e) {
       toast('Verbindungsfehler – ' + e.message, 'err');
+    } finally {
+      _fetchAllInFlight = false;
     }
     // Tunnel-Status separat (non-blocking, cloudflared optional)
     try {
-      const t = await fetch('/api/tunnel-status').then(r => r.json());
+      const t = await fetchJsonSafe('/api/tunnel-status', 3500);
       renderTunnel(t);
     } catch { /* cloudflared nicht zwingend installiert */ }
     // Container-/Service-Erkennung (non-blocking)
     try {
-      const c = await fetch('/api/container-detection').then(r => r.json());
+      const c = await fetchJsonSafe('/api/container-detection', 3500);
       renderContainers(c);
     } catch { /* optional */ }
     // Service-Status laden
@@ -2080,7 +2106,7 @@
 
   async function fetchServiceStatus() {
     try {
-      const d = await fetch('/api/service-status').then(r => r.json());
+      const d = await fetchJsonSafe('/api/service-status', 3500);
       if (!d.ok) return;
       for (const [svc, state] of Object.entries(d.services)) {
         const badge = document.getElementById('svcBadge-' + svc);
