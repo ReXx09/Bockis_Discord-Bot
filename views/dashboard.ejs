@@ -1860,7 +1860,11 @@
     const valEl = document.getElementById(ids.val);
     const barEl = document.getElementById(ids.bar);
     const subEl = document.getElementById(ids.sub);
-    if (valEl) valEl.textContent = na ? 'N/V' : value;
+    if (valEl) {
+      valEl.textContent = na ? 'N/V' : value;
+      valEl.classList.toggle('metric-na', na);
+      valEl.classList.toggle('metric-value', true);
+    }
     if (barEl && !na) {
       const p = Math.min(100, Math.max(0, pct));
       barEl.style.width = p + '%';
