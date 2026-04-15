@@ -95,6 +95,7 @@ module.exports = function startWebServer({
     gpuTempC: null, gpuTempSource: null,
     diskTotalGb: null, diskUsedGb: null, diskAvailGb: null, diskUsedPercent: null,
     cpuTempC: null,
+    cpuPercent: null,
   };
   let _gpuProbeRunning = false;
   let _diskProbeRunning = false;
@@ -190,7 +191,15 @@ module.exports = function startWebServer({
     if (dTotal <= 0) return null;
     return Number(((1 - dIdle / dTotal) * 100).toFixed(1));
   }
-  setInterval(() => { try { _cpuSnapshot = _readProcStat(); } catch { /* ignore */ } }, 5000);
+  function _refreshCpuPercent() {
+    try {
+      const value = readCpuPercent();
+      if (value != null) _hwCache.cpuPercent = value;
+    } catch { /* ignore */ }
+  }
+  // Erst Snapshot setzen, dann zyklisch echten Prozentwert berechnen und cachen
+  try { _cpuSnapshot = _readProcStat(); } catch { /* ignore */ }
+  setInterval(_refreshCpuPercent, 5000);
 
   // Netzwerk-Delta (bytes/s)
   function _readNetDev() {
@@ -393,7 +402,7 @@ module.exports = function startWebServer({
         load15: Number(load[2].toFixed(2)),
         // gecachte Werte – niemals blockierend
         cpuTempC: _hwCache.cpuTempC,
-        cpuPercent: readCpuPercent(),
+        cpuPercent: _hwCache.cpuPercent,
         gpuTempC: _hwCache.gpuTempC,
         gpuTempSource: _hwCache.gpuTempSource,
         netRxKBps: net?.rxKBps ?? null,
