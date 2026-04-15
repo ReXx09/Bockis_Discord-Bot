@@ -110,39 +110,56 @@
     /* DASHBOARD GRID LAYOUT */
     .dashboard-grid {
       display: grid;
-      grid-template-columns: repeat(12, 1fr);
+      grid-template-columns: repeat(24, 1fr);
       gap: 16px;
     }
     .dashboard-grid > .card {
       min-width: 0;
-      grid-column: span 12;
+      grid-column: span 24;
     }
+    .dashboard-grid > .card[data-span="3"]  { grid-column: span 3; }
+    .dashboard-grid > .card[data-span="4"]  { grid-column: span 4; }
     .dashboard-grid > .card[data-span="6"]  { grid-column: span 6; }
     .dashboard-grid > .card[data-span="8"]  { grid-column: span 8; }
-    .dashboard-grid > .card[data-span="4"]  { grid-column: span 4; }
-    .dashboard-grid > .card[data-span="3"]  { grid-column: span 3; }
+    .dashboard-grid > .card[data-span="9"]  { grid-column: span 9; }
     .dashboard-grid > .card[data-span="12"] { grid-column: span 12; }
+    .dashboard-grid > .card[data-span="15"] { grid-column: span 15; }
+    .dashboard-grid > .card[data-span="16"] { grid-column: span 16; }
+    .dashboard-grid > .card[data-span="18"] { grid-column: span 18; }
+    .dashboard-grid > .card[data-span="20"] { grid-column: span 20; }
+    .dashboard-grid > .card[data-span="21"] { grid-column: span 21; }
+    .dashboard-grid > .card[data-span="24"] { grid-column: span 24; }
+    .dashboard-grid > .drop-placeholder[data-span="3"]  { grid-column: span 3; }
+    .dashboard-grid > .drop-placeholder[data-span="4"]  { grid-column: span 4; }
     .dashboard-grid > .drop-placeholder[data-span="6"]  { grid-column: span 6; }
     .dashboard-grid > .drop-placeholder[data-span="8"]  { grid-column: span 8; }
-    .dashboard-grid > .drop-placeholder[data-span="4"]  { grid-column: span 4; }
-    .dashboard-grid > .drop-placeholder[data-span="3"]  { grid-column: span 3; }
+    .dashboard-grid > .drop-placeholder[data-span="9"]  { grid-column: span 9; }
     .dashboard-grid > .drop-placeholder[data-span="12"] { grid-column: span 12; }
-    @media (max-width: 900px) { .dashboard-grid > .card { grid-column: span 12 !important; } }
+    .dashboard-grid > .drop-placeholder[data-span="15"] { grid-column: span 15; }
+    .dashboard-grid > .drop-placeholder[data-span="16"] { grid-column: span 16; }
+    .dashboard-grid > .drop-placeholder[data-span="18"] { grid-column: span 18; }
+    .dashboard-grid > .drop-placeholder[data-span="20"] { grid-column: span 20; }
+    .dashboard-grid > .drop-placeholder[data-span="21"] { grid-column: span 21; }
+    .dashboard-grid > .drop-placeholder[data-span="24"] { grid-column: span 24; }
+    @media (max-width: 900px) { .dashboard-grid > .card { grid-column: span 24 !important; } }
 
-    /* CARD WIDTH BUTTONS */
-    .btn-width {
-      background: none;
+    .card-size-select {
+      background: var(--surface2);
       border: 1px solid var(--border);
       color: var(--muted);
       cursor: pointer;
-      font-size: 10px;
-      padding: 2px 6px;
-      border-radius: 4px;
+      font-size: 11px;
+      padding: 4px 8px;
+      border-radius: 6px;
       transition: color .15s, border-color .15s;
-      white-space: nowrap;
+      min-width: 92px;
     }
-    .btn-width:hover { color: var(--text); border-color: var(--blue); }
-    .btn-width.active { color: var(--blue); border-color: var(--blue); }
+    .card-size-select:hover,
+    .card-size-select:focus {
+      color: var(--text);
+      border-color: var(--blue);
+      outline: none;
+    }
 
     /* CARD */
     .card {
@@ -3798,9 +3815,37 @@
   let dragOverThrottleId = null;
 
   function normalizeCardSpan(span) {
-    // Historische 3/4-Einstellung (9/12) auf 2/3 (8/12) migrieren,
-    // weil 9/12 im Layout kaum Mehrwert bietet und fast wie Vollbreite wirkt.
-    return span === '9' ? '8' : span;
+    const raw = String(span || '').trim();
+    const migrated = {
+      '3': '6',
+      '4': '8',
+      '6': '12',
+      '8': '16',
+      '9': '16',
+      '12': '24'
+    };
+    const allowed = new Set(['3', '4', '6', '8', '9', '12', '15', '16', '18', '20', '21', '24']);
+    const normalized = migrated[raw] || raw;
+    return allowed.has(normalized) ? normalized : '24';
+  }
+
+  function getAvailableCardSpans(card) {
+    const isSettingsCard = card.id === 'cfgCard';
+    const allSpans = [
+      { label: '1/8', span: '3' },
+      { label: '1/6', span: '4' },
+      { label: '1/4', span: '6' },
+      { label: '1/3', span: '8' },
+      { label: '3/8', span: '9' },
+      { label: '1/2', span: '12' },
+      { label: '5/8', span: '15' },
+      { label: '2/3', span: '16' },
+      { label: '3/4', span: '18' },
+      { label: '5/6', span: '20' },
+      { label: '7/8', span: '21' },
+      { label: '1/1', span: '24' },
+    ];
+    return isSettingsCard ? allSpans.filter(({ span }) => Number(span) >= 12) : allSpans;
   }
 
   function getStableCardId(card, idx) {
@@ -3957,37 +4002,31 @@
     if (titleClone) left.appendChild(titleClone);
     header.appendChild(left);
 
-    const SPANS = [
-      { label: '⅓', span: '4',  title: 'Ein Drittel Breite' },
-      { label: '½', span: '6',  title: 'Halbe Breite' },
-      { label: '⅔', span: '8',  title: 'Zwei Drittel Breite' },
-      { label: '↔', span: '12', title: 'Volle Breite' },
-    ];
-    const isSettingsCard = card.id === 'cfgCard';
-    const availableSpans = isSettingsCard
-      ? SPANS.filter(({ span }) => span !== '4')
-      : SPANS;
-    const widthBtns = document.createElement('div');
-    widthBtns.style.cssText = 'display:flex;gap:3px;margin-right:6px';
-    const currentSpan = normalizeCardSpan(card.dataset.span || '12');
-    const safeCurrentSpan = isSettingsCard && currentSpan === '4' ? '12' : currentSpan;
-    card.dataset.span = safeCurrentSpan;
-    availableSpans.forEach(({ label, span, title }) => {
-      const wb = document.createElement('button');
-      wb.className = 'btn-width' + (span === safeCurrentSpan ? ' active' : '');
-      wb.textContent = label;
-      wb.title = title;
-      wb.dataset.spanValue = span;
-      wb.addEventListener('click', (e) => {
-        e.stopPropagation();
-        card.dataset.span = span;
-        const s = JSON.parse(localStorage.getItem(STORAGE_KEY_SPAN) || '{}');
-        s[card.dataset.cardId] = span;
-        localStorage.setItem(STORAGE_KEY_SPAN, JSON.stringify(s));
-        widthBtns.querySelectorAll('.btn-width').forEach(b => b.classList.remove('active'));
-        wb.classList.add('active');
-      });
-      widthBtns.appendChild(wb);
+    const availableSpans = getAvailableCardSpans(card);
+    const currentSpan = normalizeCardSpan(card.dataset.span || '24');
+    const fallbackSpan = availableSpans.some(({ span }) => span === currentSpan)
+      ? currentSpan
+      : availableSpans[0].span;
+    card.dataset.span = fallbackSpan;
+
+    const sizeSelect = document.createElement('select');
+    sizeSelect.className = 'card-size-select';
+    sizeSelect.title = 'Kachelbreite';
+    availableSpans.forEach(({ label, span }) => {
+      const option = document.createElement('option');
+      option.value = span;
+      option.textContent = label;
+      sizeSelect.appendChild(option);
+    });
+    sizeSelect.value = fallbackSpan;
+    sizeSelect.addEventListener('click', (e) => e.stopPropagation());
+    sizeSelect.addEventListener('change', (e) => {
+      e.stopPropagation();
+      const span = sizeSelect.value;
+      card.dataset.span = span;
+      const s = JSON.parse(localStorage.getItem(STORAGE_KEY_SPAN) || '{}');
+      s[card.dataset.cardId] = span;
+      localStorage.setItem(STORAGE_KEY_SPAN, JSON.stringify(s));
     });
 
     const collapseBtn = document.createElement('button');
@@ -4007,7 +4046,7 @@
 
     const controls = document.createElement('div');
     controls.className = 'card-controls';
-    controls.appendChild(widthBtns);
+    controls.appendChild(sizeSelect);
     controls.appendChild(collapseBtn);
     header.appendChild(controls);
     card.insertBefore(header, card.firstChild);
@@ -4034,13 +4073,14 @@
     document.querySelectorAll('#dashboardGrid > .card').forEach(card => {
       const span = normalizeCardSpan(s[card.dataset.cardId]);
       if (!span) return;
-      const isSettingsCard = card.id === 'cfgCard';
-      const safeSpan = isSettingsCard && span === '4' ? '12' : span;
+      const availableSpans = getAvailableCardSpans(card);
+      const safeSpan = availableSpans.some(({ span: candidate }) => candidate === span)
+        ? span
+        : availableSpans[0].span;
       card.dataset.span = safeSpan;
       s[card.dataset.cardId] = safeSpan;
-      card.querySelectorAll('.btn-width').forEach(wb => {
-        wb.classList.toggle('active', wb.dataset.spanValue === safeSpan);
-      });
+      const select = card.querySelector('.card-size-select');
+      if (select) select.value = safeSpan;
     });
     localStorage.setItem(STORAGE_KEY_SPAN, JSON.stringify(s));
   }
