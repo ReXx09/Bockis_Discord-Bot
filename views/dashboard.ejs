@@ -694,7 +694,7 @@
 <div class="header">
   <div>
     <h1>🤖 Bockis Bot · Dashboard</h1>
-    <div class="sub" id="headerSub">Service Monitor · Live-Ansicht</div>
+    <div class="sub" id="headerSub">Service Monitor · Live-Ansicht · Build <%= buildId || 'unknown' %> · Quelle <%= rootBase || 'unknown' %></div>
   </div>
   
   <!-- ── SUBNAV IN HEADER ─────────────────────────────── -->
@@ -3285,6 +3285,18 @@
     });
   }
 
+  async function loadBuildInfo() {
+    const sub = document.getElementById('headerSub');
+    if (!sub) return;
+    try {
+      const data = await fetch('/api/build-info', { cache: 'no-store' }).then((r) => r.json());
+      if (!data?.ok) return;
+      sub.textContent = `Service Monitor · Live-Ansicht · Build ${data.buildId || 'unknown'} · Quelle ${data.rootBase || 'unknown'}`;
+    } catch {
+      // Fallback bleibt bei serverseitig gerendertem Text
+    }
+  }
+
   async function loadSystemLocalization() {
     const statusEl = document.getElementById('cfgLocaleStatus');
     const btn = document.getElementById('btnLocaleReload');
@@ -3791,6 +3803,7 @@
   initConfigDirtyTracking();
   loadConfig();
   loadSystemLocalization();
+  loadBuildInfo();
   setActiveSettingsPane('bot');
 
   // Live-Vorschau für den Dienst-Kanalnamen

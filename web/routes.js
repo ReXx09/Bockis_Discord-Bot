@@ -57,6 +57,13 @@ module.exports = function startWebServer({
   app.use(express.json());
   app.use(express.static(path.join(rootDir, 'public')));
 
+  let dashboardBuildId = 'unknown';
+  try {
+    dashboardBuildId = execFileSync('git', ['rev-parse', '--short', 'HEAD'], { cwd: rootDir }).toString().trim();
+  } catch {
+    dashboardBuildId = process.env.BOT_BUILD_ID || 'unknown';
+  }
+
   // ── Middleware ──────────────────────────────────────────────────────────────
 
   /** Nur localhost darf zugreifen (für /health und /metrics) */
@@ -325,7 +332,19 @@ module.exports = function startWebServer({
     res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
     res.set('Pragma', 'no-cache');
     res.set('Expires', '0');
-    res.render('dashboard');
+    res.render('dashboard', {
+      buildId: dashboardBuildId,
+      rootBase: path.basename(rootDir)
+    });
+  });
+
+  app.get('/api/build-info', dashboardAuth, (req, res) => {
+    res.json({
+      ok: true,
+      buildId: dashboardBuildId,
+      rootDir: rootDir,
+      rootBase: path.basename(rootDir)
+    });
   });
 
   // ── Health-Check (nur localhost) ────────────────────────────────────────────
