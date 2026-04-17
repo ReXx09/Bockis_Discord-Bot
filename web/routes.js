@@ -321,6 +321,10 @@ module.exports = function startWebServer({
   app.get('/', (req, res) => res.redirect('/dashboard'));
 
   app.get('/dashboard', dashboardAuth, (req, res) => {
+    res.set('Content-Type', 'text/html; charset=utf-8');
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.set('Pragma', 'no-cache');
+    res.set('Expires', '0');
     res.render('dashboard');
   });
 
