@@ -3821,6 +3821,22 @@
   const STORAGE_KEY_ORDER    = 'dashboard-card-order';
   const STORAGE_KEY_SPAN     = 'dashboard-card-span';
 
+  function readStorageJson(key, fallbackValue) {
+    try {
+      const raw = localStorage.getItem(key);
+      if (!raw) return fallbackValue;
+      const parsed = JSON.parse(raw);
+      return parsed ?? fallbackValue;
+    } catch {
+      localStorage.removeItem(key);
+      return fallbackValue;
+    }
+  }
+
+  function writeStorageJson(key, value) {
+    localStorage.setItem(key, JSON.stringify(value));
+  }
+
   let dropPlaceholder = null;
   let dragSrc = null;
   let lastDragOverCard = null;
@@ -4041,9 +4057,9 @@
       e.stopPropagation();
       const span = sizeSelect.value;
       card.dataset.span = span;
-      const s = JSON.parse(localStorage.getItem(STORAGE_KEY_SPAN) || '{}');
+      const s = readStorageJson(STORAGE_KEY_SPAN, {});
       s[card.dataset.cardId] = span;
-      localStorage.setItem(STORAGE_KEY_SPAN, JSON.stringify(s));
+      writeStorageJson(STORAGE_KEY_SPAN, s);
     });
 
     const collapseBtn = document.createElement('button');
@@ -4056,9 +4072,9 @@
       if (!content) return;
       const collapsed = content.classList.toggle('collapsed');
       collapseBtn.innerHTML = collapsed ? '+' : '−';
-      const s = JSON.parse(localStorage.getItem(STORAGE_KEY_COLLAPSE) || '{}');
+      const s = readStorageJson(STORAGE_KEY_COLLAPSE, {});
       s[card.dataset.cardId] = collapsed;
-      localStorage.setItem(STORAGE_KEY_COLLAPSE, JSON.stringify(s));
+      writeStorageJson(STORAGE_KEY_COLLAPSE, s);
     });
 
     const controls = document.createElement('div');
@@ -4075,7 +4091,7 @@
   }
 
   function restoreCollapseStates() {
-    const s = JSON.parse(localStorage.getItem(STORAGE_KEY_COLLAPSE) || '{}');
+    const s = readStorageJson(STORAGE_KEY_COLLAPSE, {});
     document.querySelectorAll('#dashboardGrid > .card').forEach(card => {
       if (s[card.dataset.cardId]) {
         card.querySelector('.card-content')?.classList.add('collapsed');
@@ -4086,7 +4102,7 @@
   }
 
   function restoreSpanStates() {
-    const s = JSON.parse(localStorage.getItem(STORAGE_KEY_SPAN) || '{}');
+    const s = readStorageJson(STORAGE_KEY_SPAN, {});
     document.querySelectorAll('#dashboardGrid > .card').forEach(card => {
       const span = normalizeCardSpan(s[card.dataset.cardId]);
       if (!span) return;
@@ -4099,12 +4115,12 @@
       const select = card.querySelector('.card-size-select');
       if (select) select.value = safeSpan;
     });
-    localStorage.setItem(STORAGE_KEY_SPAN, JSON.stringify(s));
+    writeStorageJson(STORAGE_KEY_SPAN, s);
   }
 
   function restoreCardOrder() {
     const grid = document.getElementById('dashboardGrid');
-    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY_ORDER) || 'null');
+    const saved = readStorageJson(STORAGE_KEY_ORDER, null);
     if (!saved?.length) return;
     saved.forEach(cid => {
       const el = grid.querySelector(`[data-card-id="${cid}"]`);
@@ -4115,7 +4131,7 @@
   function saveCardOrder() {
     const grid = document.getElementById('dashboardGrid');
     const order = Array.from(grid.querySelectorAll(':scope > .card')).map(c => c.dataset.cardId);
-    localStorage.setItem(STORAGE_KEY_ORDER, JSON.stringify(order));
+    writeStorageJson(STORAGE_KEY_ORDER, order);
   }
 
   if (document.readyState === 'loading') {
