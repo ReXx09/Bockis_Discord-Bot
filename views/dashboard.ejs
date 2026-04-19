@@ -1611,7 +1611,7 @@
   <div class="card-title">🖥️ System-Abhängigkeiten</div>
   <div class="mb12" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px">
     <button class="btn" id="btnSysDepsCheck" onclick="checkDeps(true)">🔎 System prüfen</button>
-    <button class="btn btn-green" id="btnInstallAllMissing" onclick="installAllMissingSysDeps()" style="display:none">⬇ Alle fehlenden installieren</button>
+    <button class="btn btn-green" id="btnInstallAllMissing" onclick="installAllMissingSysDeps()">⬇ System updaten</button>
     <span class="muted" id="sysDepState">Noch nicht geprüft</span>
   </div>
   <div id="sysDepsList"></div>
@@ -2540,8 +2540,14 @@
           <tbody>${systemRows || '<tr><td colspan="6" class="muted">Keine System-Abhängigkeiten definiert.</td></tr>'}</tbody>
         </table>${aptHint}`;
 
-      // "Alle installieren" Button nur zeigen wenn mindestens eine Dep installierbar ist
-      if (btnInstAll) btnInstAll.style.display = _pendingSysInstalls.length > 0 ? '' : 'none';
+      // System-Update-Button bleibt immer sichtbar, wird aber nur aktiv wenn etwas installierbar ist.
+      if (btnInstAll) {
+        const hasInstallable = _pendingSysInstalls.length > 0;
+        btnInstAll.disabled = !hasInstallable;
+        btnInstAll.textContent = hasInstallable
+          ? `⬇ Fehlende installieren (${_pendingSysInstalls.length})`
+          : '⬇ System updaten';
+      }
 
       const sysMissing         = d.systemMissingCount || 0;
       const sysRequiredMissing = d.systemRequiredMissingCount || 0;
@@ -2655,6 +2661,10 @@
   }
 
   async function installAllMissingSysDeps() {
+    if (!_pendingSysInstalls.length) {
+      toast('Keine fehlenden, installierbaren System-Abhängigkeiten gefunden', 'ok');
+      return;
+    }
     for (const key of [..._pendingSysInstalls]) {
       await installSysDep(key, null);
     }
