@@ -1575,6 +1575,19 @@
   <div class="diag-hints" id="diagHints"></div>
 </div>
 
+<!-- ── DIAGNOSE: REPARATUR ─────────────────────────── -->
+<div class="card" id="repairDiagCard" data-span="12" data-pane="diagnostics">
+  <div class="card-title">🔧 Reparatur (Schnellzugriff)</div>
+  <div class="mb12" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px">
+    <button class="btn btn-red" id="btnRepairDiagFull"        onclick="runRepair('full', 'btnRepairDiagFull', 'diag')">🔧 Vollreparatur</button>
+    <button class="btn"         id="btnRepairDiagNodeSymlink" onclick="runRepair('node-symlink', 'btnRepairDiagNodeSymlink', 'diag')">⛓ Node-Symlink</button>
+    <button class="btn"         id="btnRepairDiagAptFix"      onclick="runRepair('apt-fix', 'btnRepairDiagAptFix', 'diag')">📦 apt reparieren</button>
+    <button class="btn"         id="btnRepairDiagNpm"         onclick="runRepair('npm-reinstall', 'btnRepairDiagNpm', 'diag')">🔄 npm neu installieren</button>
+    <button class="btn"         id="btnRepairDiagRestart"     onclick="runRepair('restart', 'btnRepairDiagRestart', 'diag')">↺ Service neustarten</button>
+  </div>
+  <div id="repairLogDiag" style="display:none;margin-top:12px"></div>
+</div>
+
 <!-- ── UPDATES KACHEL ────────────────────────────────── -->
 <div class="card" id="updateCard" data-span="12" data-pane="updates">
   <div class="card-title">Neue Commits auf GitHub</div>
@@ -2719,11 +2732,40 @@
     'restart':       '↺ Service neustarten',
   };
 
-  async function runRepair(action, sourceBtnId) {
-    const allBtns = ['btnRepairFull','btnRepairNodeSymlink','btnRepairAptFix','btnRepairNpm','btnRepairRestart']
-      .map(id => document.getElementById(id)).filter(Boolean);
+  const REPAIR_UI_GROUPS = {
+    updates: {
+      logId: 'repairLog',
+      buttons: ['btnRepairFull', 'btnRepairNodeSymlink', 'btnRepairAptFix', 'btnRepairNpm', 'btnRepairRestart'],
+      keyMap: {
+        btnRepairFull: 'full',
+        btnRepairNodeSymlink: 'node-symlink',
+        btnRepairAptFix: 'apt-fix',
+        btnRepairNpm: 'npm-reinstall',
+        btnRepairRestart: 'restart',
+      },
+    },
+    diag: {
+      logId: 'repairLogDiag',
+      buttons: ['btnRepairDiagFull', 'btnRepairDiagNodeSymlink', 'btnRepairDiagAptFix', 'btnRepairDiagNpm', 'btnRepairDiagRestart'],
+      keyMap: {
+        btnRepairDiagFull: 'full',
+        btnRepairDiagNodeSymlink: 'node-symlink',
+        btnRepairDiagAptFix: 'apt-fix',
+        btnRepairDiagNpm: 'npm-reinstall',
+        btnRepairDiagRestart: 'restart',
+      },
+    },
+  };
+
+  async function runRepair(action, sourceBtnId, group = 'updates') {
+    const ui = REPAIR_UI_GROUPS[group] || REPAIR_UI_GROUPS.updates;
+    const allBtns = ui.buttons.map(id => document.getElementById(id)).filter(Boolean);
     const btn     = document.getElementById(sourceBtnId);
-    const logEl   = document.getElementById('repairLog');
+    const logEl   = document.getElementById(ui.logId);
+    if (!logEl) {
+      toast('Reparatur-Log nicht gefunden', 'err');
+      return;
+    }
 
     allBtns.forEach(b => { b.disabled = true; });
     if (btn) { btn.textContent = '⏳…'; }
@@ -2789,7 +2831,7 @@
         }
       }
     } catch (e) {
-      if (e.name === 'TypeError' && document.getElementById('btnRepairRestart')?.disabled) {
+      if (e.name === 'TypeError' && allBtns.some(b => b.id.endsWith('Restart') && b.disabled)) {
         addLine('→ Verbindung getrennt — Service wurde neugestartet', 'ul-warn');
         toast('Service neugestartet', 'ok');
       } else {
@@ -2799,9 +2841,7 @@
     } finally {
       allBtns.forEach(b => {
         b.disabled = false;
-        const id = b.id;
-        const actionKey = id.replace('btnRepair','').replace(/([A-Z])/g, (m,c,i) =>
-          i === 0 ? c.toLowerCase() : '-' + c.toLowerCase());
+        const actionKey = ui.keyMap[b.id];
         b.textContent = REPAIR_LABELS[actionKey] || b.textContent;
       });
       if (btn) btn.textContent = REPAIR_LABELS[action] || action;
