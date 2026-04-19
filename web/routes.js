@@ -1033,6 +1033,8 @@ module.exports = function startWebServer({
           ok: true,
           packages: [],
           outdatedCount: 0,
+          compatibleUpdateCount: 0,
+          majorOnlyCount: 0,
           total: 0,
           warning: 'package.json nicht gefunden',
           systemDeps,
@@ -1065,6 +1067,8 @@ module.exports = function startWebServer({
           ok: true,
           packages: [],
           outdatedCount: 0,
+          compatibleUpdateCount: 0,
+          majorOnlyCount: 0,
           total: 0,
           warning: 'Keine npm-Abhängigkeiten gefunden oder package.json nicht lesbar',
           systemDeps,
@@ -1120,6 +1124,8 @@ module.exports = function startWebServer({
         const installed = od?.current ?? getInstalled(name);
         const curMajor = od ? parseInt((od.current || '0').split('.')[0], 10) : 0;
         const latMajor = od ? parseInt((od.latest  || '0').split('.')[0], 10) : 0;
+        const hasCompatibleUpdate = !!(od && od.wanted && od.current && od.wanted !== od.current);
+        const hasMajorUpdate = !!(od && latMajor > curMajor);
         return {
           name,
           required : info.required,
@@ -1128,16 +1134,22 @@ module.exports = function startWebServer({
           wanted   : od?.wanted  ?? null,
           latest   : od?.latest  ?? null,
           outdated : !!od,
-          majorBump: od ? (latMajor > curMajor) : false,
+          majorBump: hasMajorUpdate,
+          compatibleUpdate: hasCompatibleUpdate,
+          majorOnlyUpdate: !!od && !hasCompatibleUpdate && hasMajorUpdate,
         };
       });
 
       packages.sort((a, b) => (b.outdated - a.outdated) || a.name.localeCompare(b.name));
       const outdatedCount = packages.filter(p => p.outdated).length;
+      const compatibleUpdateCount = packages.filter(p => p.compatibleUpdate).length;
+      const majorOnlyCount = packages.filter(p => p.majorOnlyUpdate).length;
       res.json({
         ok: true,
         packages,
         outdatedCount,
+        compatibleUpdateCount,
+        majorOnlyCount,
         total: packages.length,
         systemDeps,
         systemMissingCount: systemDeps.filter(d => !d.installed).length,

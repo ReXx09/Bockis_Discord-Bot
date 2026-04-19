@@ -2332,7 +2332,8 @@
     const local = _updateData?.local || '–';
     const remote = _updateData?.remote || '–';
 
-    const npmOutdated = Number(_depsBannerData?.outdatedCount || 0);
+    const npmOutdated = Number(_depsBannerData?.compatibleUpdateCount || 0);
+    const npmMajorOnly = Number(_depsBannerData?.majorOnlyCount || 0);
     const npmTotal = Number(_depsBannerData?.total || 0);
     const hasNpmUpdates = npmOutdated > 0;
 
@@ -2356,13 +2357,16 @@
       titleEl.textContent = 'Git-Update verfügbar';
     } else if (hasNpmUpdates) {
       titleEl.textContent = 'npm-Updates verfügbar';
+    } else if (npmMajorOnly > 0) {
+      titleEl.textContent = 'Major-Upgrades verfügbar';
     } else {
       titleEl.textContent = 'Pflicht-Abhängigkeiten fehlen';
     }
 
     const details = [];
     if (hasGitUpdate) details.push(`${behind} Commit${behind > 1 ? 's' : ''} verfügbar · lokal: ${local} · remote: ${remote}`);
-    if (hasNpmUpdates) details.push(`${npmOutdated} von ${npmTotal} npm-Paket(en) veraltet`);
+    if (hasNpmUpdates) details.push(`${npmOutdated} kompatible npm-Update${npmOutdated > 1 ? 's' : ''} verfügbar`);
+    if (npmMajorOnly > 0) details.push(`${npmMajorOnly} nur als Major-Upgrade`);
     if (hasRequiredSysMissing) details.push(`${sysRequiredMissing} Pflicht-System-Abhängigkeit(en) fehlen`);
     subEl.textContent = details.join(' · ');
   }
@@ -2471,9 +2475,11 @@
       const rows = d.packages.map(p => {
         const badge = !p.outdated
           ? `<span class="dep-badge dep-ok-badge">✓ aktuell</span>`
+          : p.compatibleUpdate
+            ? `<span class="dep-badge dep-warn-badge">↟ Kompatibel ${escapeHtml(p.wanted || p.latest || 'neu')}</span>`
           : p.majorBump
             ? `<span class="dep-badge dep-crit-badge">↑ Major ${escapeHtml(p.latest)}</span>`
-            : `<span class="dep-badge dep-warn-badge">↑ Minor ${escapeHtml(p.latest)}</span>`;
+            : `<span class="dep-badge dep-warn-badge">↟ Update ${escapeHtml(p.latest || p.wanted || 'neu')}</span>`;
         return `<tr>
           <td><span class="dep-name">${escapeHtml(p.name)}</span>${p.type === 'devDependency' ? '<span class="dep-dev">dev</span>' : ''}</td>
           <td class="dep-ver">${escapeHtml(p.required)}</td>
@@ -2492,9 +2498,13 @@
           <tbody>${rows || '<tr><td colspan="6" class="muted">Keine npm-Pakete gefunden.</td></tr>'}</tbody>
         </table>`;
 
-      const npmTxt = d.outdatedCount > 0
-        ? `${d.outdatedCount} von ${d.total} Paket(en) veraltet`
-        : `Alles aktuell (${d.total} Pakete)`;
+      const compatibleCount = Number(d.compatibleUpdateCount || 0);
+      const majorOnlyCount = Number(d.majorOnlyCount || 0);
+      const npmTxt = compatibleCount > 0
+        ? `${compatibleCount} kompatibel updatbar${majorOnlyCount > 0 ? ` · ${majorOnlyCount} nur Major` : ''}`
+        : majorOnlyCount > 0
+          ? `Keine kompatiblen Updates · ${majorOnlyCount} nur Major`
+          : `Alles aktuell (${d.total} Pakete)`;
       if (state) state.textContent = npmTxt;
 
       // ── System-Tabelle ──────────────────────────────────────────────────────
@@ -2569,6 +2579,8 @@
 
       _depsBannerData = {
         outdatedCount: d.outdatedCount || 0,
+        compatibleUpdateCount: d.compatibleUpdateCount || 0,
+        majorOnlyCount: d.majorOnlyCount || 0,
         total: d.total || 0,
         systemMissingCount: d.systemMissingCount || 0,
         systemRequiredMissingCount: d.systemRequiredMissingCount || 0,
@@ -2576,7 +2588,7 @@
       refreshUpdateBanner();
 
       if (showToast) {
-        const allOk = d.outdatedCount === 0 && sysRequiredMissing === 0;
+        const allOk = compatibleCount === 0 && sysRequiredMissing === 0;
         toast(`npm: ${npmTxt} · System: ${sysTxt}`, allOk ? 'ok' : 'err');
       }
     } catch (e) {
