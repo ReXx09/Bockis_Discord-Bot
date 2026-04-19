@@ -1309,6 +1309,7 @@ main_menu() {
       "6" "🔄   Schnell-Update         (Bot + Docker in einem Schritt)" \
       "7" "🔎   Update-Prüfung         (GitHub vergleichen, neue Commits anzeigen)" \
       "8" "⚙    Einstellungen          (Bot-Verzeichnis, Ports)" \
+      "R" "🔧   Reparatur              (Node-Symlink, apt, npm, Service)" \
       "9" "✗    Beenden" \
       3>&1 1>&2 2>&3) || break
 
@@ -1321,9 +1322,198 @@ main_menu() {
       "6") quick_update ;;
       "7") menu_update_check ;;
       "8") menu_settings ;;
+      "R") menu_repair ;;
       "9") break ;;
     esac
   done
+}
+
+# ════════════════════════════════════════════════════════════════════════════════
+# MODUL 7 — REPARATUR
+# ════════════════════════════════════════════════════════════════════════════════
+
+menu_repair() {
+  while true; do
+    CHOICE=$(whiptail --title "🔧 Reparatur" --menu \
+      "Bot-Umgebung reparieren — bei Abstürzen oder fehlenden Dateien:" $H $W 7 \
+      "1" "Vollreparatur  (alle Schritte in einem)  ★" \
+      "2" "Node.js Symlink reparieren  (/usr/bin/node)" \
+      "3" "apt-Fehler beheben  (dpkg --configure + fix-broken)" \
+      "4" "npm Pakete neu installieren  (node_modules löschen + npm install)" \
+      "5" "Service neu starten  (systemctl restart bockis-bot)" \
+      "6" "Service-Status & Logs anzeigen" \
+      "←" "Zurück zum Hauptmenü" \
+      3>&1 1>&2 2>&3) || return
+
+    case "$CHOICE" in
+      "1") repair_full ;;
+      "2") repair_node_symlink ;;
+      "3") repair_apt_fix ;;
+      "4") repair_npm ;;
+      "5") repair_restart ;;
+      "6") bot_service_status ;;
+      "←") return ;;
+    esac
+  done
+}
+
+repair_node_symlink() {
+  clear
+  echo -e "${BOLD}${CYAN}━━ Node.js Symlink reparieren ━━${NC}\n"
+  info "Prüfe /usr/bin/node ..."
+  if [ ! -x /usr/bin/node ]; then
+    if [ -x /usr/bin/nodejs ]; then
+      sudo ln -sf /usr/bin/nodejs /usr/bin/node && ok "Symlink gesetzt: /usr/bin/node -> /usr/bin/nodejs"
+    elif NODE_BIN=$(command -v node 2>/dev/null); then
+      sudo ln -sf "$NODE_BIN" /usr/bin/node && ok "Symlink gesetzt: /usr/bin/node -> $NODE_BIN"
+    else
+      err "Kein node-Binary gefunden!"
+      echo ""
+      echo -e "  ${YELLOW}Empfehlung: Node.js via nvm installieren:${NC}"
+      echo -e "  curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.2/install.sh | bash"
+      echo -e "  export NVM_DIR=\"\$HOME/.nvm\" && . \"\$NVM_DIR/nvm.sh\""
+      echo -e "  nvm install 18"
+      echo -e "  sudo ln -sf \$(which node) /usr/bin/node"
+    fi
+  else
+    ok "/usr/bin/node bereits vorhanden: $(node -v)"
+  fi
+  if [ ! -x /usr/bin/npm ] && command -v npm >/dev/null 2>&1; then
+    sudo ln -sf "$(command -v npm)" /usr/bin/npm && ok "Symlink gesetzt: /usr/bin/npm"
+  fi
+  echo ""
+  info "Node: $(node -v 2>/dev/null || echo 'nicht gefunden')"
+  info "npm:  $(npm  -v 2>/dev/null || echo 'nicht gefunden')"
+  pause
+}
+
+repair_apt_fix() {
+  clear
+  echo -e "${BOLD}${CYAN}━━ apt-Fehler beheben ━━${NC}\n"
+  info "dpkg --configure -a ..."
+  sudo dpkg --configure -a 2>&1 | tail -5 || true
+  info "apt-get -f install ..."
+  sudo apt-get -f install -y 2>&1 | tail -10
+  info "apt-get autoremove ..."
+  sudo apt-get autoremove -y 2>&1 | tail -5 || true
+  ok "apt-Fehler behoben"
+  pause
+}
+
+repair_npm() {
+  clear
+  echo -e "${BOLD}${CYAN}━━ npm Pakete neu installieren ━━${NC}\n"
+  [[ -d "$BOT_DIR" ]] || { err "Bot-Verzeichnis $BOT_DIR nicht gefunden"; pause; return; }
+  command -v node >/dev/null 2>&1 || { err "/usr/bin/node nicht gefunden — bitte zuerst Schritt 2 ausführen"; pause; return; }
+
+  info "Entferne node_modules in $BOT_DIR ..."
+  rm -rf "$BOT_DIR/node_modules"
+  ok "node_modules gelöscht"
+
+  info "npm install --omit=dev ..."
+  if npm install --omit=dev --prefix "$BOT_DIR" 2>&1 | tail -20; then
+    ok "npm-Pakete neu installiert"
+  else
+    err "npm install fehlgeschlagen — prüfe die Logs oben"
+  fi
+  pause
+}
+
+repair_restart() {
+  clear
+  echo -e "${BOLD}${CYAN}━━ Service neu starten ━━${NC}\n"
+  info "sudo systemctl restart bockis-bot ..."
+  if sudo systemctl restart bockis-bot 2>&1; then
+    sleep 2
+    local STATUS; STATUS=$(systemctl is-active bockis-bot 2>/dev/null || echo inactive)
+    if [[ "$STATUS" == "active" ]]; then
+      ok "Service ist aktiv"
+    else
+      err "Service-Status: $STATUS"
+      info "Logs: sudo journalctl -u bockis-bot -n 30 --no-pager"
+      echo ""
+      sudo journalctl -u bockis-bot -n 20 --no-pager 2>/dev/null | tail -20
+    fi
+  else
+    err "Neustart fehlgeschlagen"
+    sudo journalctl -u bockis-bot -n 20 --no-pager 2>/dev/null | tail -20
+  fi
+  pause
+}
+
+repair_full() {
+  clear
+  echo -e "${BOLD}${CYAN}━━ Vollreparatur ━━${NC}\n"
+  echo -e "  Folgende Schritte werden durchgeführt:"
+  echo -e "  1. Node.js Symlink prüfen & reparieren"
+  echo -e "  2. apt-Fehler beheben"
+  echo -e "  3. npm Pakete neu installieren"
+  echo -e "  4. Service neu starten"
+  echo ""
+
+  if ! whiptail --title "Vollreparatur bestätigen" --yesno \
+    "Alle 4 Reparaturschritte ausführen?\n\nDies kann einige Minuten dauern." 9 $W; then
+    return
+  fi
+
+  clear
+  echo -e "${BOLD}${CYAN}━━ Vollreparatur ━━${NC}\n"
+
+  echo -e "${BOLD}${YELLOW}=== Schritt 1/4: Node.js Symlink ===${NC}"
+  if [ ! -x /usr/bin/node ]; then
+    if [ -x /usr/bin/nodejs ]; then
+      sudo ln -sf /usr/bin/nodejs /usr/bin/node && ok "Symlink gesetzt: /usr/bin/node -> /usr/bin/nodejs"
+    elif NODE_BIN=$(command -v node 2>/dev/null); then
+      sudo ln -sf "$NODE_BIN" /usr/bin/node && ok "Symlink gesetzt"
+    else
+      err "Kein node-Binary — bitte nach der Reparatur Node.js via nvm installieren"
+    fi
+  else
+    ok "/usr/bin/node vorhanden: $(node -v)"
+  fi
+  if [ ! -x /usr/bin/npm ] && command -v npm >/dev/null 2>&1; then
+    sudo ln -sf "$(command -v npm)" /usr/bin/npm && ok "npm-Symlink gesetzt"
+  fi
+
+  echo ""
+  echo -e "${BOLD}${YELLOW}=== Schritt 2/4: apt-Fehler beheben ===${NC}"
+  info "dpkg --configure -a ..."
+  sudo dpkg --configure -a 2>&1 | tail -3 || true
+  info "apt-get -f install ..."
+  sudo apt-get -f install -y 2>&1 | tail -5
+  sudo apt-get autoremove -y 2>&1 | tail -3 || true
+  ok "apt-Fehler behoben"
+
+  echo ""
+  echo -e "${BOLD}${YELLOW}=== Schritt 3/4: npm Pakete neu installieren ===${NC}"
+  if [[ -d "$BOT_DIR" ]] && command -v node >/dev/null 2>&1; then
+    rm -rf "$BOT_DIR/node_modules"
+    npm install --omit=dev --prefix "$BOT_DIR" 2>&1 | tail -20 && ok "npm-Pakete neu installiert" || err "npm install fehlgeschlagen"
+  else
+    err "Übersprungen — Bot-Verzeichnis oder Node nicht gefunden"
+  fi
+
+  echo ""
+  echo -e "${BOLD}${YELLOW}=== Schritt 4/4: Service neu starten ===${NC}"
+  if sudo systemctl restart bockis-bot 2>&1; then
+    sleep 2
+    local STATUS; STATUS=$(systemctl is-active bockis-bot 2>/dev/null || echo inactive)
+    [[ "$STATUS" == "active" ]] && ok "Service aktiv ✓" || err "Service-Status: $STATUS"
+  else
+    err "Neustart fehlgeschlagen"
+  fi
+
+  echo ""
+  ok "Vollreparatur abgeschlossen!"
+  local PORT; PORT=$(grep -oP '(?<=WEB_PORT=)\d+' "$BOT_DIR/.env" 2>/dev/null || echo "$BOT_PORT")
+  sleep 3
+  if curl -sf --max-time 5 "http://localhost:${PORT}/health" >/dev/null 2>&1; then
+    ok "Health-Check OK: http://localhost:${PORT}/health"
+  else
+    err "Health-Check fehlgeschlagen — prüfe Service-Logs"
+    sudo journalctl -u bockis-bot -n 15 --no-pager 2>/dev/null | tail -15
+  fi
+  pause
 }
 
 # ── Hilfsfunktion: Bot-Installation prüfen ───────────────────────────────────

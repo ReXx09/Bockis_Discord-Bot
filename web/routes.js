@@ -1247,6 +1247,100 @@ module.exports = function startWebServer({
     proc.on('close', code => { res.write(`data: __EXIT__:${code}\n\n`); res.end(); });
   });
 
+  // ── API: Reparatur (Server-Sent Events) ────────────────────────────────────
+
+  app.post('/api/repair', dashboardAuth, (req, res) => {
+    const ALLOWED_ACTIONS = ['node-symlink', 'apt-fix', 'npm-reinstall', 'restart', 'full'];
+    const action = req.body?.action;
+    if (!action || !ALLOWED_ACTIONS.includes(action)) {
+      return res.status(400).json({ ok: false, error: 'Ungültige Repair-Aktion.' });
+    }
+
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders();
+
+    const send = (line) => res.write(`data: ${line.replace(/\n/g, ' ')}\n\n`);
+
+    // Skripte — rootDir ist durch cwd des spawn-Prozesses gesetzt (kein cd nötig)
+    const S = {
+      'node-symlink': `
+echo "→ Prüfe /usr/bin/node ..."
+if [ ! -x /usr/bin/node ]; then
+  if [ -x /usr/bin/nodejs ]; then
+    sudo ln -sf /usr/bin/nodejs /usr/bin/node
+    echo "✓ Symlink /usr/bin/node -> /usr/bin/nodejs gesetzt"
+  elif NODE_BIN=$(command -v node 2>/dev/null); then
+    sudo ln -sf "$NODE_BIN" /usr/bin/node
+    echo "✓ Symlink gesetzt: /usr/bin/node -> $NODE_BIN"
+  else
+    echo "✗ Kein node-Binary gefunden — bitte Node.js installieren" >&2
+    exit 1
+  fi
+else
+  echo "✓ /usr/bin/node bereits vorhanden ($(node -v 2>/dev/null || echo unbekannt))"
+fi
+if [ ! -x /usr/bin/npm ] && command -v npm >/dev/null 2>&1; then
+  sudo ln -sf "$(command -v npm)" /usr/bin/npm
+  echo "✓ Symlink /usr/bin/npm gesetzt"
+fi`,
+
+      'apt-fix': `
+export DEBIAN_FRONTEND=noninteractive
+echo "→ dpkg --configure -a ..."
+sudo dpkg --configure -a || true
+echo "→ apt-get -f install ..."
+sudo apt-get -f install -y
+echo "→ apt-get autoremove ..."
+sudo apt-get autoremove -y || true
+echo "✓ apt-Fehler behoben"`,
+
+      'npm-reinstall': `
+echo "→ Entferne node_modules ..."
+rm -rf node_modules
+echo "→ npm install --omit=dev ..."
+npm install --omit=dev 2>&1
+echo "✓ npm-Pakete neu installiert"`,
+
+      'restart': `
+echo "→ Starte bockis-bot neu ..."
+sudo systemctl restart bockis-bot
+sleep 2
+STATUS=$(systemctl is-active bockis-bot 2>/dev/null || echo inactive)
+if [ "$STATUS" = "active" ]; then
+  echo "✓ Service ist aktiv"
+else
+  echo "⚠ Service-Status: $STATUS"
+fi`,
+    };
+
+    S['full'] = `
+set -eo pipefail
+echo "=== Schritt 1/4: Node-Symlink ==="
+${S['node-symlink']}
+echo ""
+echo "=== Schritt 2/4: apt-Fehler beheben ==="
+${S['apt-fix']}
+echo ""
+echo "=== Schritt 3/4: npm neu installieren ==="
+${S['npm-reinstall']}
+echo ""
+echo "=== Schritt 4/4: Service neu starten ==="
+${S['restart']}
+echo ""
+echo "✓ Vollreparatur abgeschlossen"`;
+
+    send(`[Reparatur] Starte: ${action}`);
+    const proc = spawn('bash', ['-c', S[action]], {
+      cwd: rootDir,
+      env: { ...process.env, DEBIAN_FRONTEND: 'noninteractive' },
+    });
+    proc.stdout.on('data', d => d.toString().split('\n').filter(Boolean).forEach(send));
+    proc.stderr.on('data', d => d.toString().split('\n').filter(Boolean).forEach(send));
+    proc.on('close', code => { res.write(`data: __EXIT__:${code}\n\n`); res.end(); });
+  });
+
   // ── API: Update ausführen (Server-Sent Events) ──────────────────────────────
 
   app.post('/api/update-run', dashboardAuth, (req, res) => {

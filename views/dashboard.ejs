@@ -1618,6 +1618,22 @@
   <div id="sysInstallLog" style="display:none;margin-top:12px"></div>
 </div>
 
+<!-- ── REPARATUR KACHEL ──────────────────────────────── -->
+<div class="card" id="repairCard" data-span="12" data-pane="updates">
+  <div class="card-title">🔧 Reparatur</div>
+  <div class="mb12" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px">
+    <button class="btn btn-red" id="btnRepairFull"        onclick="runRepair('full',           'btnRepairFull')"       >🔧 Vollreparatur</button>
+    <button class="btn"         id="btnRepairNodeSymlink" onclick="runRepair('node-symlink',    'btnRepairNodeSymlink')" >⛓ Node-Symlink</button>
+    <button class="btn"         id="btnRepairAptFix"      onclick="runRepair('apt-fix',         'btnRepairAptFix')"     >📦 apt reparieren</button>
+    <button class="btn"         id="btnRepairNpm"         onclick="runRepair('npm-reinstall',   'btnRepairNpm')"        >🔄 npm neu installieren</button>
+    <button class="btn"         id="btnRepairRestart"     onclick="runRepair('restart',         'btnRepairRestart')"    >↺ Service neustarten</button>
+  </div>
+  <div class="muted" style="font-size:12px;margin-bottom:8px">
+    Vollreparatur: Node-Symlink prüfen → apt-Fehler beheben → npm neu installieren → Service neustarten
+  </div>
+  <div id="repairLog" style="display:none;margin-top:12px"></div>
+</div>
+
 </div><!-- /.dashboard-grid -->
 
 <!-- ── TOAST ──────────────────────────────────────────── -->
@@ -2690,6 +2706,105 @@
     }
     for (const key of [..._pendingSysInstalls]) {
       await installSysDep(key, null);
+    }
+  }
+
+  // ── Reparatur-Funktion ────────────────────────────────────────────────────
+
+  const REPAIR_LABELS = {
+    'full':          '🔧 Vollreparatur',
+    'node-symlink':  '⛓ Node-Symlink',
+    'apt-fix':       '📦 apt reparieren',
+    'npm-reinstall': '🔄 npm neu installieren',
+    'restart':       '↺ Service neustarten',
+  };
+
+  async function runRepair(action, sourceBtnId) {
+    const allBtns = ['btnRepairFull','btnRepairNodeSymlink','btnRepairAptFix','btnRepairNpm','btnRepairRestart']
+      .map(id => document.getElementById(id)).filter(Boolean);
+    const btn     = document.getElementById(sourceBtnId);
+    const logEl   = document.getElementById('repairLog');
+
+    allBtns.forEach(b => { b.disabled = true; });
+    if (btn) { btn.textContent = '⏳…'; }
+    logEl.style.display = 'block';
+    logEl.className     = 'update-log visible';
+    logEl.innerHTML     = '';
+
+    const addLine = (text, cls = '') => {
+      const el = document.createElement('div');
+      el.className = 'ul-line ' + cls;
+      el.textContent = text.replace(/\x1b\[[0-9;]*m/g, '');
+      logEl.appendChild(el);
+      logEl.scrollTop = logEl.scrollHeight;
+    };
+
+    try {
+      const res = await fetch('/api/repair', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: res.statusText }));
+        addLine('Fehler: ' + (err.error || res.statusText), 'ul-err');
+        toast('Reparatur fehlgeschlagen: ' + (err.error || ''), 'err');
+        return;
+      }
+
+      const reader = res.body.getReader();
+      const dec    = new TextDecoder();
+      let buf = '';
+      let willRestart = false;
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        const parts = buf.split('\n\n');
+        buf = parts.pop();
+        for (const part of parts) {
+          if (!part.startsWith('data:')) continue;
+          const line = part.slice(5).trim();
+          if (line.startsWith('__EXIT__:')) {
+            const code = line.split(':')[1];
+            if (code === '0') {
+              addLine('✓ ' + (REPAIR_LABELS[action] || action) + ' erfolgreich!', 'ul-ok');
+              toast('✓ Reparatur abgeschlossen', 'ok');
+            } else {
+              addLine('✗ Reparatur fehlgeschlagen (Exit-Code ' + code + ')', 'ul-err');
+              toast('Reparatur fehlgeschlagen (Code ' + code + ')', 'err');
+            }
+          } else {
+            const clean = line.replace(/\x1b\[[0-9;]*m/g, '');
+            if (/starte.*service.*neu|restarting/i.test(clean)) willRestart = true;
+            let cls = 'ul-line';
+            if (/error|fehler|fail|✗/i.test(line))        cls = 'ul-err';
+            else if (/warn|⚠/i.test(line))                cls = 'ul-warn';
+            else if (/✓|success|erfolgreich/i.test(line)) cls = 'ul-ok';
+            else if (/^===/.test(line))                    cls = 'ul-ok';
+            addLine(line, cls);
+          }
+        }
+      }
+    } catch (e) {
+      if (e.name === 'TypeError' && document.getElementById('btnRepairRestart')?.disabled) {
+        addLine('→ Verbindung getrennt — Service wurde neugestartet', 'ul-warn');
+        toast('Service neugestartet', 'ok');
+      } else {
+        addLine('Verbindungsfehler: ' + e.message, 'ul-err');
+        toast('Fehler: ' + e.message, 'err');
+      }
+    } finally {
+      allBtns.forEach(b => {
+        b.disabled = false;
+        const id = b.id;
+        const actionKey = id.replace('btnRepair','').replace(/([A-Z])/g, (m,c,i) =>
+          i === 0 ? c.toLowerCase() : '-' + c.toLowerCase());
+        b.textContent = REPAIR_LABELS[actionKey] || b.textContent;
+      });
+      if (btn) btn.textContent = REPAIR_LABELS[action] || action;
     }
   }
 
