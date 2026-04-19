@@ -1019,10 +1019,18 @@ module.exports = function startWebServer({
           nodeDep.availableVersion = nodeReq.requiredMin;
           nodeDep.requiredVersion = nodeReq.requiredRange;
           nodeDep.updateReason = `Runtime-Anforderung von ${nodeReq.source}`;
-          nodeDep.updateCommand = 'Node.js 20 LTS installieren (z. B. via NodeSource oder nvm)';
-          if (aptAvailable && nodeDep.aptPackage) {
+          // Architektur prüfen: NodeSource unterstützt kein armhf (32-bit ARM)
+          let sysArch = '';
+          try { sysArch = execFileSync('dpkg', ['--print-architecture'], { timeout: 3000 }).toString().trim(); } catch { /* ignore */ }
+          const nodeSourceSupported = sysArch !== 'armhf';
+
+          if (nodeSourceSupported && aptAvailable && nodeDep.aptPackage) {
             nodeDep.installable = true;
             nodeDep.installCommand = `sudo apt-get install -y ${nodeDep.aptPackage}`;
+            nodeDep.updateCommand = 'Node.js 20 LTS installieren (NodeSource)';
+          } else {
+            nodeDep.installable = false;
+            nodeDep.updateCommand = `Manuell via nvm: curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.2/install.sh | bash && nvm install 20 && sudo ln -sf $(which node) /usr/bin/node`;
           }
         }
       }
