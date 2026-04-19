@@ -1211,11 +1211,15 @@ module.exports = function startWebServer({
         'set -euo pipefail',
         'export DEBIAN_FRONTEND=noninteractive',
         'sudo apt-get update -y',
+        'sudo dpkg --configure -a || true',
+        'sudo apt-get -f install -y || true',
         'sudo apt-get install -y ca-certificates curl gnupg',
-        'sudo apt-get remove -y nodejs npm nodejs-legacy libnode72 || true',
+        // Keep existing nodejs until replacement is ready to avoid downtime.
+        'sudo apt-get remove -y npm nodejs-legacy libnode72 || true',
         'sudo apt-get autoremove -y || true',
         'curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -',
         'sudo apt-get install -y nodejs',
+        'if [ ! -x /usr/bin/node ] && [ -x /usr/bin/nodejs ]; then sudo ln -sf /usr/bin/nodejs /usr/bin/node; fi',
         'echo "Node: $(node -v)"',
         'echo "npm: $(npm -v)"',
       ].join('; ');
