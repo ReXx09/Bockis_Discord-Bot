@@ -1020,6 +1020,10 @@ module.exports = function startWebServer({
           nodeDep.requiredVersion = nodeReq.requiredRange;
           nodeDep.updateReason = `Runtime-Anforderung von ${nodeReq.source}`;
           nodeDep.updateCommand = 'Node.js 20 LTS installieren (z. B. via NodeSource oder nvm)';
+          if (aptAvailable && nodeDep.aptPackage) {
+            nodeDep.installable = true;
+            nodeDep.installCommand = `sudo apt-get install -y ${nodeDep.aptPackage}`;
+          }
         }
       }
 
