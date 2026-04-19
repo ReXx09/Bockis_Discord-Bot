@@ -1600,6 +1600,7 @@
   <div class="card-title">📦 npm Pakete</div>
   <div class="mb12" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px">
     <button class="btn" id="btnDepsCheck" onclick="checkDeps(true)">🔎 npm prüfen</button>
+    <button class="btn btn-green" id="btnDepsUpdate" onclick="runUpdate(null, 'npm', 'btnDepsUpdate')">📦 npm updaten</button>
     <span class="muted" id="depsState">Noch nicht geprüft</span>
   </div>
   <div id="depsList"></div>
@@ -2672,6 +2673,7 @@
       document.getElementById('btnUpdateGitPane'),
       document.getElementById('btnUpdateNpmPane'),
       document.getElementById('btnUpdateFullPane'),
+      document.getElementById('btnDepsUpdate'),
     ].filter(Boolean);
     const modeSelect = document.getElementById('updateMode');
     const selectedMode = modeOverride || (modeSelect ? modeSelect.value : 'auto');
@@ -2774,6 +2776,7 @@
         if (paneBtn.id === 'btnUpdateGitPane') paneBtn.textContent = getUpdateButtonLabel('git');
         if (paneBtn.id === 'btnUpdateNpmPane') paneBtn.textContent = getUpdateButtonLabel('npm');
         if (paneBtn.id === 'btnUpdateFullPane') paneBtn.textContent = getUpdateButtonLabel('full');
+        if (paneBtn.id === 'btnDepsUpdate') paneBtn.textContent = '📦 npm updaten';
       });
       // Update-Check nur ausführen wenn kein Neustart läuft (der Reconnect-Poller macht es dann)
       if (!handledByRestart) checkUpdate(false);
