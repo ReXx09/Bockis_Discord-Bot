@@ -57,13 +57,6 @@ module.exports = function startWebServer({
   app.use(express.json());
   app.use(express.static(path.join(rootDir, 'public')));
 
-  let dashboardBuildId = 'unknown';
-  try {
-    dashboardBuildId = execFileSync('git', ['rev-parse', '--short', 'HEAD'], { cwd: rootDir }).toString().trim();
-  } catch {
-    dashboardBuildId = process.env.BOT_BUILD_ID || 'unknown';
-  }
-
   // ── Middleware ──────────────────────────────────────────────────────────────
 
   /** Nur localhost darf zugreifen (für /health und /metrics) */
@@ -328,23 +321,7 @@ module.exports = function startWebServer({
   app.get('/', (req, res) => res.redirect('/dashboard'));
 
   app.get('/dashboard', dashboardAuth, (req, res) => {
-    res.set('Content-Type', 'text/html; charset=utf-8');
-    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-    res.set('Pragma', 'no-cache');
-    res.set('Expires', '0');
-    res.render('dashboard', {
-      buildId: dashboardBuildId,
-      rootBase: path.basename(rootDir)
-    });
-  });
-
-  app.get('/api/build-info', dashboardAuth, (req, res) => {
-    res.json({
-      ok: true,
-      buildId: dashboardBuildId,
-      rootDir: rootDir,
-      rootBase: path.basename(rootDir)
-    });
+    res.render('dashboard');
   });
 
   // ── Health-Check (nur localhost) ────────────────────────────────────────────
@@ -865,6 +842,50 @@ module.exports = function startWebServer({
 
   app.get('/api/deps-check', dashboardAuth, async (req, res) => {
     try {
+      const parseVersionTuple = (value) => {
+        const raw = String(value || '').trim().replace(/^v/i, '');
+        const m = raw.match(/(\d+)(?:\.(\d+))?(?:\.(\d+))?/);
+        if (!m) return null;
+        return [Number(m[1] || 0), Number(m[2] || 0), Number(m[3] || 0)];
+      };
+
+      const compareVersionTuple = (a, b) => {
+        for (let i = 0; i < 3; i += 1) {
+          const av = Number(a?.[i] || 0);
+          const bv = Number(b?.[i] || 0);
+          if (av > bv) return 1;
+          if (av < bv) return -1;
+        }
+        return 0;
+      };
+
+      const parseMinFromRange = (range) => {
+        const raw = String(range || '').trim();
+        const gte = raw.match(/>=\s*v?(\d+(?:\.\d+){0,2})/i);
+        if (gte?.[1]) return gte[1];
+        const exact = raw.match(/^v?(\d+(?:\.\d+){0,2})$/i);
+        if (exact?.[1]) return exact[1];
+        return null;
+      };
+
+      const detectNodeEngineRequirement = () => {
+        try {
+          const sqlitePkgPath = path.join(rootDir, 'node_modules', 'sqlite3', 'package.json');
+          if (!fs.existsSync(sqlitePkgPath)) return null;
+          const sqlitePkg = JSON.parse(fs.readFileSync(sqlitePkgPath, 'utf8').replace(/^\uFEFF/, ''));
+          const requiredRange = String(sqlitePkg?.engines?.node || '').trim();
+          const requiredMin = parseMinFromRange(requiredRange);
+          if (!requiredRange || !requiredMin) return null;
+          return {
+            source: 'sqlite3',
+            requiredRange,
+            requiredMin,
+          };
+        } catch {
+          return null;
+        }
+      };
+
       const checkCommand = (cmd, args = ['--version']) => {
         try {
           const out = execFileSync(cmd, args, { timeout: 4000 }).toString().trim();
@@ -986,6 +1007,22 @@ module.exports = function startWebServer({
         };
       });
 
+      // Node.js-Version gegen Engine-Anforderungen installierter Kern-Abhängigkeiten prüfen.
+      const nodeDep = systemDeps.find(d => d.key === 'node');
+      const nodeReq = detectNodeEngineRequirement();
+      if (nodeDep && nodeDep.installed && nodeReq?.requiredMin) {
+        const currentTuple = parseVersionTuple(nodeDep.version);
+        const requiredTuple = parseVersionTuple(nodeReq.requiredMin);
+        const needsUpdate = !!(currentTuple && requiredTuple && compareVersionTuple(currentTuple, requiredTuple) < 0);
+        if (needsUpdate) {
+          nodeDep.updateAvailable = true;
+          nodeDep.availableVersion = nodeReq.requiredMin;
+          nodeDep.requiredVersion = nodeReq.requiredRange;
+          nodeDep.updateReason = `Runtime-Anforderung von ${nodeReq.source}`;
+          nodeDep.updateCommand = 'Node.js 20 LTS installieren (z. B. via NodeSource oder nvm)';
+        }
+      }
+
       const pkgPath = path.join(rootDir, 'package.json');
       if (!fs.existsSync(pkgPath)) {
         return res.json({
@@ -997,6 +1034,7 @@ module.exports = function startWebServer({
           systemDeps,
           systemMissingCount: systemDeps.filter(d => !d.installed).length,
           systemRequiredMissingCount: systemDeps.filter(d => d.required && !d.installed).length,
+          systemUpdateCount: systemDeps.filter(d => d.updateAvailable).length,
           aptAvailable,
         });
       }
@@ -1028,6 +1066,7 @@ module.exports = function startWebServer({
           systemDeps,
           systemMissingCount: systemDeps.filter(d => !d.installed).length,
           systemRequiredMissingCount: systemDeps.filter(d => d.required && !d.installed).length,
+          systemUpdateCount: systemDeps.filter(d => d.updateAvailable).length,
           aptAvailable,
         });
       }
@@ -1099,6 +1138,7 @@ module.exports = function startWebServer({
         systemDeps,
         systemMissingCount: systemDeps.filter(d => !d.installed).length,
         systemRequiredMissingCount: systemDeps.filter(d => d.required && !d.installed).length,
+        systemUpdateCount: systemDeps.filter(d => d.updateAvailable).length,
         aptAvailable,
       });
     } catch (err) {

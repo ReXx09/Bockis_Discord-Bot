@@ -2501,14 +2501,18 @@
       _pendingSysInstalls = [];
 
       const systemRows = (d.systemDeps || []).map(dep => {
-        const badge = dep.installed
+        const badge = dep.updateAvailable
+          ? `<span class="dep-badge dep-crit-badge">↟ Update verfügbar${dep.availableVersion ? ` (>= ${escapeHtml(dep.availableVersion)})` : ''}</span>`
+          : dep.installed
           ? `<span class="dep-badge dep-ok-badge">✓ installiert</span>`
           : dep.required
             ? `<span class="dep-badge dep-crit-badge">✗ fehlt (Pflicht)</span>`
             : `<span class="dep-badge dep-warn-badge">○ optional</span>`;
 
         let installCell;
-        if (dep.installed) {
+        if (dep.updateAvailable) {
+          installCell = `<code style="font-size:11px">${escapeHtml(dep.updateCommand || 'manuell aktualisieren')}</code>`;
+        } else if (dep.installed) {
           installCell = '<span class="muted">–</span>';
         } else if (dep.installable) {
           _pendingSysInstalls.push(dep.key);
@@ -2551,9 +2555,12 @@
 
       const sysMissing         = d.systemMissingCount || 0;
       const sysRequiredMissing = d.systemRequiredMissingCount || 0;
+      const sysUpdates         = d.systemUpdateCount || 0;
       const sysTxt = sysMissing > 0
         ? `${sysMissing} fehlend${sysRequiredMissing > 0 ? `, ${sysRequiredMissing} Pflicht` : ''}`
-        : 'Alle vorhanden';
+        : sysUpdates > 0
+          ? `${sysUpdates} Update${sysUpdates > 1 ? 's' : ''} verfügbar`
+          : 'Alle vorhanden';
       if (sysState) sysState.textContent = sysTxt;
 
       _depsBannerData = {
