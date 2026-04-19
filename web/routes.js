@@ -1203,10 +1203,33 @@ module.exports = function startWebServer({
 
     const send = (line) => res.write(`data: ${line.replace(/\n/g, ' ')}\n\n`);
 
-    send(`[Dashboard] sudo apt-get install -y ${aptPackage}`);
-    const proc = spawn('sudo', ['apt-get', 'install', '-y', ...aptPackage.split(' ')], {
-      env: { ...process.env, DEBIAN_FRONTEND: 'noninteractive' },
-    });
+    let proc;
+    if (key === 'node') {
+      // Debian apt nodejs/npm combinations often conflict on Raspberry Pi images.
+      // Use NodeSource 20.x to provide a consistent Node+npm pair.
+      const nodeSetupScript = [
+        'set -euo pipefail',
+        'export DEBIAN_FRONTEND=noninteractive',
+        'sudo apt-get update -y',
+        'sudo apt-get install -y ca-certificates curl gnupg',
+        'sudo apt-get remove -y nodejs npm nodejs-legacy libnode72 || true',
+        'sudo apt-get autoremove -y || true',
+        'curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -',
+        'sudo apt-get install -y nodejs',
+        'echo "Node: $(node -v)"',
+        'echo "npm: $(npm -v)"',
+      ].join('; ');
+
+      send('[Dashboard] Installiere Node.js 20 LTS via NodeSource (Konflikte werden vorab bereinigt)');
+      proc = spawn('bash', ['-lc', nodeSetupScript], {
+        env: { ...process.env },
+      });
+    } else {
+      send(`[Dashboard] sudo apt-get install -y ${aptPackage}`);
+      proc = spawn('sudo', ['apt-get', 'install', '-y', ...aptPackage.split(' ')], {
+        env: { ...process.env, DEBIAN_FRONTEND: 'noninteractive' },
+      });
+    }
     proc.stdout.on('data', d => d.toString().split('\n').filter(Boolean).forEach(send));
     proc.stderr.on('data', d => d.toString().split('\n').filter(Boolean).forEach(send));
     proc.on('close', code => { res.write(`data: __EXIT__:${code}\n\n`); res.end(); });
