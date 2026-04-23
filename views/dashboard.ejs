@@ -848,6 +848,8 @@
           <button class="cfg-nav-btn" data-cfg-pane-btn="renderer" onclick="setActiveSettingsPane('renderer')">📡 Discord Renderer</button>
           <button class="cfg-nav-btn" data-cfg-pane-btn="security" onclick="setActiveSettingsPane('security')">🗂 Sicherheit & API</button>
           <button class="cfg-nav-btn" data-cfg-pane-btn="raspi" onclick="setActiveSettingsPane('raspi')">🍓 Raspi & Web</button>
+          <button class="cfg-nav-btn" data-cfg-pane-btn="welcome" onclick="setActiveSettingsPane('welcome')">👋 Willkommen & Auto-Reply</button>
+          <button class="cfg-nav-btn" data-cfg-pane-btn="github" onclick="setActiveSettingsPane('github')">🐙 GitHub-Watcher</button>
         </div>
       </div>
 
@@ -1489,6 +1491,116 @@
             </label>
           </div>
           <div class="cfg-hint">Bei Statuswechsel wird z.B. aus <code>dienste-status</code> → <code>🟢dienste-status</code> (max. 2× / 10 min)</div>
+        </div>
+      </div>
+
+      <!-- ── PANE: WILLKOMMEN & AUTO-REPLY ─────────────── -->
+      <div class="cfg-pane-card hidden" data-cfg-pane="welcome">
+        <div class="cfg-pane-title">👋 Willkommens-Nachrichten</div>
+        <div class="cfg-field" style="border:1px solid var(--border);border-radius:8px;padding:12px;background:rgba(255,255,255,.01)">
+          <label class="cfg-label">Willkommensnachrichten aktivieren</label>
+          <div style="display:flex;align-items:center;gap:12px;margin-top:2px">
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px">
+              <input type="checkbox" id="cfgWelcomeEnabled" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
+              <span>Neues Mitglied beim Beitritt automatisch begrüßen</span>
+            </label>
+          </div>
+          <div class="cfg-hint">Benötigt den Privileged Intent <strong>Server Members Intent</strong> im Discord Developer Portal.</div>
+        </div>
+        <div class="cfg-field">
+          <label class="cfg-label" for="cfgWelcomeChannelId">Willkommens-Kanal ID</label>
+          <input class="cfg-input" id="cfgWelcomeChannelId" type="text" autocomplete="off" placeholder="z. B. 123456789012345678">
+          <div class="cfg-hint">Rechtsklick auf den Kanal → „ID kopieren" (Entwicklermodus muss aktiv sein).</div>
+        </div>
+        <div class="cfg-field">
+          <label class="cfg-label" for="cfgWelcomeMessageTemplate">Willkommens-Nachricht</label>
+          <input class="cfg-input" id="cfgWelcomeMessageTemplate" type="text" autocomplete="off"
+                 placeholder="Willkommen {user} auf **{server}**! 👋">
+          <div class="cfg-hint">Platzhalter: <code>{user}</code> = Mention, <code>{username}</code> = Name ohne @, <code>{server}</code> = Servername, <code>{channel}</code> = Kanal.</div>
+        </div>
+
+        <div class="cfg-pane-title" style="margin-top:20px">🤖 Auto-Reply</div>
+        <div class="cfg-field" style="border:1px solid var(--border);border-radius:8px;padding:12px;background:rgba(255,255,255,.01)">
+          <label class="cfg-label">Auto-Reply aktivieren</label>
+          <div style="display:flex;align-items:center;gap:12px;margin-top:2px;flex-wrap:wrap">
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px">
+              <input type="checkbox" id="cfgAutoReplyEnabled" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
+              <span>Auf Nachrichten automatisch antworten (Regeln aus JSON-Datei)</span>
+            </label>
+          </div>
+          <div style="display:flex;align-items:center;gap:12px;margin-top:10px">
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px">
+              <input type="checkbox" id="cfgAutoReplyMentionOnly" style="width:16px;height:16px;cursor:pointer;accent-color:var(--yellow)">
+              <span>Nur bei direkter @-Erwähnung des Bots antworten</span>
+            </label>
+          </div>
+          <div class="cfg-hint">Benötigt den Privileged Intent <strong>Message Content Intent</strong> im Discord Developer Portal.</div>
+        </div>
+        <div class="cfg-field">
+          <label class="cfg-label" for="cfgAutoReplyChannelIds">Kanal-Filter (optional)</label>
+          <input class="cfg-input" id="cfgAutoReplyChannelIds" type="text" autocomplete="off" placeholder="123456789;987654321 (leer = alle Kanäle)">
+          <div class="cfg-hint">Channel-IDs mit <code>;</code> oder <code>,</code> trennen. Leer lassen um in allen Kanälen zu antworten.</div>
+        </div>
+        <div class="cfg-field">
+          <label class="cfg-label" for="cfgAutoReplyCooldownMs">Cooldown zwischen Antworten (ms)</label>
+          <input class="cfg-input" id="cfgAutoReplyCooldownMs" type="number" min="0" max="3600000" step="1000" placeholder="30000">
+          <div class="cfg-hint">Mindestabstand in Millisekunden pro Kanal (0 = kein Cooldown, Standard: 30000 = 30 Sek).</div>
+        </div>
+        <div class="cfg-field">
+          <label class="cfg-label" for="cfgAutoReplyRulesFile">Pfad zur Regeldatei</label>
+          <input class="cfg-input" id="cfgAutoReplyRulesFile" type="text" autocomplete="off" placeholder="./auto-replies.json">
+          <div class="cfg-hint">JSON-Array mit Regeln (Felder: <code>id</code>, <code>trigger</code>, <code>mode</code>, <code>reply</code>). Modus: <code>contains</code>, <code>exact</code>, <code>regex</code>.</div>
+        </div>
+      </div>
+
+      <!-- ── PANE: GITHUB-WATCHER ───────────────────────── -->
+      <div class="cfg-pane-card hidden" data-cfg-pane="github">
+        <div class="cfg-pane-title">🐙 GitHub-Update-Watcher</div>
+        <div class="cfg-field" style="border:1px solid var(--border);border-radius:8px;padding:12px;background:rgba(255,255,255,.01)">
+          <label class="cfg-label">GitHub-Watcher aktivieren</label>
+          <div style="display:flex;align-items:center;gap:12px;margin-top:2px">
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px">
+              <input type="checkbox" id="cfgGithubWatchEnabled" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
+              <span>Neue Releases &amp; Commits von GitHub in einen Discord-Kanal posten</span>
+            </label>
+          </div>
+        </div>
+        <div class="cfg-field">
+          <label class="cfg-label" for="cfgGithubChannelId">Info-Kanal ID</label>
+          <input class="cfg-input" id="cfgGithubChannelId" type="text" autocomplete="off" placeholder="z. B. 123456789012345678">
+          <div class="cfg-hint">Channel-ID des Discord-Kanals, in dem GitHub-Updates gepostet werden sollen.</div>
+        </div>
+        <div class="cfg-field">
+          <label class="cfg-label" for="cfgGithubRepos">Repos (Format: owner/repo)</label>
+          <input class="cfg-input" id="cfgGithubRepos" type="text" autocomplete="off" placeholder="ReXx09/Bockis_Discord-Bot;anderer/repo">
+          <div class="cfg-hint">Mehrere Repos mit <code>;</code> oder <code>,</code> trennen. Maximal 20. Nur öffentliche Repos ohne Token.</div>
+        </div>
+        <div class="cfg-field">
+          <label class="cfg-label" for="cfgGithubMode">Überwachungs-Modus</label>
+          <select class="cfg-input" id="cfgGithubMode">
+            <option value="both">Beides (Releases + Commits)</option>
+            <option value="releases">Nur Releases</option>
+            <option value="commits">Nur Commits</option>
+          </select>
+        </div>
+        <div class="cfg-field">
+          <label class="cfg-label" for="cfgGithubPollIntervalMs">Poll-Intervall</label>
+          <select class="cfg-input" id="cfgGithubPollIntervalMs">
+            <option value="60000">1 Minute</option>
+            <option value="300000">5 Minuten</option>
+            <option value="600000" selected>10 Minuten (Standard)</option>
+            <option value="900000">15 Minuten</option>
+            <option value="1800000">30 Minuten</option>
+            <option value="3600000">1 Stunde</option>
+            <option value="21600000">6 Stunden</option>
+          </select>
+          <div class="cfg-hint">Ohne GitHub-Token: max. 60 Anfragen/Stunde (ca. 5 Repos × 2 Checks alle 10 Min).</div>
+        </div>
+        <div class="cfg-field">
+          <label class="cfg-label" for="cfgGithubToken">GitHub Personal Access Token (optional)</label>
+          <input class="cfg-input" id="cfgGithubToken" type="password" autocomplete="off"
+                 placeholder="Leer lassen = unverändert">
+          <div class="cfg-hint">Erhöht das Rate-Limit von 60 auf 5000 Anfragen/Stunde. Scope: <code>public_repo</code> reicht aus.</div>
         </div>
       </div>
 
@@ -3692,6 +3804,28 @@
       setCheckboxValue('cfgAutoReactionEnabled', (d.DISCORD_AUTO_REACTION_ENABLED || 'false') === 'true', { force });
       setCheckboxValue('cfgTranslateEnabled', (d.DISCORD_TRANSLATE_ENABLED || 'false') === 'true', { force });
 
+      // Willkommen & Auto-Reply
+      setCheckboxValue('cfgWelcomeEnabled', (d.DISCORD_WELCOME_ENABLED || 'false') === 'true', { force });
+      setCfg('cfgWelcomeChannelId', d.DISCORD_WELCOME_CHANNEL_ID || '');
+      setCfg('cfgWelcomeMessageTemplate', d.DISCORD_WELCOME_MESSAGE_TEMPLATE || 'Willkommen {user} auf **{server}**! 👋');
+      setCheckboxValue('cfgAutoReplyEnabled', (d.DISCORD_AUTO_REPLY_ENABLED || 'false') === 'true', { force });
+      setCheckboxValue('cfgAutoReplyMentionOnly', (d.DISCORD_AUTO_REPLY_MENTION_ONLY || 'false') === 'true', { force });
+      setCfg('cfgAutoReplyChannelIds', d.DISCORD_AUTO_REPLY_CHANNEL_IDS || '');
+      setCfg('cfgAutoReplyCooldownMs', d.DISCORD_AUTO_REPLY_COOLDOWN_MS || '30000');
+      setCfg('cfgAutoReplyRulesFile', d.DISCORD_AUTO_REPLY_RULES_FILE || './auto-replies.json');
+
+      // GitHub-Watcher
+      setCheckboxValue('cfgGithubWatchEnabled', (d.DISCORD_GITHUB_WATCH_ENABLED || 'false') === 'true', { force });
+      setCfg('cfgGithubChannelId', d.DISCORD_GITHUB_CHANNEL_ID || '');
+      setCfg('cfgGithubRepos', d.DISCORD_GITHUB_REPOS || '');
+      setCfg('cfgGithubMode', d.DISCORD_GITHUB_MODE || 'both');
+      setCfg('cfgGithubPollIntervalMs', d.DISCORD_GITHUB_POLL_INTERVAL_MS || '600000');
+      setCfg('cfgGithubToken', '');
+      document.getElementById('cfgGithubToken').dataset.initialValue = d.GITHUB_TOKEN ? '__MASKED__' : '';
+      document.getElementById('cfgGithubToken').placeholder = d.GITHUB_TOKEN
+        ? `Aktuell: ${d.GITHUB_TOKEN} — leer lassen = unverändert`
+        : 'Token eingeben (optional)';
+
       if (force) clearConfigDirtyTracking();
     } catch (e) {
       document.getElementById('cfgStatus').textContent = 'Ladefehler: ' + e.message;
@@ -3834,6 +3968,34 @@
     maybeSetChanged(body, 'WEB_PORT', 'cfgWebPort');
     maybeSetChanged(body, 'DASHBOARD_PASSWORD', 'cfgDashPassword', { allowEmpty: true });
     maybeSetChanged(body, 'DB_STORAGE', 'cfgDbStorage');
+
+    // Willkommen
+    maybeSetChanged(body, 'DISCORD_WELCOME_CHANNEL_ID', 'cfgWelcomeChannelId', { allowEmpty: true });
+    maybeSetChanged(body, 'DISCORD_WELCOME_MESSAGE_TEMPLATE', 'cfgWelcomeMessageTemplate', { allowEmpty: true });
+    const welcomeEl = document.getElementById('cfgWelcomeEnabled');
+    const curWelcome = welcomeEl.checked ? 'true' : 'false';
+    if (curWelcome !== (welcomeEl.dataset.initialValue || 'false')) body.DISCORD_WELCOME_ENABLED = curWelcome;
+
+    // Auto-Reply
+    maybeSetChanged(body, 'DISCORD_AUTO_REPLY_CHANNEL_IDS', 'cfgAutoReplyChannelIds', { allowEmpty: true });
+    maybeSetChanged(body, 'DISCORD_AUTO_REPLY_COOLDOWN_MS', 'cfgAutoReplyCooldownMs');
+    maybeSetChanged(body, 'DISCORD_AUTO_REPLY_RULES_FILE', 'cfgAutoReplyRulesFile', { allowEmpty: true });
+    const autoReplyEl = document.getElementById('cfgAutoReplyEnabled');
+    const curAutoReply = autoReplyEl.checked ? 'true' : 'false';
+    if (curAutoReply !== (autoReplyEl.dataset.initialValue || 'false')) body.DISCORD_AUTO_REPLY_ENABLED = curAutoReply;
+    const autoReplyMentionEl = document.getElementById('cfgAutoReplyMentionOnly');
+    const curAutoReplyMention = autoReplyMentionEl.checked ? 'true' : 'false';
+    if (curAutoReplyMention !== (autoReplyMentionEl.dataset.initialValue || 'false')) body.DISCORD_AUTO_REPLY_MENTION_ONLY = curAutoReplyMention;
+
+    // GitHub-Watcher
+    maybeSetChanged(body, 'DISCORD_GITHUB_CHANNEL_ID', 'cfgGithubChannelId', { allowEmpty: true });
+    maybeSetChanged(body, 'DISCORD_GITHUB_REPOS', 'cfgGithubRepos', { allowEmpty: true });
+    maybeSetChanged(body, 'DISCORD_GITHUB_MODE', 'cfgGithubMode');
+    maybeSetChanged(body, 'DISCORD_GITHUB_POLL_INTERVAL_MS', 'cfgGithubPollIntervalMs');
+    maybeSetChanged(body, 'GITHUB_TOKEN', 'cfgGithubToken', { allowEmpty: true });
+    const githubWatchEl = document.getElementById('cfgGithubWatchEnabled');
+    const curGithubWatch = githubWatchEl.checked ? 'true' : 'false';
+    if (curGithubWatch !== (githubWatchEl.dataset.initialValue || 'false')) body.DISCORD_GITHUB_WATCH_ENABLED = curGithubWatch;
 
     const indicatorEl = document.getElementById('cfgChannelIndicator');
     const currentIndicator = indicatorEl.checked ? 'true' : 'false';

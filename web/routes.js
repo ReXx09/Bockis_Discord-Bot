@@ -1505,6 +1505,20 @@ echo "✓ Vollreparatur abgeschlossen"`;
         DASHBOARD_PASSWORD:           maskSecret(dashboardPassword),
         DB_DIALECT:                   get('DB_DIALECT') || 'sqlite',
         DB_STORAGE:                   get('DB_STORAGE') || './data/status.db',
+        DISCORD_WELCOME_ENABLED:      get('DISCORD_WELCOME_ENABLED') || 'false',
+        DISCORD_WELCOME_CHANNEL_ID:   get('DISCORD_WELCOME_CHANNEL_ID') || '',
+        DISCORD_WELCOME_MESSAGE_TEMPLATE: get('DISCORD_WELCOME_MESSAGE_TEMPLATE') || 'Willkommen {user} auf **{server}**! 👋',
+        DISCORD_AUTO_REPLY_ENABLED:   get('DISCORD_AUTO_REPLY_ENABLED') || 'false',
+        DISCORD_AUTO_REPLY_MENTION_ONLY: get('DISCORD_AUTO_REPLY_MENTION_ONLY') || 'false',
+        DISCORD_AUTO_REPLY_CHANNEL_IDS: get('DISCORD_AUTO_REPLY_CHANNEL_IDS') || '',
+        DISCORD_AUTO_REPLY_COOLDOWN_MS: get('DISCORD_AUTO_REPLY_COOLDOWN_MS') || '30000',
+        DISCORD_AUTO_REPLY_RULES_FILE: get('DISCORD_AUTO_REPLY_RULES_FILE') || './auto-replies.json',
+        DISCORD_GITHUB_WATCH_ENABLED: get('DISCORD_GITHUB_WATCH_ENABLED') || 'false',
+        DISCORD_GITHUB_CHANNEL_ID:    get('DISCORD_GITHUB_CHANNEL_ID') || '',
+        DISCORD_GITHUB_REPOS:         get('DISCORD_GITHUB_REPOS') || '',
+        DISCORD_GITHUB_MODE:          get('DISCORD_GITHUB_MODE') || 'both',
+        DISCORD_GITHUB_POLL_INTERVAL_MS: get('DISCORD_GITHUB_POLL_INTERVAL_MS') || '600000',
+        GITHUB_TOKEN:                 maskSecret(get('GITHUB_TOKEN')),
       });
     } catch (err) {
       logger.error(`/api/config GET Fehler: ${err.message}`);
@@ -1568,7 +1582,21 @@ echo "✓ Vollreparatur abgeschlossen"`;
       'WEB_PORT',
       'DASHBOARD_PASSWORD',
       'DB_DIALECT',
-      'DB_STORAGE'
+      'DB_STORAGE',
+      'DISCORD_WELCOME_ENABLED',
+      'DISCORD_WELCOME_CHANNEL_ID',
+      'DISCORD_WELCOME_MESSAGE_TEMPLATE',
+      'DISCORD_AUTO_REPLY_ENABLED',
+      'DISCORD_AUTO_REPLY_MENTION_ONLY',
+      'DISCORD_AUTO_REPLY_CHANNEL_IDS',
+      'DISCORD_AUTO_REPLY_COOLDOWN_MS',
+      'DISCORD_AUTO_REPLY_RULES_FILE',
+      'DISCORD_GITHUB_WATCH_ENABLED',
+      'DISCORD_GITHUB_CHANNEL_ID',
+      'DISCORD_GITHUB_REPOS',
+      'DISCORD_GITHUB_MODE',
+      'DISCORD_GITHUB_POLL_INTERVAL_MS',
+      'GITHUB_TOKEN'
     ];
     const CLEARABLE_CFG = new Set([
       'DISCORD_PRESENCE_TEXT',
@@ -1587,7 +1615,14 @@ echo "✓ Vollreparatur abgeschlossen"`;
       'MONITORED_SERVICES',
       'MESSAGE_CLEANUP_CHANNEL_IDS',
       'SERVICE_CHANNEL_DEBUG_FILTER',
-      'DISCORD_TRANSLATE_ALLOWED_GUILD_IDS'
+      'DISCORD_TRANSLATE_ALLOWED_GUILD_IDS',
+      'DISCORD_WELCOME_CHANNEL_ID',
+      'DISCORD_WELCOME_MESSAGE_TEMPLATE',
+      'DISCORD_AUTO_REPLY_CHANNEL_IDS',
+      'DISCORD_AUTO_REPLY_RULES_FILE',
+      'DISCORD_GITHUB_CHANNEL_ID',
+      'DISCORD_GITHUB_REPOS',
+      'GITHUB_TOKEN'
     ]);
     const envPath = path.join(rootDir, '.env');
     if (!fs.existsSync(envPath)) return res.json({ ok: false, error: '.env nicht gefunden' });
@@ -1761,6 +1796,47 @@ echo "✓ Vollreparatur abgeschlossen"`;
         return res.json({ ok: false, error: 'DB_DIALECT darf aktuell nur sqlite sein' });
       if (key === 'DB_STORAGE' && /[\n\r]/.test(val))
         return res.json({ ok: false, error: 'DB_STORAGE darf keine Zeilenumbrüche enthalten' });
+      if (key === 'DISCORD_WELCOME_ENABLED' && !['true', 'false'].includes(val))
+        return res.json({ ok: false, error: 'DISCORD_WELCOME_ENABLED muss true oder false sein' });
+      if (key === 'DISCORD_WELCOME_CHANNEL_ID' && val && !/^\d+$/.test(val))
+        return res.json({ ok: false, error: 'DISCORD_WELCOME_CHANNEL_ID: Nur Zahlen erlaubt (Discord ID)' });
+      if (key === 'DISCORD_WELCOME_MESSAGE_TEMPLATE' && /[\n\r]/.test(val))
+        return res.json({ ok: false, error: 'DISCORD_WELCOME_MESSAGE_TEMPLATE darf keine Zeilenumbrüche enthalten' });
+      if (key === 'DISCORD_AUTO_REPLY_ENABLED' && !['true', 'false'].includes(val))
+        return res.json({ ok: false, error: 'DISCORD_AUTO_REPLY_ENABLED muss true oder false sein' });
+      if (key === 'DISCORD_AUTO_REPLY_MENTION_ONLY' && !['true', 'false'].includes(val))
+        return res.json({ ok: false, error: 'DISCORD_AUTO_REPLY_MENTION_ONLY muss true oder false sein' });
+      if (key === 'DISCORD_AUTO_REPLY_CHANNEL_IDS') {
+        const entries = val.split(/[;,]/).map(s => s.trim()).filter(Boolean);
+        const invalid = entries.filter(id => !/^\d+$/.test(id));
+        if (invalid.length) return res.json({ ok: false, error: `DISCORD_AUTO_REPLY_CHANNEL_IDS ungueltig: ${invalid.join(', ')}` });
+      }
+      if (key === 'DISCORD_AUTO_REPLY_COOLDOWN_MS') {
+        const n = parseInt(val, 10);
+        if (!Number.isFinite(n) || n < 0 || n > 3600000)
+          return res.json({ ok: false, error: 'DISCORD_AUTO_REPLY_COOLDOWN_MS muss zwischen 0 und 3600000 liegen' });
+      }
+      if (key === 'DISCORD_GITHUB_WATCH_ENABLED' && !['true', 'false'].includes(val))
+        return res.json({ ok: false, error: 'DISCORD_GITHUB_WATCH_ENABLED muss true oder false sein' });
+      if (key === 'DISCORD_GITHUB_CHANNEL_ID' && val && !/^\d+$/.test(val))
+        return res.json({ ok: false, error: 'DISCORD_GITHUB_CHANNEL_ID: Nur Zahlen erlaubt (Discord ID)' });
+      if (key === 'DISCORD_GITHUB_REPOS') {
+        const entries = val.split(/[;,]/).map(s => s.trim()).filter(Boolean);
+        const invalid = entries.filter(r => !/^[\w.-]+\/[\w.-]+$/.test(r));
+        if (invalid.length) return res.json({ ok: false, error: `DISCORD_GITHUB_REPOS ungueltig (Format owner/repo): ${invalid.join(', ')}` });
+        if (entries.length > 20) return res.json({ ok: false, error: 'DISCORD_GITHUB_REPOS maximal 20 Repos erlaubt' });
+      }
+      if (key === 'DISCORD_GITHUB_MODE' && !['releases', 'commits', 'both'].includes(val))
+        return res.json({ ok: false, error: 'DISCORD_GITHUB_MODE muss releases, commits oder both sein' });
+      if (key === 'DISCORD_GITHUB_POLL_INTERVAL_MS') {
+        const n = parseInt(val, 10);
+        if (!Number.isFinite(n) || n < 60000 || n > 86400000)
+          return res.json({ ok: false, error: 'DISCORD_GITHUB_POLL_INTERVAL_MS muss zwischen 60000 (1 Min) und 86400000 (24 Std) liegen' });
+      }
+      if (key === 'GITHUB_TOKEN') {
+        if (val.includes('*')) continue;
+        if (/[\n\r]/.test(val)) return res.json({ ok: false, error: 'GITHUB_TOKEN darf keine Zeilenumbrüche enthalten' });
+      }
 
       updates[key] = val;
     }
