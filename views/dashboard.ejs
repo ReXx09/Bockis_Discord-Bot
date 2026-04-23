@@ -1557,6 +1557,7 @@
         <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px">
           <span class="muted" id="arRulesCount" style="font-size:12px">– Regeln geladen</span>
           <div style="display:flex;gap:8px">
+            <button class="btn" onclick="arShowTutorial()" style="background:var(--surface2);border-color:var(--border);color:var(--blue)" title="Tutorial: Wie man Regeln erstellt">? Hilfe</button>
             <button class="btn" onclick="arLoadRules()">↺ Laden</button>
             <button class="btn btn-green" onclick="arAddRule()">+ Neue Regel</button>
             <button class="btn btn-green" id="btnArSave" onclick="arSaveRules()">💾 Speichern</button>
@@ -1579,6 +1580,76 @@
               <tr><td colspan="6" style="text-align:center;padding:12px;color:var(--muted)">← Auf „Laden" klicken um Regeln zu laden</td></tr>
             </tbody>
           </table>
+        </div>
+
+        <!-- ── TUTORIAL-MODAL ────────────────────────────── -->
+        <div id="arTutorialModal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);z-index:9999;overflow-y:auto" onclick="if(event.target===this)arHideTutorial()">
+          <div style="background:var(--surface1);border:1px solid var(--border);border-radius:12px;max-width:700px;margin:40px auto;padding:20px;box-shadow:0 10px 40px rgba(0,0,0,0.3)">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+              <h3 style="margin:0;font-size:18px;color:var(--text)">📋 Auto-Reply Regeln erstellen</h3>
+              <button style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--muted);padding:0;width:32px;height:32px" onclick="arHideTutorial()">✕</button>
+            </div>
+
+            <div style="color:var(--text);line-height:1.6;font-size:13px">
+              <p><strong>Was ist eine Regel?</strong></p>
+              <p>Eine Regel bestimmt, wann der Bot automatisch antwortet. Jede Regel besteht aus:</p>
+              <ul style="margin:8px 0;padding-left:20px">
+                <li><strong>ID</strong> — Eindeutige Kennung (z.B. "hello", "status"). Nur Buchstaben, Zahlen, - und _.</li>
+                <li><strong>Trigger</strong> — Das Wort oder der Text, auf den reagiert wird.</li>
+                <li><strong>Modus</strong> — Wie der Text verglichen wird (siehe unten).</li>
+                <li><strong>Antwort</strong> — Was der Bot antworten soll.</li>
+                <li><strong>Groß/Klein</strong> — Soll Groß-/Kleinschreibung beachtet werden?</li>
+              </ul>
+
+              <hr style="border:none;border-top:1px solid var(--border);margin:15px 0">
+              <p style="margin-top:15px"><strong>Die 3 Modi erklärt:</strong></p>
+
+              <div style="background:rgba(100,200,100,0.1);border-left:3px solid var(--green);padding:12px;margin:10px 0;border-radius:4px">
+                <p style="margin:0 0 6px 0;font-weight:bold;color:var(--green)">📌 contains (enthält)</p>
+                <p style="margin:0"><strong>Trigger:</strong> "hallo"<br><strong>Beispiele die reagieren:</strong> "Hallo Bot!", "wie geht hallo dir?", "HALLO"<br><strong>Tipp:</strong> Der flexible Modus — reagiert überall im Text.</p>
+              </div>
+
+              <div style="background:rgba(100,180,255,0.1);border-left:3px solid var(--blue);padding:12px;margin:10px 0;border-radius:4px">
+                <p style="margin:0 0 6px 0;font-weight:bold;color:var(--blue)">🎯 exact (genau)</p>
+                <p style="margin:0"><strong>Trigger:</strong> "status?"<br><strong>Beispiele die reagieren:</strong> Nur die Nachricht "status?" exakt<br><strong>Tipp:</strong> Für Fragen oder spezifische Kommandos, die genau so eingegeben werden müssen.</p>
+              </div>
+
+              <div style="background:rgba(255,200,100,0.1);border-left:3px solid var(--yellow);padding:12px;margin:10px 0;border-radius:4px">
+                <p style="margin:0 0 6px 0;font-weight:bold;color:var(--yellow)">⚙️ regex (regulärer Ausdruck)</p>
+                <p style="margin:0"><strong>Trigger:</strong> "^(hilfe|help|\\?)$"<br><strong>Beispiele die reagieren:</strong> "hilfe", "help", "?"<br><strong>Tipp:</strong> Der mächtigste Modus für komplexe Muster. Erfordert Regex-Kenntnisse!</p>
+              </div>
+
+              <hr style="border:none;border-top:1px solid var(--border);margin:15px 0">
+              <p style="margin-top:15px"><strong>✅ Beispiele zum Kopieren:</strong></p>
+              <table style="width:100%;border-collapse:collapse;font-size:12px;background:var(--surface2);border-radius:4px;overflow:hidden">
+                <tr style="background:rgba(255,255,255,0.05)">
+                  <td style="padding:8px;border-right:1px solid var(--border);font-weight:bold">Willkommensnachricht</td>
+                  <td style="padding:8px"><code style="background:var(--surface1);padding:2px 4px;border-radius:2px;color:var(--blue)">ID: welcome | Modus: contains | Trigger: willkommen | Antwort: Herzlich Willkommen! 🎉</code></td>
+                </tr>
+                <tr style="border-top:1px solid var(--border)">
+                  <td style="padding:8px;border-right:1px solid var(--border);font-weight:bold">Hilfeanfrage</td>
+                  <td style="padding:8px"><code style="background:var(--surface1);padding:2px 4px;border-radius:2px;color:var(--blue)">ID: help | Modus: exact | Trigger: help | Antwort: Schreib /help für mehr Infos!</code></td>
+                </tr>
+                <tr style="border-top:1px solid var(--border)">
+                  <td style="padding:8px;border-right:1px solid var(--border);font-weight:bold">Zeitkontrolle</td>
+                  <td style="padding:8px"><code style="background:var(--surface1);padding:2px 4px;border-radius:2px;color:var(--blue)">ID: time | Modus: regex | Trigger: (zeit|uhrzeit|time) | Antwort: Aktuelle Zeit findest du oben ⏰</code></td>
+                </tr>
+              </table>
+
+              <hr style="border:none;border-top:1px solid var(--border);margin:15px 0">
+              <p style="margin-top:15px;color:var(--yellow)">⚡ <strong>Wichtig:</strong></p>
+              <ul style="margin:8px 0;padding-left:20px;color:var(--muted)">
+                <li>Regeln werden sofort aktiv, ohne Bot-Neustart!</li>
+                <li>Nur gültige IDs erlaubt (nur Buchstaben, Zahlen, -, _).</li>
+                <li>Antworten max. 2000 Zeichen (Discord-Limit).</li>
+                <li>Mehrere Regeln können auf die gleiche Nachricht reagieren.</li>
+              </ul>
+            </div>
+
+            <div style="text-align:right;margin-top:20px">
+              <button class="btn" onclick="arHideTutorial()">Schließen</button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -3724,6 +3795,16 @@
 
   // ── Auto-Reply Regeleditor ───────────────────────────
   let _arRules = [];
+
+  function arShowTutorial() {
+    const modal = document.getElementById('arTutorialModal');
+    if (modal) modal.style.display = 'flex';
+  }
+
+  function arHideTutorial() {
+    const modal = document.getElementById('arTutorialModal');
+    if (modal) modal.style.display = 'none';
+  }
 
   function arEsc(str) {
     return String(str ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
