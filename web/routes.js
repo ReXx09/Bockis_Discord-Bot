@@ -1428,6 +1428,72 @@ echo "✓ Vollreparatur abgeschlossen"`;
     }
   });
 
+  // ── API: Auto-Reply Regeln lesen ───────────────────────────────────────────
+
+  app.get('/api/auto-replies', dashboardAuth, (req, res) => {
+    try {
+      const envPath = path.join(rootDir, '.env');
+      let rulesFile = './auto-replies.json';
+      if (fs.existsSync(envPath)) {
+        const raw = fs.readFileSync(envPath, 'utf8');
+        const m = raw.match(/^DISCORD_AUTO_REPLY_RULES_FILE=(.*)$/m);
+        if (m) rulesFile = m[1].trim().replace(/^["']|["']$/g, '') || rulesFile;
+      }
+      const absPath = path.isAbsolute(rulesFile) ? rulesFile : path.join(rootDir, rulesFile);
+      if (!fs.existsSync(absPath)) return res.json({ ok: true, rules: [] });
+      const rules = JSON.parse(fs.readFileSync(absPath, 'utf8'));
+      if (!Array.isArray(rules)) return res.json({ ok: false, error: 'Regeldatei ist kein JSON-Array' });
+      res.json({ ok: true, rules });
+    } catch (err) {
+      logger.error(`/api/auto-replies GET Fehler: ${err.message}`);
+      res.json({ ok: false, error: err.message });
+    }
+  });
+
+  // ── API: Auto-Reply Regeln speichern ───────────────────────────────────────
+
+  app.post('/api/auto-replies', dashboardAuth, (req, res) => {
+    try {
+      const rules = req.body?.rules;
+      if (!Array.isArray(rules)) return res.json({ ok: false, error: 'rules muss ein Array sein' });
+      if (rules.length > 100) return res.json({ ok: false, error: 'Maximal 100 Regeln erlaubt' });
+
+      const seen = new Set();
+      for (const rule of rules) {
+        if (!rule.id || typeof rule.id !== 'string' || !/^[\w-]{1,64}$/.test(rule.id))
+          return res.json({ ok: false, error: `Ungültige ID: "${rule.id}" (nur Buchstaben, Zahlen, - und _)` });
+        if (seen.has(rule.id)) return res.json({ ok: false, error: `Doppelte ID: "${rule.id}"` });
+        seen.add(rule.id);
+        if (!rule.trigger || typeof rule.trigger !== 'string' || rule.trigger.length > 500)
+          return res.json({ ok: false, error: `Trigger bei ID "${rule.id}" fehlt oder zu lang (max 500)` });
+        if (!['contains', 'exact', 'regex'].includes(rule.mode))
+          return res.json({ ok: false, error: `Ungültiger Modus bei ID "${rule.id}" (contains, exact oder regex)` });
+        if (rule.mode === 'regex') {
+          try { new RegExp(rule.trigger); } catch {
+            return res.json({ ok: false, error: `Ungültiger Regex bei ID "${rule.id}": ${rule.trigger}` });
+          }
+        }
+        if (!rule.reply || typeof rule.reply !== 'string' || rule.reply.length > 2000)
+          return res.json({ ok: false, error: `Antwort bei ID "${rule.id}" fehlt oder zu lang (max 2000)` });
+      }
+
+      const envPath = path.join(rootDir, '.env');
+      let rulesFile = './auto-replies.json';
+      if (fs.existsSync(envPath)) {
+        const raw = fs.readFileSync(envPath, 'utf8');
+        const m = raw.match(/^DISCORD_AUTO_REPLY_RULES_FILE=(.*)$/m);
+        if (m) rulesFile = m[1].trim().replace(/^["']|["']$/g, '') || rulesFile;
+      }
+      const absPath = path.isAbsolute(rulesFile) ? rulesFile : path.join(rootDir, rulesFile);
+      fs.writeFileSync(absPath, JSON.stringify(rules, null, 2), 'utf8');
+      logger.info(`Auto-Reply Regeln gespeichert: ${rules.length} Regel(n) → ${absPath}`);
+      res.json({ ok: true, count: rules.length });
+    } catch (err) {
+      logger.error(`/api/auto-replies POST Fehler: ${err.message}`);
+      res.json({ ok: false, error: err.message });
+    }
+  });
+
   // ── API: Konfiguration lesen (Token maskiert) ───────────────────────────────
 
   app.get('/api/config', dashboardAuth, (req, res) => {

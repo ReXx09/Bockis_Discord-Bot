@@ -1551,6 +1551,35 @@
           <input class="cfg-input" id="cfgAutoReplyRulesFile" type="text" autocomplete="off" placeholder="./auto-replies.json">
           <div class="cfg-hint">JSON-Array mit Regeln (Felder: <code>id</code>, <code>trigger</code>, <code>mode</code>, <code>reply</code>). Modus: <code>contains</code>, <code>exact</code>, <code>regex</code>.</div>
         </div>
+
+        <!-- ── REGELEDITOR ─────────────────────────────── -->
+        <div class="cfg-pane-title" style="margin-top:20px">📋 Regeln bearbeiten</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px">
+          <span class="muted" id="arRulesCount" style="font-size:12px">– Regeln geladen</span>
+          <div style="display:flex;gap:8px">
+            <button class="btn" onclick="arLoadRules()">↺ Laden</button>
+            <button class="btn btn-green" onclick="arAddRule()">+ Neue Regel</button>
+            <button class="btn btn-green" id="btnArSave" onclick="arSaveRules()">💾 Speichern</button>
+          </div>
+        </div>
+        <span id="arStatus" class="muted" style="font-size:12px;display:block;margin-bottom:8px"></span>
+        <div style="overflow-x:auto">
+          <table style="width:100%;border-collapse:collapse;font-size:13px" id="arTable">
+            <thead>
+              <tr style="border-bottom:1px solid var(--border);color:var(--muted)">
+                <th style="text-align:left;padding:4px 6px;width:100px">ID</th>
+                <th style="text-align:left;padding:4px 6px;width:90px">Modus</th>
+                <th style="text-align:left;padding:4px 6px">Trigger</th>
+                <th style="text-align:left;padding:4px 6px">Antwort</th>
+                <th style="text-align:center;padding:4px 6px;width:60px">Groß/Klein</th>
+                <th style="text-align:center;padding:4px 6px;width:40px"></th>
+              </tr>
+            </thead>
+            <tbody id="arTableBody">
+              <tr><td colspan="6" style="text-align:center;padding:12px;color:var(--muted)">← Auf „Laden" klicken um Regeln zu laden</td></tr>
+            </tbody>
+          </table>
+        </div>
       </div>
 
       <!-- ── PANE: GITHUB-WATCHER ───────────────────────── -->
@@ -3690,6 +3719,100 @@
       toast('Fehler: ' + e.message, 'err');
     } finally {
       if (btn) btn.disabled = false;
+    }
+  }
+
+  // ── Auto-Reply Regeleditor ───────────────────────────
+  let _arRules = [];
+
+  function arEsc(str) {
+    return String(str ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function arRenderTable() {
+    const tbody = document.getElementById('arTableBody');
+    const count = document.getElementById('arRulesCount');
+    if (!_arRules.length) {
+      tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:12px;color:var(--muted)">Keine Regeln vorhanden. Neue Regel hinzufügen →</td></tr>';
+      count.textContent = '0 Regeln';
+      return;
+    }
+    count.textContent = `${_arRules.length} Regel${_arRules.length !== 1 ? 'n' : ''}`;
+    tbody.innerHTML = _arRules.map((r, i) => `
+      <tr data-ar-idx="${i}" style="border-bottom:1px solid var(--border)">
+        <td style="padding:4px 6px"><input class="cfg-input" style="padding:3px 6px;font-size:12px;min-width:80px" value="${arEsc(r.id)}" data-ar-field="id" data-ar-idx="${i}" oninput="arFieldChanged(${i},'id',this.value)"></td>
+        <td style="padding:4px 6px">
+          <select class="cfg-input" style="padding:3px 6px;font-size:12px" data-ar-idx="${i}" onchange="arFieldChanged(${i},'mode',this.value)">
+            <option value="contains"${r.mode==='contains'?' selected':''}>contains</option>
+            <option value="exact"${r.mode==='exact'?' selected':''}>exact</option>
+            <option value="regex"${r.mode==='regex'?' selected':''}>regex</option>
+          </select>
+        </td>
+        <td style="padding:4px 6px"><input class="cfg-input" style="padding:3px 6px;font-size:12px;min-width:140px;width:100%" value="${arEsc(r.trigger)}" data-ar-idx="${i}" oninput="arFieldChanged(${i},'trigger',this.value)"></td>
+        <td style="padding:4px 6px"><input class="cfg-input" style="padding:3px 6px;font-size:12px;min-width:160px;width:100%" value="${arEsc(r.reply)}" data-ar-idx="${i}" oninput="arFieldChanged(${i},'reply',this.value)"></td>
+        <td style="text-align:center;padding:4px 6px">
+          <input type="checkbox" style="width:16px;height:16px;accent-color:var(--green)" ${r.caseSensitive?'checked':''} data-ar-idx="${i}" onchange="arFieldChanged(${i},'caseSensitive',this.checked)">
+        </td>
+        <td style="text-align:center;padding:4px 6px">
+          <button class="btn" style="padding:2px 8px;font-size:12px;color:var(--red);border-color:var(--red)" onclick="arDeleteRule(${i})" title="Regel löschen">✕</button>
+        </td>
+      </tr>`).join('');
+  }
+
+  function arFieldChanged(idx, field, value) {
+    if (_arRules[idx]) _arRules[idx][field] = value;
+  }
+
+  function arAddRule() {
+    const newId = `regel-${Date.now()}`;
+    _arRules.push({ id: newId, trigger: '', mode: 'contains', reply: '', caseSensitive: false });
+    arRenderTable();
+    // Zur neuen Zeile scrollen
+    const tbody = document.getElementById('arTableBody');
+    const lastRow = tbody.querySelector(`tr[data-ar-idx="${_arRules.length - 1}"]`);
+    if (lastRow) lastRow.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    // ID-Feld der neuen Zeile fokussieren
+    const idInput = tbody.querySelector(`tr[data-ar-idx="${_arRules.length - 1}"] input[data-ar-field="id"]`);
+    if (idInput) { idInput.value = ''; idInput.focus(); arFieldChanged(_arRules.length - 1, 'id', ''); }
+  }
+
+  function arDeleteRule(idx) {
+    _arRules.splice(idx, 1);
+    arRenderTable();
+  }
+
+  async function arLoadRules() {
+    const st = document.getElementById('arStatus');
+    st.textContent = '⏳ Laden…'; st.className = 'muted';
+    try {
+      const d = await fetch('/api/auto-replies').then(r => r.json());
+      if (!d.ok) { st.textContent = '✗ ' + d.error; st.className = 'err'; return; }
+      _arRules = d.rules;
+      arRenderTable();
+      st.textContent = `✓ ${_arRules.length} Regel${_arRules.length !== 1 ? 'n' : ''} geladen`;
+      st.className = 'ok';
+    } catch (e) {
+      st.textContent = '✗ Fehler: ' + e.message; st.className = 'err';
+    }
+  }
+
+  async function arSaveRules() {
+    const st = document.getElementById('arStatus');
+    const btn = document.getElementById('btnArSave');
+    btn.disabled = true;
+    st.textContent = '⏳ Speichern…'; st.className = 'muted';
+    try {
+      const d = await fetch('/api/auto-replies', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rules: _arRules })
+      }).then(r => r.json());
+      if (!d.ok) { st.textContent = '✗ ' + d.error; st.className = 'err'; }
+      else { st.textContent = `✓ ${d.count} Regel${d.count !== 1 ? 'n' : ''} gespeichert`; st.className = 'ok'; }
+    } catch (e) {
+      st.textContent = '✗ Fehler: ' + e.message; st.className = 'err';
+    } finally {
+      btn.disabled = false;
     }
   }
 
