@@ -623,6 +623,47 @@
       .cfg-nav { flex-direction: row; flex-wrap: wrap; }
     }
     .cfg-field { margin-bottom: 14px; }
+    /* ── Collapsible Sections ─────────────────────────────────────────────── */
+    .cfg-section { margin-bottom: 12px; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+    .cfg-section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: linear-gradient(135deg, var(--surface2) 0%, rgba(255,255,255,.02) 100%);
+      padding: 12px 14px;
+      cursor: pointer;
+      border-bottom: 1px solid var(--border);
+      user-select: none;
+      transition: background 0.15s ease;
+    }
+    .cfg-section-header:hover { background: linear-gradient(135deg, rgba(255,255,255,.06) 0%, rgba(255,255,255,.03) 100%); }
+    .cfg-section-header-title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 600;
+      color: var(--text);
+      font-size: 13px;
+    }
+    .cfg-section-toggle {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 20px;
+      height: 20px;
+      color: var(--muted);
+      transition: transform 0.2s ease;
+      font-size: 12px;
+    }
+    .cfg-section.open .cfg-section-toggle { transform: rotate(180deg); }
+    .cfg-section-content {
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.3s ease;
+    }
+    .cfg-section.open .cfg-section-content { max-height: 4000px; }
+    .cfg-section-body { padding: 14px; }
+    .cfg-section-body .cfg-field:last-child { margin-bottom: 0; }
     .cfg-label {
       display: block;
       font-size: 11px;
@@ -856,164 +897,226 @@
       <div class="cfg-panels">
       <div class="cfg-pane-card" data-cfg-pane="bot">
         <div class="cfg-pane-title">🤖 Bot & IDs</div>
-        <div class="cfg-field">
-          <label class="cfg-label" for="cfgToken">Discord Bot Token</label>
-          <input class="cfg-input" id="cfgToken" type="password" autocomplete="off"
-                 placeholder="Neuen Token eingeben (leer lassen = unverändert)">
-          <div class="cfg-hint">Leer lassen, um den bestehenden Token zu behalten.</div>
-        </div>
-        <div class="cfg-field">
-          <label class="cfg-label" for="cfgBotName">Discord Bot Name</label>
-          <input class="cfg-input" id="cfgBotName" type="text" autocomplete="off"
-                 placeholder="z. B. Uptime-Bot">
-          <div class="cfg-hint">Wird beim nächsten Bot-Start als Discord-Username gesetzt (max. 32 Zeichen).</div>
-        </div>
-        <div class="cfg-field">
-          <label class="cfg-label" for="cfgPresenceText">Discord "Schaut zu" Texte</label>
-          <input class="cfg-input" id="cfgPresenceText" type="text" autocomplete="off"
-                 placeholder="Service Health;den Serverstatus;neue Updates">
-          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
-            <select class="cfg-input" id="cfgPresencePreset" style="min-width:220px;flex:1">
-              <option value="">Lustige Vorlage wählen…</option>
-              <option value="den Kühlschrankstatus 🧊">den Kühlschrankstatus 🧊</option>
-              <option value="ob der Kaffee schon fertig ist ☕">ob der Kaffee schon fertig ist ☕</option>
-              <option value="Memes in Produktion 😂">Memes in Produktion 😂</option>
-              <option value="die Uptime tanzen 💃">die Uptime tanzen 💃</option>
-              <option value="den Server beim Atmen 🫁">den Server beim Atmen 🫁</option>
-              <option value="Updates mit Popcorn 🍿">Updates mit Popcorn 🍿</option>
-              <option value="dem Chaos beim Skalieren 📈">dem Chaos beim Skalieren 📈</option>
-              <option value="den Logs beim Leuchten ✨">den Logs beim Leuchten ✨</option>
-            </select>
-            <button class="btn" onclick="appendPresencePreset()">➕ Vorlage übernehmen</button>
-          </div>
-          <div class="cfg-hint">Mehrere lustige Texte mit <code>;</code> trennen. Der Bot rotiert diese automatisch im Profil.</div>
-        </div>
-        <div class="cfg-field">
-          <label class="cfg-label" for="cfgPresenceRotateMs">"Schaut zu" Rotation (ms)</label>
-          <input class="cfg-input" id="cfgPresenceRotateMs" type="number" min="15000" step="5000"
-                 placeholder="90000">
-          <div class="cfg-hint">Wie oft der nächste Text aktiv wird (15s bis 60min).</div>
-        </div>
-        <div class="cfg-field" style="border:1px solid var(--border);border-radius:8px;padding:12px;background:rgba(255,255,255,.01)">
-          <label class="cfg-label">Automatische Reaktionen auf neue Nachrichten</label>
-          <div style="display:flex;align-items:center;gap:12px;margin-top:2px;flex-wrap:wrap">
-            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px">
-              <input type="checkbox" id="cfgAutoReactionEnabled" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
-              <span>Für neue Guild-Nachrichten automatisch Emojis setzen</span>
-            </label>
-          </div>
-          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
-            <input class="cfg-input" id="cfgAutoReactionEmojis" type="text" autocomplete="off" style="min-width:260px;flex:2"
-                   placeholder="👍;🔥;😂">
-            <select class="cfg-input" id="cfgAutoReactionPreset" style="min-width:220px;flex:1">
-              <option value="">Emoji-Vorlage wählen…</option>
-              <option value="👍">👍 Zustimmung</option>
-              <option value="🔥">🔥 Hype</option>
-              <option value="😂">😂 Lustig</option>
-              <option value="🎉">🎉 Feiern</option>
-              <option value="👀">👀 Beobachten</option>
-              <option value="🤖">🤖 Bot</option>
-              <option value="❤️">❤️ Herz</option>
-              <option value="✅">✅ Erledigt</option>
-              <option value="🚀">🚀 Rocket</option>
-              <option value="<a:partyblob:ID>">Custom Emoji Muster</option>
-            </select>
-            <button class="btn" onclick="appendAutoReactionEmoji()">➕ Emoji übernehmen</button>
-          </div>
-          <div class="cfg-hint">Trenne mehrere Emojis mit <code>;</code> oder <code>,</code>. Maximal 5 Emojis. Unicode und Custom-Emoji-Strings sind möglich.</div>
-          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
-            <input class="cfg-input" id="cfgAutoReactionChannelIds" type="text" autocomplete="off" style="min-width:260px;flex:1"
-                   placeholder="Optional: 123456789012345678,234567890123456789">
-          </div>
-          <div class="cfg-hint">Optional nur bestimmte Textkanäle per Channel-ID. Leer = in allen Guild-Textkanälen.</div>
-        </div>
-        <div class="cfg-field" style="border:1px solid var(--border);border-radius:8px;padding:12px;background:rgba(255,255,255,.01)">
-          <label class="cfg-label">Uebersetzer (/translate)</label>
-          <div style="display:flex;align-items:center;gap:12px;margin-top:2px;flex-wrap:wrap">
-            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px">
-              <input type="checkbox" id="cfgTranslateEnabled" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
-              <span>Slash-Command <code>/translate</code> aktivieren</span>
-            </label>
-          </div>
-          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px;margin-top:8px">
-            <div>
-              <label class="cfg-label" for="cfgTranslateDefaultTarget" style="font-size:12px;margin-bottom:4px">Standard Zielsprache</label>
-              <select class="cfg-input" id="cfgTranslateDefaultTarget">
-                <option value="de">de - Deutsch</option>
-                <option value="en">en - English</option>
-                <option value="fr">fr - Francais</option>
-                <option value="es">es - Espanol</option>
-                <option value="it">it - Italiano</option>
-                <option value="nl">nl - Nederlands</option>
-                <option value="pl">pl - Polski</option>
-                <option value="pt">pt - Portugues</option>
-                <option value="ru">ru - Russian</option>
-                <option value="tr">tr - Turkish</option>
-                <option value="uk">uk - Ukrainian</option>
-                <option value="ja">ja - Japanese</option>
-                <option value="ko">ko - Korean</option>
-                <option value="zh">zh - Chinese</option>
-              </select>
-            </div>
-            <div>
-              <label class="cfg-label" for="cfgTranslateDefaultSource" style="font-size:12px;margin-bottom:4px">Standard Quellsprache</label>
-              <select class="cfg-input" id="cfgTranslateDefaultSource">
-                <option value="auto">auto - Auto detect</option>
-                <option value="de">de - Deutsch</option>
-                <option value="en">en - English</option>
-                <option value="fr">fr - Francais</option>
-                <option value="es">es - Espanol</option>
-                <option value="it">it - Italiano</option>
-                <option value="nl">nl - Nederlands</option>
-                <option value="pl">pl - Polski</option>
-                <option value="pt">pt - Portugues</option>
-                <option value="ru">ru - Russian</option>
-                <option value="tr">tr - Turkish</option>
-                <option value="uk">uk - Ukrainian</option>
-                <option value="ja">ja - Japanese</option>
-                <option value="ko">ko - Korean</option>
-                <option value="zh">zh - Chinese</option>
-              </select>
-            </div>
-            <div>
-              <label class="cfg-label" for="cfgTranslateMaxTextLength" style="font-size:12px;margin-bottom:4px">Max. Textlaenge</label>
-              <input class="cfg-input" id="cfgTranslateMaxTextLength" type="number" min="64" max="4000" step="1" placeholder="1800">
+        <!-- Token & IDs Section -->
+        <div class="cfg-section open">
+          <div class="cfg-section-header" onclick="toggleConfigSection(this)">
+            <div class="cfg-section-header-title">
+              <span class="cfg-section-toggle">▾</span>
+              <span>🔑 Token & IDs</span>
             </div>
           </div>
-          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
-            <input class="cfg-input" id="cfgTranslateAllowedGuildIds" type="text" autocomplete="off" style="min-width:260px;flex:1"
-                   placeholder="Optional: Guild-Whitelist IDs (Komma/Semikolon)">
-          </div>
-          <div class="cfg-hint">Leer bei Guild-Whitelist = in allen Servern und DMs nutzbar, in denen der Bot verfuegbar ist.</div>
-          <div style="border-top:1px solid var(--border);margin-top:12px;padding-top:12px">
-            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;margin-bottom:8px">
-              <input type="checkbox" id="cfgUseDeepL" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
-              <span>DeepL als primaerer Uebersetzer nutzen (falls API-Key gesetzt)</span>
-            </label>
-            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px;margin-top:8px">
-              <div>
-                <label class="cfg-label" for="cfgDeepLApiKey" style="font-size:12px;margin-bottom:4px">DeepL API Key</label>
-                <input class="cfg-input" id="cfgDeepLApiKey" type="password" autocomplete="off" placeholder="Leer = nicht genutzt">
+          <div class="cfg-section-content">
+            <div class="cfg-section-body">
+              <div class="cfg-field">
+                <label class="cfg-label" for="cfgToken">Discord Bot Token</label>
+                <input class="cfg-input" id="cfgToken" type="password" autocomplete="off"
+                       placeholder="Neuen Token eingeben (leer lassen = unverändert)">
+                <div class="cfg-hint">Leer lassen, um den bestehenden Token zu behalten.</div>
               </div>
-              <div>
-                <label class="cfg-label" for="cfgDeepLApiUrl" style="font-size:12px;margin-bottom:4px">DeepL API URL</label>
-                <select class="cfg-input" id="cfgDeepLApiUrl">
-                  <option value="https://api-free.deepl.com">api-free.deepl.com (Free)</option>
-                  <option value="https://api.deepl.com">api.deepl.com (Pro)</option>
+              <div class="cfg-field">
+                <label class="cfg-label" for="cfgBotName">Discord Bot Name</label>
+                <input class="cfg-input" id="cfgBotName" type="text" autocomplete="off"
+                       placeholder="z. B. Uptime-Bot">
+                <div class="cfg-hint">Wird beim nächsten Bot-Start als Discord-Username gesetzt (max. 32 Zeichen).</div>
+              </div>
+              <div class="cfg-field">
+                <label class="cfg-label" for="cfgGuildId">Guild ID</label>
+                <input class="cfg-input" id="cfgGuildId" type="text" autocomplete="off"
+                       placeholder="z. B. 123456789012345678">
+              </div>
+            </div>
+          </div>
+        </div>
+        <!-- Präsenz & Status Section -->
+        <div class="cfg-section open">
+          <div class="cfg-section-header" onclick="toggleConfigSection(this)">
+            <div class="cfg-section-header-title">
+              <span class="cfg-section-toggle">▾</span>
+              <span>😎 Präsenz & Status</span>
+            </div>
+          </div>
+          <div class="cfg-section-content">
+            <div class="cfg-section-body">
+              <div class="cfg-field">
+                <label class="cfg-label" for="cfgPresenceText">Discord "Schaut zu" Texte</label>
+                <input class="cfg-input" id="cfgPresenceText" type="text" autocomplete="off"
+                       placeholder="Service Health;den Serverstatus;neue Updates">
+                <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+                  <select class="cfg-input" id="cfgPresencePreset" style="min-width:220px;flex:1">
+                    <option value="">Lustige Vorlage wählen…</option>
+                    <option value="den Kühlschrankstatus 🧊">den Kühlschrankstatus 🧊</option>
+                    <option value="ob der Kaffee schon fertig ist ☕">ob der Kaffee schon fertig ist ☕</option>
+                    <option value="Memes in Produktion 😂">Memes in Produktion 😂</option>
+                    <option value="die Uptime tanzen 💃">die Uptime tanzen 💃</option>
+                    <option value="den Server beim Atmen 🫁">den Server beim Atmen 🫁</option>
+                    <option value="Updates mit Popcorn 🍿">Updates mit Popcorn 🍿</option>
+                    <option value="dem Chaos beim Skalieren 📈">dem Chaos beim Skalieren 📈</option>
+                    <option value="den Logs beim Leuchten ✨">den Logs beim Leuchten ✨</option>
+                  </select>
+                  <button class="btn" onclick="appendPresencePreset()">➕ Vorlage übernehmen</button>
+                </div>
+                <div class="cfg-hint">Mehrere lustige Texte mit <code>;</code> trennen. Der Bot rotiert diese automatisch im Profil.</div>
+              </div>
+              <div class="cfg-field">
+                <label class="cfg-label" for="cfgPresenceRotateMs">"Schaut zu" Rotation (ms)</label>
+                <input class="cfg-input" id="cfgPresenceRotateMs" type="number" min="15000" step="5000"
+                       placeholder="90000">
+                <div class="cfg-hint">Wie oft der nächste Text aktiv wird (15s bis 60min).</div>
+              </div>
+              <div class="cfg-field">
+                <label class="cfg-label" for="cfgStatusCh">Status-Channel ID</label>
+                <input class="cfg-input" id="cfgStatusCh" type="text" autocomplete="off"
+                       placeholder="z. B. 123456789012345678">
+              </div>
+              <div class="cfg-field" style="margin-bottom:0">
+                <label class="cfg-label" for="cfgNotifCh">Benachrichtigungs-Channel ID</label>
+                <input class="cfg-input" id="cfgNotifCh" type="text" autocomplete="off"
+                       placeholder="z. B. 123456789012345678">
+              </div>
+            </div>
+          </div>
+        </div>
+        <!-- Automatische Reaktionen Section -->
+        <div class="cfg-section">
+          <div class="cfg-section-header" onclick="toggleConfigSection(this)">
+            <div class="cfg-section-header-title">
+              <span class="cfg-section-toggle">▾</span>
+              <span>⚡ Automatische Reaktionen</span>
+            </div>
+          </div>
+          <div class="cfg-section-content">
+            <div class="cfg-section-body">
+              <label class="cfg-label">Automatische Reaktionen auf neue Nachrichten</label>
+              <div style="display:flex;align-items:center;gap:12px;margin-top:2px;flex-wrap:wrap">
+                <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px">
+                  <input type="checkbox" id="cfgAutoReactionEnabled" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
+                  <span>Für neue Guild-Nachrichten automatisch Emojis setzen</span>
+                </label>
+              </div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+                <input class="cfg-input" id="cfgAutoReactionEmojis" type="text" autocomplete="off" style="min-width:260px;flex:2"
+                       placeholder="👍;🔥;😂">
+                <select class="cfg-input" id="cfgAutoReactionPreset" style="min-width:220px;flex:1">
+                  <option value="">Emoji-Vorlage wählen…</option>
+                  <option value="👍">👍 Zustimmung</option>
+                  <option value="🔥">🔥 Hype</option>
+                  <option value="😂">😂 Lustig</option>
+                  <option value="🎉">🎉 Feiern</option>
+                  <option value="👀">👀 Beobachten</option>
+                  <option value="🤖">🤖 Bot</option>
+                  <option value="❤️">❤️ Herz</option>
+                  <option value="✅">✅ Erledigt</option>
+                  <option value="🚀">🚀 Rocket</option>
+                  <option value="<a:partyblob:ID>">Custom Emoji Muster</option>
                 </select>
+                <button class="btn" onclick="appendAutoReactionEmoji()">➕ Emoji übernehmen</button>
+              </div>
+              <div class="cfg-hint">Trenne mehrere Emojis mit <code>;</code> oder <code>,</code>. Maximal 5 Emojis. Unicode und Custom-Emoji-Strings sind möglich.</div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+                <input class="cfg-input" id="cfgAutoReactionChannelIds" type="text" autocomplete="off" style="min-width:260px;flex:1"
+                       placeholder="Optional: 123456789012345678,234567890123456789">
+              </div>
+              <div class="cfg-hint" style="margin-bottom:0">Optional nur bestimmte Textkanäle per Channel-ID. Leer = in allen Guild-Textkanälen.</div>
+            </div>
+          </div>
+        </div>
+        <!-- Übersetzer Section -->
+        <div class="cfg-section">
+          <div class="cfg-section-header" onclick="toggleConfigSection(this)">
+            <div class="cfg-section-header-title">
+              <span class="cfg-section-toggle">▾</span>
+              <span>🌐 Übersetzer (/translate)</span>
+            </div>
+          </div>
+          <div class="cfg-section-content">
+            <div class="cfg-section-body">
+              <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;flex-wrap:wrap">
+                <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px">
+                  <input type="checkbox" id="cfgTranslateEnabled" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
+                  <span>Slash-Command <code>/translate</code> aktivieren</span>
+                </label>
+              </div>
+              <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px;margin-bottom:12px">
+                <div>
+                  <label class="cfg-label" for="cfgTranslateDefaultTarget" style="font-size:12px;margin-bottom:4px">Standard Zielsprache</label>
+                  <select class="cfg-input" id="cfgTranslateDefaultTarget">
+                    <option value="de">de - Deutsch</option>
+                    <option value="en">en - English</option>
+                    <option value="fr">fr - Francais</option>
+                    <option value="es">es - Espanol</option>
+                    <option value="it">it - Italiano</option>
+                    <option value="nl">nl - Nederlands</option>
+                    <option value="pl">pl - Polski</option>
+                    <option value="pt">pt - Portugues</option>
+                    <option value="ru">ru - Russian</option>
+                    <option value="tr">tr - Turkish</option>
+                    <option value="uk">uk - Ukrainian</option>
+                    <option value="ja">ja - Japanese</option>
+                    <option value="ko">ko - Korean</option>
+                    <option value="zh">zh - Chinese</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="cfg-label" for="cfgTranslateDefaultSource" style="font-size:12px;margin-bottom:4px">Standard Quellsprache</label>
+                  <select class="cfg-input" id="cfgTranslateDefaultSource">
+                    <option value="auto">auto - Auto detect</option>
+                    <option value="de">de - Deutsch</option>
+                    <option value="en">en - English</option>
+                    <option value="fr">fr - Francais</option>
+                    <option value="es">es - Espanol</option>
+                    <option value="it">it - Italiano</option>
+                    <option value="nl">nl - Nederlands</option>
+                    <option value="pl">pl - Polski</option>
+                    <option value="pt">pt - Portugues</option>
+                    <option value="ru">ru - Russian</option>
+                    <option value="tr">tr - Turkish</option>
+                    <option value="uk">uk - Ukrainian</option>
+                    <option value="ja">ja - Japanese</option>
+                    <option value="ko">ko - Korean</option>
+                    <option value="zh">zh - Chinese</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="cfg-label" for="cfgTranslateMaxTextLength" style="font-size:12px;margin-bottom:4px">Max. Textlaenge</label>
+                  <input class="cfg-input" id="cfgTranslateMaxTextLength" type="number" min="64" max="4000" step="1" placeholder="1800">
+                </div>
+              </div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+                <input class="cfg-input" id="cfgTranslateAllowedGuildIds" type="text" autocomplete="off" style="min-width:260px;flex:1"
+                       placeholder="Optional: Guild-Whitelist IDs (Komma/Semikolon)">
+              </div>
+              <div class="cfg-hint">Leer bei Guild-Whitelist = in allen Servern und DMs nutzbar, in denen der Bot verfuegbar ist.</div>
+              <div style="border-top:1px solid var(--border);margin-top:12px;padding-top:12px">
+                <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;margin-bottom:8px">
+                  <input type="checkbox" id="cfgUseDeepL" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
+                  <span>DeepL als primaerer Uebersetzer nutzen (falls API-Key gesetzt)</span>
+                </label>
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px;margin-bottom:8px">
+                  <div>
+                    <label class="cfg-label" for="cfgDeepLApiKey" style="font-size:12px;margin-bottom:4px">DeepL API Key</label>
+                    <input class="cfg-input" id="cfgDeepLApiKey" type="password" autocomplete="off" placeholder="Leer = nicht genutzt">
+                  </div>
+                  <div>
+                    <label class="cfg-label" for="cfgDeepLApiUrl" style="font-size:12px;margin-bottom:4px">DeepL API URL</label>
+                    <select class="cfg-input" id="cfgDeepLApiUrl">
+                      <option value="https://api-free.deepl.com">api-free.deepl.com (Free)</option>
+                      <option value="https://api.deepl.com">api.deepl.com (Pro)</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="cfg-hint">DeepL bietet hoehere Qualitaet. Fallback: LibreTranslate. API-Key unter https://www.deepl.com/pro-account/summary erhältlich.</div>
+              </div>
+              <div style="border-top:1px solid var(--border);margin-top:12px;padding-top:12px">
+                <label class="cfg-label" style="font-size:12px;margin-bottom:4px">Fallback: LibreTranslate</label>
+                <label class="cfg-label" for="cfgTranslateApiUrl" style="font-size:12px;margin-bottom:4px;margin-top:8px">API URL</label>
+                <input class="cfg-input" id="cfgTranslateApiUrl" type="text" autocomplete="off"
+                       placeholder="http://localhost:5000/translate">
+                <label class="cfg-label" for="cfgTranslateApiKey" style="font-size:12px;margin-bottom:4px;margin-top:8px">API Key (optional)</label>
+                <input class="cfg-input" id="cfgTranslateApiKey" type="password" autocomplete="off"
+                       placeholder="Leer = nicht noetig">
+                <div class="cfg-hint" style="margin-bottom:0">Wird als Fallback genutzt, wenn DeepL nicht verfuegbar oder deaktiviert ist.</div>
               </div>
             </div>
-            <div class="cfg-hint">DeepL bietet hoehere Qualitaet. Fallback: LibreTranslate. API-Key unter https://www.deepl.com/pro-account/summary erhältlich.</div>
-          </div>
-          <div style="border-top:1px solid var(--border);margin-top:12px;padding-top:12px">
-            <label class="cfg-label" style="font-size:12px;margin-bottom:4px">Fallback: LibreTranslate</label>
-            <label class="cfg-label" for="cfgTranslateApiUrl" style="font-size:12px;margin-bottom:4px">API URL</label>
-            <input class="cfg-input" id="cfgTranslateApiUrl" type="text" autocomplete="off"
-                   placeholder="http://localhost:5000/translate">
-            <label class="cfg-label" for="cfgTranslateApiKey" style="font-size:12px;margin-bottom:4px;margin-top:8px">API Key (optional)</label>
-            <input class="cfg-input" id="cfgTranslateApiKey" type="password" autocomplete="off"
-                   placeholder="Leer = nicht noetig">
-            <div class="cfg-hint">Wird als Fallback genutzt, wenn DeepL nicht verfuegbar oder deaktiviert ist.</div>
           </div>
         </div>
         <div class="cfg-field">
@@ -1026,90 +1129,100 @@
           <input class="cfg-input" id="cfgNotifCh" type="text" autocomplete="off"
                  placeholder="z. B. 123456789012345678">
         </div>
-        <div class="cfg-field" style="border:1px solid var(--border);border-radius:8px;padding:12px;background:rgba(255,255,255,.01)">
-          <label class="cfg-label">Nachrichten-Cleanup (z. B. Bot_Info)</label>
-          <div style="display:flex;align-items:center;gap:12px;margin-top:2px;flex-wrap:wrap">
-            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px">
-              <input type="checkbox" id="cfgMsgCleanupEnabled" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
-              <span>Auto-Cleanup aktivieren</span>
-            </label>
-            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px">
-              <input type="checkbox" id="cfgMsgCleanupOnlyBot" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
-              <span>Nur Bot-Nachrichten löschen</span>
-            </label>
-          </div>
-          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:8px">
-            <div>
-              <label class="cfg-label" for="cfgMsgCleanupMaxMessages" style="font-size:12px;margin-bottom:4px">Standard: Max. Nachrichten</label>
-              <select class="cfg-input" id="cfgMsgCleanupMaxMessages">
-                <option value="0">Deaktiviert (0)</option>
-                <option value="1">1</option>
-                <option value="2">2</option>
-                <option value="3">3</option>
-                <option value="4">4</option>
-                <option value="5">5</option>
-                <option value="6">6</option>
-                <option value="8">8</option>
-                <option value="10">10</option>
-                <option value="15">15</option>
-                <option value="20">20</option>
-                <option value="25">25</option>
-                <option value="50">50</option>
-                <option value="100">100</option>
-              </select>
-            </div>
-            <div>
-              <label class="cfg-label" for="cfgMsgCleanupMaxAgeHours" style="font-size:12px;margin-bottom:4px">Standard: Max. Alter</label>
-              <select class="cfg-input" id="cfgMsgCleanupMaxAgeHours">
-                <option value="0">Deaktiviert (0h)</option>
-                <option value="1">1 Std</option>
-                <option value="2">2 Std</option>
-                <option value="3">3 Std</option>
-                <option value="6">6 Std</option>
-                <option value="12">12 Std</option>
-                <option value="18">18 Std</option>
-                <option value="24">1 Tag</option>
-                <option value="36">36 Std</option>
-                <option value="48">2 Tage</option>
-                <option value="72">3 Tage</option>
-                <option value="96">4 Tage</option>
-                <option value="120">5 Tage</option>
-                <option value="168">1 Woche</option>
-              </select>
-            </div>
-            <div>
-              <label class="cfg-label" for="cfgMsgCleanupIntervalMs" style="font-size:12px;margin-bottom:4px">Standard: Intervall</label>
-              <select class="cfg-input" id="cfgMsgCleanupIntervalMs">
-                <option value="60000">1 Min</option>
-                <option value="300000">5 Min</option>
-                <option value="600000">10 Min</option>
-                <option value="900000">15 Min</option>
-                <option value="1800000">30 Min</option>
-                <option value="3600000">1 Std</option>
-                <option value="7200000">2 Std</option>
-                <option value="21600000">6 Std</option>
-                <option value="43200000">12 Std</option>
-                <option value="86400000">24 Std</option>
-              </select>
+        <!-- Nachrichten-Cleanup Section -->
+        <div class="cfg-section">
+          <div class="cfg-section-header" onclick="toggleConfigSection(this)">
+            <div class="cfg-section-header-title">
+              <span class="cfg-section-toggle">▾</span>
+              <span>🧹 Nachrichten-Cleanup</span>
             </div>
           </div>
-          <div style="margin-top:10px">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">
-              <span class="cfg-label" style="font-size:12px;margin:0">Kanäle &amp; Cleanup-Regeln</span>
-              <button type="button" id="btnAddCleanupChannel" style="padding:3px 10px;font-size:12px;border-radius:5px;border:1px solid var(--border);background:var(--surface);color:var(--text);cursor:pointer">+ Kanal hinzufügen</button>
+          <div class="cfg-section-content">
+            <div class="cfg-section-body">
+              <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;flex-wrap:wrap">
+                <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px">
+                  <input type="checkbox" id="cfgMsgCleanupEnabled" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
+                  <span>Auto-Cleanup aktivieren</span>
+                </label>
+                <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px">
+                  <input type="checkbox" id="cfgMsgCleanupOnlyBot" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
+                  <span>Nur Bot-Nachrichten löschen</span>
+                </label>
+              </div>
+              <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px">
+                <div>
+                  <label class="cfg-label" for="cfgMsgCleanupMaxMessages" style="font-size:12px;margin-bottom:4px">Standard: Max. Nachrichten</label>
+                  <select class="cfg-input" id="cfgMsgCleanupMaxMessages">
+                    <option value="0">Deaktiviert (0)</option>
+                    <option value="1">1</option>
+                    <option value="2">2</option>
+                    <option value="3">3</option>
+                    <option value="4">4</option>
+                    <option value="5">5</option>
+                    <option value="6">6</option>
+                    <option value="8">8</option>
+                    <option value="10">10</option>
+                    <option value="15">15</option>
+                    <option value="20">20</option>
+                    <option value="25">25</option>
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="cfg-label" for="cfgMsgCleanupMaxAgeHours" style="font-size:12px;margin-bottom:4px">Standard: Max. Alter</label>
+                  <select class="cfg-input" id="cfgMsgCleanupMaxAgeHours">
+                    <option value="0">Deaktiviert (0h)</option>
+                    <option value="1">1 Std</option>
+                    <option value="2">2 Std</option>
+                    <option value="3">3 Std</option>
+                    <option value="6">6 Std</option>
+                    <option value="12">12 Std</option>
+                    <option value="18">18 Std</option>
+                    <option value="24">1 Tag</option>
+                    <option value="36">36 Std</option>
+                    <option value="48">2 Tage</option>
+                    <option value="72">3 Tage</option>
+                    <option value="96">4 Tage</option>
+                    <option value="120">5 Tage</option>
+                    <option value="168">1 Woche</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="cfg-label" for="cfgMsgCleanupIntervalMs" style="font-size:12px;margin-bottom:4px">Standard: Intervall</label>
+                  <select class="cfg-input" id="cfgMsgCleanupIntervalMs">
+                    <option value="60000">1 Min</option>
+                    <option value="300000">5 Min</option>
+                    <option value="600000">10 Min</option>
+                    <option value="900000">15 Min</option>
+                    <option value="1800000">30 Min</option>
+                    <option value="3600000">1 Std</option>
+                    <option value="7200000">2 Std</option>
+                    <option value="21600000">6 Std</option>
+                    <option value="43200000">12 Std</option>
+                    <option value="86400000">24 Std</option>
+                  </select>
+                </div>
+              </div>
+              <div>
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">
+                  <span class="cfg-label" style="font-size:12px;margin:0">Kanäle &amp; Cleanup-Regeln</span>
+                  <button type="button" id="btnAddCleanupChannel" style="padding:3px 10px;font-size:12px;border-radius:5px;border:1px solid var(--border);background:var(--surface);color:var(--text);cursor:pointer">+ Kanal hinzufügen</button>
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 110px 110px 110px 28px;gap:5px;padding:0 2px;margin-bottom:3px">
+                  <span style="font-size:11px;color:var(--muted)">Channel-ID</span>
+                  <span style="font-size:11px;color:var(--muted)">Max. Nachrichten</span>
+                  <span style="font-size:11px;color:var(--muted)">Max. Alter</span>
+                  <span style="font-size:11px;color:var(--muted)">Intervall</span>
+                  <span></span>
+                </div>
+                <div id="cleanupChannelRows" style="display:flex;flex-direction:column;gap:5px"></div>
+                <input type="hidden" id="cfgMsgCleanupChannelIds">
+              </div>
+              <div class="cfg-hint" style="margin-bottom:0">
+                Leer = nutzt automatisch <code>DISCORD_NOTIFICATION_CHANNEL</code>. <strong>Standard</strong> in einem Dropdown = nutzt den globalen Standardwert oben. Kein Eintrag in der Tabelle = Standardwerte gelten für alle Kanäle.
+              </div>
             </div>
-            <div style="display:grid;grid-template-columns:1fr 110px 110px 110px 28px;gap:5px;padding:0 2px;margin-bottom:3px">
-              <span style="font-size:11px;color:var(--muted)">Channel-ID</span>
-              <span style="font-size:11px;color:var(--muted)">Max. Nachrichten</span>
-              <span style="font-size:11px;color:var(--muted)">Max. Alter</span>
-              <span style="font-size:11px;color:var(--muted)">Intervall</span>
-              <span></span>
-            </div>
-            <div id="cleanupChannelRows" style="display:flex;flex-direction:column;gap:5px"></div>
-            <input type="hidden" id="cfgMsgCleanupChannelIds">
-          </div>
-          <div class="cfg-hint">
-            Leer = nutzt automatisch <code>DISCORD_NOTIFICATION_CHANNEL</code>. <strong>Standard</strong> in einem Dropdown = nutzt den globalen Standardwert oben. Kein Eintrag in der Tabelle = Standardwerte gelten für alle Kanäle.
           </div>
         </div>
         <div class="cfg-field">
@@ -1121,8 +1234,18 @@
 
       <div class="cfg-pane-card hidden" data-cfg-pane="channels">
         <div class="cfg-pane-title">🧩 Dienst-Kanäle</div>
-        <div class="cfg-field">
-          <label class="cfg-label" for="cfgServiceGuildId">Server/Guild ID für Dienst-Kanäle</label>
+        <!-- Guild & Kategorie Section -->
+        <div class="cfg-section open">
+          <div class="cfg-section-header" onclick="toggleConfigSection(this)">
+            <div class="cfg-section-header-title">
+              <span class="cfg-section-toggle">▾</span>
+              <span>🏢 Guild & Kategorie</span>
+            </div>
+          </div>
+          <div class="cfg-section-content">
+            <div class="cfg-section-body">
+              <div class="cfg-field">
+                <label class="cfg-label" for="cfgServiceGuildId">Server/Guild ID für Dienst-Kanäle</label>
           <input class="cfg-input" id="cfgServiceGuildId" type="text" autocomplete="off"
                  placeholder="z. B. 123456789012345678 (leer = Guild ID aus Bot & IDs)">
           <div class="cfg-hint">Diese Guild wird für Kategorie- und Kanalerstellung verwendet. Leer = <code>GUILD_ID</code> aus Bot &amp; IDs.</div>
@@ -1138,9 +1261,22 @@
           <input class="cfg-input" id="cfgServiceCategoryId" type="text" autocomplete="off"
                  placeholder="z. B. 123456789012345678">
              <div class="cfg-hint">Nur für eine bereits vorhandene Discord-Kategorie. Wenn leer, kann der Bot die Kategorie stattdessen per Namen selbst erstellen.</div>
+              </div>
+            </div>
+          </div>
         </div>
-        <div class="cfg-field">
-          <label class="cfg-label" for="cfgMonitoredServices">Monitored Services</label>
+        <!-- Service-Kanäle & Mapping Section -->
+        <div class="cfg-section">
+          <div class="cfg-section-header" onclick="toggleConfigSection(this)">
+            <div class="cfg-section-header-title">
+              <span class="cfg-section-toggle">▾</span>
+              <span>📝 Service-Kanäle & Mapping</span>
+            </div>
+          </div>
+          <div class="cfg-section-content">
+            <div class="cfg-section-body">
+              <div class="cfg-field">
+                <label class="cfg-label" for="cfgMonitoredServices">Monitored Services</label>
           <input class="cfg-input" id="cfgMonitoredServices" type="text" autocomplete="off"
                  placeholder="Kommagetrennt, z. B. website,api,database">
           <div class="cfg-hint">Kommagetrennte Whitelist. Wenn leer, werden Einträge aus Kanal-Mapping verwendet.</div>
@@ -1150,8 +1286,8 @@
           <input class="cfg-input" id="cfgServiceChannelMap" type="text" autocomplete="off"
                  placeholder="Next-Cloud=123456789012345678;Pi-VPN=234567890123456789">
           <div class="cfg-hint">Format: <code>Monitorname=ChannelID;Anderer Monitor=ChannelID</code>. Die Channel-ID muss zu einem bereits vorhandenen Kanal gehören. Wenn leer, kann der Bot fehlende Kanäle automatisch selbst erstellen.</div>
-        </div>
-        <div class="cfg-field" style="border:1px solid var(--border);border-radius:8px;padding:12px;background:rgba(255,255,255,.01)">
+              </div>
+              <div class="cfg-field" style="border:1px solid var(--border);border-radius:8px;padding:12px;background:rgba(255,255,255,.01)">
           <label class="cfg-label">Bestehende Kategorien &amp; Kanäle übernehmen</label>
           <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">
             <button class="btn" id="btnLoadExistingChannels" onclick="loadExistingGuildChannels()">🔎 Aus Discord laden</button>
@@ -1289,7 +1425,17 @@
 
       <div class="cfg-pane-card hidden" data-cfg-pane="commands">
         <div class="cfg-pane-title">⌨️ Bot-Kommandos</div>
-        <div class="cfg-field">
+        <!-- Aktive Commands Section -->
+        <div class="cfg-section open">
+          <div class="cfg-section-header" onclick="toggleConfigSection(this)">
+            <div class="cfg-section-header-title">
+              <span class="cfg-section-toggle">▾</span>
+              <span>✅ Aktive Slash-Commands</span>
+            </div>
+          </div>
+          <div class="cfg-section-content">
+            <div class="cfg-section-body">
+              <div class="cfg-field" style="margin-bottom:0">
           <label class="cfg-label">Aktive Slash-Commands</label>
           <div style="display:grid;gap:8px;margin-top:4px">
             <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px">
@@ -1331,12 +1477,25 @@
           </div>
           <input type="hidden" id="cfgEnabledCommands" value="status,uptime,refresh,help,coinflip,dice,eightball,cleanup,translate">
           <div class="cfg-hint">Mindestens ein Kommando muss aktiv bleiben. Änderungen werden beim Neustart neu registriert.</div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
       <div class="cfg-pane-card hidden" data-cfg-pane="renderer">
         <div class="cfg-pane-title">📡 Discord-Status-Renderer</div>
-        <div class="cfg-field">
+        <!-- Rendering Mode Section -->
+        <div class="cfg-section open">
+          <div class="cfg-section-header" onclick="toggleConfigSection(this)">
+            <div class="cfg-section-header-title">
+              <span class="cfg-section-toggle">▾</span>
+              <span>🎬 Rendering-Modus</span>
+            </div>
+          </div>
+          <div class="cfg-section-content">
+            <div class="cfg-section-body">
+              <div class="cfg-field">
           <label class="cfg-label" for="cfgRenderMode">Discord Status Renderer</label>
           <div style="display:flex;gap:8px;align-items:end;">
             <select class="cfg-input" id="cfgRenderMode" style="flex:1;">
@@ -1351,8 +1510,21 @@
             <button class="btn btn-small" id="btnTestRender" onclick="testRendering()" style="padding:8px 12px;font-size:12px;white-space:nowrap;">🧪 Jetzt testen</button>
           </div>
           <div class="cfg-hint">Renderer wählen und mit "Jetzt testen" sofort einen Discord-Status-Update auslösen.</div>
+              </div>
+            </div>
+          </div>
         </div>
-        <div class="cfg-field">
+        <!-- SVG & URLs Section -->
+        <div class="cfg-section">
+          <div class="cfg-section-header" onclick="toggleConfigSection(this)">
+            <div class="cfg-section-header-title">
+              <span class="cfg-section-toggle">▾</span>
+              <span>🖼 SVG & URLs</span>
+            </div>
+          </div>
+          <div class="cfg-section-content">
+            <div class="cfg-section-body">
+              <div class="cfg-field">
           <label class="cfg-label" for="cfgStatusTitle">SVG Modus: Titel oberhalb der Grafik</label>
           <input class="cfg-input" id="cfgStatusTitle" type="text" autocomplete="off"
                  placeholder="Leer lassen = keine zweite Überschrift">
@@ -1384,12 +1556,25 @@
           <label class="cfg-label" for="cfgWebhookUrl">Discord Status Webhook URL</label>
           <input class="cfg-input" id="cfgWebhookUrl" type="password" autocomplete="off"
                  placeholder="Nur für webhook_ascii (leer lassen = unverändert)">
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
       <div class="cfg-pane-card hidden" data-cfg-pane="security">
         <div class="cfg-pane-title">🗂 .env / Sicherheit</div>
-        <div class="cfg-field">
+        <!-- Uptime Kuma Section -->
+        <div class="cfg-section open">
+          <div class="cfg-section-header" onclick="toggleConfigSection(this)">
+            <div class="cfg-section-header-title">
+              <span class="cfg-section-toggle">▾</span>
+              <span>📊 Uptime Kuma</span>
+            </div>
+          </div>
+          <div class="cfg-section-content">
+            <div class="cfg-section-body">
+              <div class="cfg-field">
           <label class="cfg-label" for="cfgKumaUrl">Uptime Kuma URL</label>
           <input class="cfg-input" id="cfgKumaUrl" type="text" autocomplete="off"
                  placeholder="http://192.168.x.x:3001">
@@ -1398,8 +1583,21 @@
           <label class="cfg-label" for="cfgApiKey">Uptime Kuma API Key</label>
           <input class="cfg-input" id="cfgApiKey" type="password" autocomplete="off"
                  placeholder="Neuen API Key eingeben (leer lassen = unverändert)">
+              </div>
+            </div>
+          </div>
         </div>
-        <div class="cfg-field">
+        <!-- Translator & Dashboard Section -->
+        <div class="cfg-section">
+          <div class="cfg-section-header" onclick="toggleConfigSection(this)">
+            <div class="cfg-section-header-title">
+              <span class="cfg-section-toggle">▾</span>
+              <span>🌐 Übersetzer & Dashboard</span>
+            </div>
+          </div>
+          <div class="cfg-section-content">
+            <div class="cfg-section-body">
+              <div class="cfg-field">
           <label class="cfg-label" for="cfgTranslateApiUrlSecurity">Uebersetzer API URL (LibreTranslate kompatibel)</label>
           <input class="cfg-input" id="cfgTranslateApiUrlSecurity" type="text" autocomplete="off"
                  placeholder="https://libretranslate.com/translate">
@@ -1418,17 +1616,43 @@
           <label class="cfg-label" for="cfgDbStorage">DB Storage Pfad</label>
           <input class="cfg-input" id="cfgDbStorage" type="text" autocomplete="off"
                  placeholder="./data/status.db">
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
       <div class="cfg-pane-card hidden" data-cfg-pane="raspi">
         <div class="cfg-pane-title">🍓 Raspi / Web</div>
-        <div class="cfg-field">
+        <!-- Web Server Section -->
+        <div class="cfg-section open">
+          <div class="cfg-section-header" onclick="toggleConfigSection(this)">
+            <div class="cfg-section-header-title">
+              <span class="cfg-section-toggle">▾</span>
+              <span>🌐 Web Server</span>
+            </div>
+          </div>
+          <div class="cfg-section-content">
+            <div class="cfg-section-body">
+              <div class="cfg-field" style="margin-bottom:0">
           <label class="cfg-label" for="cfgWebPort">Web Port</label>
           <input class="cfg-input" id="cfgWebPort" type="number" min="1" max="65535"
                  placeholder="3000">
+              </div>
+            </div>
+          </div>
         </div>
-        <div class="cfg-field">
+        <!-- Time & Language Section -->
+        <div class="cfg-section open">
+          <div class="cfg-section-header" onclick="toggleConfigSection(this)">
+            <div class="cfg-section-header-title">
+              <span class="cfg-section-toggle">▾</span>
+              <span>🕒 Zeit & Sprache</span>
+            </div>
+          </div>
+          <div class="cfg-section-content">
+            <div class="cfg-section-body">
+              <div class="cfg-field">
           <label class="cfg-label" for="cfgTimezone">Zeitzone (Raspberry Pi)</label>
           <select class="cfg-input" id="cfgTimezone">
             <option value="">Bitte wählen…</option>
@@ -1481,8 +1705,21 @@
           <button class="btn" id="btnLocaleReload" onclick="loadSystemLocalization()">↺ Werte laden</button>
           <button class="btn" id="btnLocaleSave" onclick="saveSystemLocalization()">🕒 System übernehmen</button>
           <span id="cfgLocaleStatus" class="muted" style="font-size:12px"></span>
+              </div>
+            </div>
+          </div>
         </div>
-        <div class="cfg-field" style="margin-bottom:0">
+        <!-- Status Indicator Section -->
+        <div class="cfg-section">
+          <div class="cfg-section-header" onclick="toggleConfigSection(this)">
+            <div class="cfg-section-header-title">
+              <span class="cfg-section-toggle">▾</span>
+              <span>🟢 Status-Indikator</span>
+            </div>
+          </div>
+          <div class="cfg-section-content">
+            <div class="cfg-section-body">
+              <div class="cfg-field" style="margin-bottom:0">
           <label class="cfg-label">Channel-Status-Indikator</label>
           <div style="display:flex;align-items:center;gap:12px;margin-top:2px">
             <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px">
@@ -1491,13 +1728,26 @@
             </label>
           </div>
           <div class="cfg-hint">Bei Statuswechsel wird z.B. aus <code>dienste-status</code> → <code>🟢dienste-status</code> (max. 2× / 10 min)</div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
       <!-- ── PANE: WILLKOMMEN & AUTO-REPLY ─────────────── -->
       <div class="cfg-pane-card hidden" data-cfg-pane="welcome">
         <div class="cfg-pane-title">👋 Willkommens-Nachrichten</div>
-        <div class="cfg-field" style="border:1px solid var(--border);border-radius:8px;padding:12px;background:rgba(255,255,255,.01)">
+        <!-- Welcome Messages Section -->
+        <div class="cfg-section open">
+          <div class="cfg-section-header" onclick="toggleConfigSection(this)">
+            <div class="cfg-section-header-title">
+              <span class="cfg-section-toggle">▾</span>
+              <span>👋 Willkommensnachrichten</span>
+            </div>
+          </div>
+          <div class="cfg-section-content">
+            <div class="cfg-section-body">
+              <div class="cfg-field" style="border:1px solid var(--border);border-radius:8px;padding:12px;background:rgba(255,255,255,.01)">
           <label class="cfg-label">Willkommensnachrichten aktivieren</label>
           <div style="display:flex;align-items:center;gap:12px;margin-top:2px">
             <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px">
@@ -1517,9 +1767,20 @@
           <input class="cfg-input" id="cfgWelcomeMessageTemplate" type="text" autocomplete="off"
                  placeholder="Willkommen {user} auf **{server}**! 👋">
           <div class="cfg-hint">Platzhalter: <code>{user}</code> = Mention, <code>{username}</code> = Name ohne @, <code>{server}</code> = Servername, <code>{channel}</code> = Kanal.</div>
+              </div>
+            </div>
+          </div>
         </div>
-
-        <div class="cfg-pane-title" style="margin-top:20px">🤖 Auto-Reply</div>
+        <!-- Auto-Reply Section -->
+        <div class="cfg-section">
+          <div class="cfg-section-header" onclick="toggleConfigSection(this)">
+            <div class="cfg-section-header-title">
+              <span class="cfg-section-toggle">▾</span>
+              <span>🤖 Auto-Reply</span>
+            </div>
+          </div>
+          <div class="cfg-section-content">
+            <div class="cfg-section-body">
         <div class="cfg-field" style="border:1px solid var(--border);border-radius:8px;padding:12px;background:rgba(255,255,255,.01)">
           <label class="cfg-label">Auto-Reply aktivieren</label>
           <div style="display:flex;align-items:center;gap:12px;margin-top:2px;flex-wrap:wrap">
@@ -1550,10 +1811,20 @@
           <label class="cfg-label" for="cfgAutoReplyRulesFile">Pfad zur Regeldatei</label>
           <input class="cfg-input" id="cfgAutoReplyRulesFile" type="text" autocomplete="off" placeholder="./auto-replies.json">
           <div class="cfg-hint">JSON-Array mit Regeln (Felder: <code>id</code>, <code>trigger</code>, <code>mode</code>, <code>reply</code>). Modus: <code>contains</code>, <code>exact</code>, <code>regex</code>.</div>
+              </div>
+            </div>
+          </div>
         </div>
-
-        <!-- ── REGELEDITOR ─────────────────────────────── -->
-        <div class="cfg-pane-title" style="margin-top:20px">📋 Regeln bearbeiten</div>
+        <!-- Rules Editor Section -->
+        <div class="cfg-section">
+          <div class="cfg-section-header" onclick="toggleConfigSection(this)">
+            <div class="cfg-section-header-title">
+              <span class="cfg-section-toggle">▾</span>
+              <span>📋 Regeln bearbeiten</span>
+            </div>
+          </div>
+          <div class="cfg-section-content">
+            <div class="cfg-section-body">
         <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px">
           <span class="muted" id="arRulesCount" style="font-size:12px">– Regeln geladen</span>
           <div style="display:flex;gap:8px">
@@ -1656,7 +1927,17 @@
       <!-- ── PANE: GITHUB-WATCHER ───────────────────────── -->
       <div class="cfg-pane-card hidden" data-cfg-pane="github">
         <div class="cfg-pane-title">🐙 GitHub-Update-Watcher</div>
-        <div class="cfg-field" style="border:1px solid var(--border);border-radius:8px;padding:12px;background:rgba(255,255,255,.01)">
+        <!-- GitHub Update Monitoring Section -->
+        <div class="cfg-section open">
+          <div class="cfg-section-header" onclick="toggleConfigSection(this)">
+            <div class="cfg-section-header-title">
+              <span class="cfg-section-toggle">▾</span>
+              <span>👀 Update-Überwachung</span>
+            </div>
+          </div>
+          <div class="cfg-section-content">
+            <div class="cfg-section-body">
+              <div class="cfg-field" style="border:1px solid var(--border);border-radius:8px;padding:12px;background:rgba(255,255,255,.01)">
           <label class="cfg-label">GitHub-Watcher aktivieren</label>
           <div style="display:flex;align-items:center;gap:12px;margin-top:2px">
             <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px">
@@ -1701,6 +1982,9 @@
           <input class="cfg-input" id="cfgGithubToken" type="password" autocomplete="off"
                  placeholder="Leer lassen = unverändert">
           <div class="cfg-hint">Erhöht das Rate-Limit von 60 auf 5000 Anfragen/Stunde. Scope: <code>public_repo</code> reicht aus.</div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -4681,9 +4965,43 @@
     localStorage.setItem(STORAGE_KEY_ORDER, JSON.stringify(order));
   }
 
+  // ── Collapsible Sections Toggle ──────────────────────────────────────────
+  function toggleConfigSection(header) {
+    const section = header.closest('.cfg-section');
+    if (!section) return;
+    section.classList.toggle('open');
+    // Optionally, persist the state to localStorage
+    const sectionTitle = header.querySelector('.cfg-section-header-title span:last-child')?.textContent || 'unknown';
+    const state = section.classList.contains('open') ? 'open' : 'closed';
+    localStorage.setItem(`cfg-section-${sectionTitle}`, state);
+  }
+
+  // Restore section states on page load
+  function restoreSectionStates() {
+    document.querySelectorAll('.cfg-section').forEach(section => {
+      const title = section.querySelector('.cfg-section-header-title span:last-child')?.textContent || 'unknown';
+      const state = localStorage.getItem(`cfg-section-${title}`);
+      if (state === 'closed') {
+        section.classList.remove('open');
+      } else if (state === 'open') {
+        section.classList.add('open');
+      }
+      // Default: Token & IDs and Präsenz & Status are open, others are closed
+      if (!state) {
+        if (title === '🔑 Token & IDs' || title === '😎 Präsenz & Status') {
+          section.classList.add('open');
+        }
+      }
+    });
+  }
+
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initCardSystem);
+    document.addEventListener('DOMContentLoaded', () => {
+      restoreSectionStates();
+      initCardSystem();
+    });
   } else {
+    restoreSectionStates();
     initCardSystem();
   }
 
