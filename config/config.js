@@ -98,6 +98,54 @@ const config = convict({
       default: '',
       env: 'DISCORD_AUTO_REACTION_CHANNEL_IDS'
     },
+    welcomeEnabled: {
+      doc: 'Begruessungsnachricht fuer neue Mitglieder aktivieren',
+      format: Boolean,
+      default: false,
+      env: 'DISCORD_WELCOME_ENABLED'
+    },
+    welcomeChannelId: {
+      doc: 'Channel-ID fuer Begruessungsnachrichten (leer = DISCORD_NOTIFICATION_CHANNEL)',
+      format: String,
+      default: '',
+      env: 'DISCORD_WELCOME_CHANNEL_ID'
+    },
+    welcomeMessageTemplate: {
+      doc: 'Template fuer Begruessung: Platzhalter {user}, {username}, {server}',
+      format: String,
+      default: 'Willkommen {user} auf **{server}**! Viel Spass mit der Community. 👋',
+      env: 'DISCORD_WELCOME_MESSAGE_TEMPLATE'
+    },
+    autoReplyEnabled: {
+      doc: 'Automatische Bot-Antworten auf Triggernachrichten aktivieren',
+      format: Boolean,
+      default: false,
+      env: 'DISCORD_AUTO_REPLY_ENABLED'
+    },
+    autoReplyMentionOnly: {
+      doc: 'Auto-Antworten nur ausloesen, wenn der Bot erwaehnt wird',
+      format: Boolean,
+      default: false,
+      env: 'DISCORD_AUTO_REPLY_MENTION_ONLY'
+    },
+    autoReplyChannelIds: {
+      doc: 'Optionale Channel-IDs fuer Auto-Antworten, getrennt mit , oder ; (leer = alle Guild-Textkanaele)',
+      format: String,
+      default: '',
+      env: 'DISCORD_AUTO_REPLY_CHANNEL_IDS'
+    },
+    autoReplyCooldownMs: {
+      doc: 'Cooldown in ms zwischen identischen Auto-Antworten pro Kanal',
+      format: 'int',
+      default: 30000,
+      env: 'DISCORD_AUTO_REPLY_COOLDOWN_MS'
+    },
+    autoReplyRulesFile: {
+      doc: 'Dateipfad zu Auto-Reply-Regeln (JSON-Array)',
+      format: String,
+      default: './data/auto-replies.json',
+      env: 'DISCORD_AUTO_REPLY_RULES_FILE'
+    },
     enabledCommands: {
       doc: 'Aktive Slash-Commands als Komma-Liste (status,uptime,refresh,help,coinflip,dice,eightball,cleanup,translate)',
       format: String,

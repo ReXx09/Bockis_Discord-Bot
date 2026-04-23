@@ -186,7 +186,9 @@ class NotificationManager {
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMessages
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.GuildMembers,
+    GatewayIntentBits.MessageContent
   ]
 });
 const notificationManager = new NotificationManager();
@@ -2039,6 +2041,127 @@ function getConfiguredAutoReactionChannelIds() {
   ));
 }
 
+function isWelcomeEnabled() {
+  return config.get('discord.welcomeEnabled') === true;
+}
+
+function getConfiguredWelcomeChannelId() {
+  const configured = String(config.get('discord.welcomeChannelId') || '').trim();
+  const fallbackNotificationChannel = String(config.get('discord.notificationChannel') || '').trim();
+  const raw = configured || fallbackNotificationChannel;
+  return /^\d+$/.test(raw) ? raw : '';
+}
+
+function getWelcomeMessageTemplate() {
+  return String(config.get('discord.welcomeMessageTemplate') || '').trim()
+    || 'Willkommen {user} auf **{server}**! Viel Spass mit der Community. 👋';
+}
+
+function isAutoReplyEnabled() {
+  return config.get('discord.autoReplyEnabled') === true;
+}
+
+function isAutoReplyMentionOnly() {
+  return config.get('discord.autoReplyMentionOnly') === true;
+}
+
+function getConfiguredAutoReplyChannelIds() {
+  const raw = String(config.get('discord.autoReplyChannelIds') || '').trim();
+  if (!raw) return [];
+  return Array.from(new Set(
+    raw.split(/[;,]/)
+      .map(s => s.trim())
+      .filter(id => /^\d+$/.test(id))
+  ));
+}
+
+function getAutoReplyCooldownMs() {
+  const raw = Number(config.get('discord.autoReplyCooldownMs'));
+  if (!Number.isFinite(raw)) return 30000;
+  return Math.max(1000, Math.min(raw, 3_600_000));
+}
+
+function getAutoReplyRulesFilePath() {
+  const relativePath = String(config.get('discord.autoReplyRulesFile') || './data/auto-replies.json').trim();
+  return path.resolve(__dirname, relativePath);
+}
+
+function renderTextTemplate(input, vars = {}) {
+  return String(input || '').replace(/\{(\w+)\}/g, (_, key) => String(vars[key] ?? `{${key}}`));
+}
+
+const _autoReplyRulesCache = {
+  mtimeMs: -1,
+  rules: []
+};
+
+const _autoReplyLastReplyMs = new Map();
+
+function normalizeAutoReplyRule(rule, index) {
+  if (!rule || typeof rule !== 'object') return null;
+  const trigger = String(rule.trigger || '').trim();
+  const reply = String(rule.reply || '').trim();
+  const modeRaw = String(rule.mode || 'contains').trim().toLowerCase();
+  const mode = ['contains', 'exact', 'regex'].includes(modeRaw) ? modeRaw : 'contains';
+  const caseSensitive = rule.caseSensitive === true;
+  if (!trigger || !reply) return null;
+  return {
+    id: String(rule.id || `rule-${index + 1}`),
+    trigger,
+    reply,
+    mode,
+    caseSensitive,
+  };
+}
+
+function loadAutoReplyRules() {
+  const rulesFile = getAutoReplyRulesFilePath();
+  try {
+    const stat = fs.statSync(rulesFile);
+    if (_autoReplyRulesCache.mtimeMs === stat.mtimeMs) {
+      return _autoReplyRulesCache.rules;
+    }
+    const parsed = JSON.parse(fs.readFileSync(rulesFile, 'utf8'));
+    const rawRules = Array.isArray(parsed) ? parsed : [];
+    const normalized = rawRules
+      .map((r, i) => normalizeAutoReplyRule(r, i))
+      .filter(Boolean)
+      .slice(0, 100);
+    _autoReplyRulesCache.mtimeMs = stat.mtimeMs;
+    _autoReplyRulesCache.rules = normalized;
+    return normalized;
+  } catch (err) {
+    // Datei fehlt oder ist ungültig: einmalig warnen und leere Regeln zurückgeben.
+    if (_autoReplyRulesCache.mtimeMs !== 0) {
+      logger.warn(`Auto-Reply Regeln konnten nicht geladen werden (${rulesFile}): ${err.message}`);
+    }
+    _autoReplyRulesCache.mtimeMs = 0;
+    _autoReplyRulesCache.rules = [];
+    return [];
+  }
+}
+
+function matchAutoReplyRule(content, rules) {
+  const source = String(content || '');
+  for (const rule of rules) {
+    if (rule.mode === 'regex') {
+      try {
+        const re = new RegExp(rule.trigger, rule.caseSensitive ? '' : 'i');
+        if (re.test(source)) return rule;
+      } catch {
+        continue;
+      }
+      continue;
+    }
+
+    const left = rule.caseSensitive ? source : source.toLowerCase();
+    const right = rule.caseSensitive ? rule.trigger : rule.trigger.toLowerCase();
+    if (rule.mode === 'exact' && left === right) return rule;
+    if (rule.mode === 'contains' && left.includes(right)) return rule;
+  }
+  return null;
+}
+
 function isTranslationEnabled() {
   return config.get('discord.translateEnabled') === true;
 }
@@ -2426,6 +2549,34 @@ client.on('interactionCreate', async interaction => {
 });
 // #endregion
 
+client.on('guildMemberAdd', async (member) => {
+  if (!isWelcomeEnabled()) return;
+  if (!member || !member.guild || member.user?.bot) return;
+
+  const channelId = getConfiguredWelcomeChannelId();
+  if (!channelId) return;
+
+  try {
+    const channel = await client.channels.fetch(channelId);
+    if (!channel || !channel.isTextBased?.()) return;
+
+    const content = renderTextTemplate(getWelcomeMessageTemplate(), {
+      user: `<@${member.id}>`,
+      username: member.user?.username || member.displayName || 'User',
+      server: member.guild.name || 'Server',
+    });
+
+    await channel.send({
+      content,
+      allowedMentions: { users: [member.id] },
+    });
+
+    logger.info(`Willkommensnachricht gesendet: ${member.user?.tag || member.id} in #${channel.name || channel.id}`);
+  } catch (err) {
+    logger.warn(`Willkommensnachricht fehlgeschlagen: ${err.message}`);
+  }
+});
+
 client.on('messageCreate', async (message) => {
   if (!isAutoReactionEnabled()) return;
   if (!message.inGuild()) return;
@@ -2445,6 +2596,57 @@ client.on('messageCreate', async (message) => {
     } catch (err) {
       logger.warn(`Auto-Reaction fehlgeschlagen in #${message.channel?.name || message.channelId} mit ${emoji}: ${err.message}`);
     }
+  }
+});
+
+client.on('messageCreate', async (message) => {
+  if (!isAutoReplyEnabled()) return;
+  if (!message.inGuild()) return;
+  if (message.author?.bot) return;
+  if (message.system) return;
+  if (!message.channel || message.channel.type !== ChannelType.GuildText) return;
+
+  const content = String(message.content || '').trim();
+  if (!content) return;
+
+  const allowedChannelIds = getConfiguredAutoReplyChannelIds();
+  if (allowedChannelIds.length && !allowedChannelIds.includes(message.channelId)) return;
+
+  if (isAutoReplyMentionOnly()) {
+    const botId = client.user?.id;
+    if (!botId || !message.mentions?.users?.has(botId)) return;
+  }
+
+  const rules = loadAutoReplyRules();
+  if (!rules.length) return;
+
+  const matchedRule = matchAutoReplyRule(content, rules);
+  if (!matchedRule) return;
+
+  const now = Date.now();
+  const cooldownMs = getAutoReplyCooldownMs();
+  const key = `${message.guildId}:${message.channelId}:${matchedRule.id}`;
+  const lastAt = _autoReplyLastReplyMs.get(key) || 0;
+  if (now - lastAt < cooldownMs) return;
+  _autoReplyLastReplyMs.set(key, now);
+
+  const replyText = renderTextTemplate(matchedRule.reply, {
+    user: `<@${message.author.id}>`,
+    username: message.author.username,
+    server: message.guild?.name || 'Server',
+    channel: `<#${message.channelId}>`,
+  });
+
+  try {
+    await message.reply({
+      content: replyText,
+      allowedMentions: {
+        repliedUser: false,
+        users: [message.author.id],
+      },
+    });
+  } catch (err) {
+    logger.warn(`Auto-Reply fehlgeschlagen in #${message.channel?.name || message.channelId}: ${err.message}`);
   }
 });
 
