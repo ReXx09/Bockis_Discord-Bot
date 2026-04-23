@@ -146,6 +146,43 @@ const config = convict({
       default: './auto-replies.json',
       env: 'DISCORD_AUTO_REPLY_RULES_FILE'
     },
+    githubWatchEnabled: {
+      doc: 'GitHub-Update-Watcher aktivieren',
+      format: Boolean,
+      default: false,
+      env: 'DISCORD_GITHUB_WATCH_ENABLED'
+    },
+    githubInfoChannelId: {
+      doc: 'Channel-ID fuer GitHub-Update-Posts',
+      format: String,
+      default: '',
+      env: 'DISCORD_GITHUB_CHANNEL_ID'
+    },
+    githubRepos: {
+      doc: 'Zu ueberwachende GitHub-Repos, getrennt mit ; oder , (Format: owner/repo)',
+      format: String,
+      default: '',
+      env: 'DISCORD_GITHUB_REPOS'
+    },
+    githubMode: {
+      doc: 'Was ueberwacht werden soll: releases, commits oder both',
+      format: ['releases', 'commits', 'both'],
+      default: 'both',
+      env: 'DISCORD_GITHUB_MODE'
+    },
+    githubPollIntervalMs: {
+      doc: 'Poll-Intervall in ms (min. 60000)',
+      format: 'int',
+      default: 600000,
+      env: 'DISCORD_GITHUB_POLL_INTERVAL_MS'
+    },
+    githubToken: {
+      doc: 'Optionaler GitHub Personal Access Token (erhoeht Rate-Limit von 60 auf 5000 req/h)',
+      format: String,
+      default: '',
+      env: 'GITHUB_TOKEN',
+      sensitive: true
+    },
     enabledCommands: {
       doc: 'Aktive Slash-Commands als Komma-Liste (status,uptime,refresh,help,coinflip,dice,eightball,cleanup,translate)',
       format: String,

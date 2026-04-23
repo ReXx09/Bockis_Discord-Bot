@@ -223,6 +223,7 @@ let lastChannelNameMs      = _initState.lastChannelNameMs  ?? 0;
 let serviceCategoryId      = _initState.serviceCategoryId  ?? null;
 let serviceChannels        = _initState.serviceChannels     ?? {};  // { monitorName: channelId }
 const _svcRenameMs         = _initState.svcRenameMs         ?? {};  // Rate-Limit-Zeitstempel pro Kanal-ID
+let _githubLastSeen        = _initState.githubLastSeen      ?? {};  // { 'owner/repo': { commitSha, releaseTag, commitSince } }
 
 function persistState() {
   saveState({
@@ -232,7 +233,8 @@ function persistState() {
     lastChannelNameMs,
     serviceCategoryId,
     serviceChannels,
-    svcRenameMs: _svcRenameMs
+    svcRenameMs: _svcRenameMs,
+    githubLastSeen: _githubLastSeen
   });
 }
 // #endregion
@@ -2705,6 +2707,160 @@ function initializeUpdateCycle() {
   // DB-Cleanup einmal täglich ausführen
   cleanupOldEntries();
   setInterval(cleanupOldEntries, 24 * 60 * 60 * 1000);
+  initializeGithubWatcher();
+}
+// #endregion
+
+// #region 23.5 GITHUB-WATCHER
+// Pollt konfigurierte GitHub-Repos und postet neue Releases/Commits als Embed
+// in den konfigurierten Info-Kanal.
+
+/**
+ * Gibt geparste Repo-Liste zurück: ['owner/repo', ...]
+ * Trenner: ; oder ,
+ */
+function getConfiguredGithubRepos() {
+  const raw = config.get('discord.githubRepos');
+  if (!raw) return [];
+  return raw
+    .split(/[;,]/)
+    .map(r => r.trim())
+    .filter(r => /^[\w.-]+\/[\w.-]+$/.test(r))
+    .slice(0, 20);
+}
+
+/** Baut Authorization-Header wenn GITHUB_TOKEN gesetzt ist */
+function getGithubAxiosHeaders() {
+  const token = config.get('discord.githubToken');
+  return token ? { Authorization: `Bearer ${token}`, 'User-Agent': 'Bockis-Discord-Bot/1.0' } : { 'User-Agent': 'Bockis-Discord-Bot/1.0' };
+}
+
+/** Erstellt einen Discord-Embed für ein neues Release */
+function buildReleaseEmbed(repo, release) {
+  const body = (release.body || '').slice(0, 2000);
+  return new EmbedBuilder()
+    .setColor(0x6e5494)
+    .setTitle(`🚀 Neues Release: ${release.tag_name}`)
+    .setURL(release.html_url)
+    .setAuthor({ name: `${repo}`, url: `https://github.com/${repo}` })
+    .setDescription(body || '*Keine Release-Notizen.*')
+    .addFields(
+      { name: 'Veröffentlicht von', value: release.author?.login ?? 'Unbekannt', inline: true },
+      { name: 'Pre-Release', value: release.prerelease ? 'Ja' : 'Nein', inline: true }
+    )
+    .setTimestamp(new Date(release.published_at))
+    .setFooter({ text: 'GitHub Release' });
+}
+
+/** Erstellt einen Discord-Embed für neue Commits (bis zu 10) */
+function buildCommitEmbed(repo, commits) {
+  const lines = commits.slice(0, 10).map(c => {
+    const sha = c.sha.slice(0, 7);
+    const msg = (c.commit.message.split('\n')[0] || '').slice(0, 72);
+    const author = c.commit.author?.name ?? 'Unbekannt';
+    return `[\`${sha}\`](${c.html_url}) ${msg} — *${author}*`;
+  });
+  return new EmbedBuilder()
+    .setColor(0x238636)
+    .setTitle(`📦 ${commits.length} neuer Commit${commits.length > 1 ? 's' : ''} in ${repo}`)
+    .setURL(`https://github.com/${repo}/commits`)
+    .setDescription(lines.join('\n'))
+    .setTimestamp()
+    .setFooter({ text: 'GitHub Commits' });
+}
+
+/** Pollt Releases für ein Repo und postet ggf. ein Embed */
+async function pollGithubRelease(repo, channel) {
+  try {
+    const resp = await axios.get(`https://api.github.com/repos/${repo}/releases/latest`, {
+      headers: getGithubAxiosHeaders(),
+      timeout: 10_000
+    });
+    const release = resp.data;
+    const tag = release.tag_name;
+    const lastTag = _githubLastSeen[repo]?.releaseTag;
+    if (tag && tag !== lastTag) {
+      await channel.send({ embeds: [buildReleaseEmbed(repo, release)] });
+      _githubLastSeen[repo] = { ..._githubLastSeen[repo], releaseTag: tag };
+      persistState();
+      logger.info(`[GitHub-Watcher] Neues Release gepostet: ${repo}@${tag}`);
+    }
+  } catch (err) {
+    if (err.response?.status === 404) return; // kein Release vorhanden
+    logger.warn(`[GitHub-Watcher] Release-Poll fehlgeschlagen (${repo}): ${err.message}`);
+  }
+}
+
+/** Pollt Commits für ein Repo und postet ggf. ein Embed */
+async function pollGithubCommits(repo, channel) {
+  try {
+    // since = letzter bekannter Commit-Zeitstempel oder 1h vor Bot-Start
+    const since = _githubLastSeen[repo]?.commitSince
+      ?? new Date(Date.now() - 3_600_000).toISOString();
+    const resp = await axios.get(`https://api.github.com/repos/${repo}/commits`, {
+      headers: getGithubAxiosHeaders(),
+      params: { per_page: 10, since },
+      timeout: 10_000
+    });
+    // Rate-Limit prüfen
+    const remaining = parseInt(resp.headers['x-ratelimit-remaining'] ?? '60', 10);
+    if (remaining === 0) {
+      logger.warn('[GitHub-Watcher] Rate-Limit erreicht — Commit-Poll übersprungen');
+      return;
+    }
+    const commits = resp.data;
+    if (!Array.isArray(commits) || commits.length === 0) return;
+    await channel.send({ embeds: [buildCommitEmbed(repo, commits)] });
+    // Neuesten Commit-Timestamp als neues since speichern
+    const newest = commits[0]?.commit?.author?.date ?? new Date().toISOString();
+    // +1ms damit der nächste Poll diesen Commit nicht nochmal holt
+    const newSince = new Date(new Date(newest).getTime() + 1).toISOString();
+    _githubLastSeen[repo] = { ..._githubLastSeen[repo], commitSince: newSince };
+    persistState();
+    logger.info(`[GitHub-Watcher] ${commits.length} neuer/e Commit/s gepostet: ${repo}`);
+  } catch (err) {
+    logger.warn(`[GitHub-Watcher] Commit-Poll fehlgeschlagen (${repo}): ${err.message}`);
+  }
+}
+
+/** Ein vollständiger Watcher-Zyklus über alle konfigurierten Repos */
+async function runGithubWatcherCycle() {
+  const repos = getConfiguredGithubRepos();
+  if (repos.length === 0) return;
+  const channelId = config.get('discord.githubInfoChannelId');
+  if (!channelId) return;
+  let channel;
+  try {
+    channel = await client.channels.fetch(channelId);
+  } catch (err) {
+    logger.warn(`[GitHub-Watcher] Kanal ${channelId} nicht abrufbar: ${err.message}`);
+    return;
+  }
+  const mode = config.get('discord.githubMode');
+  for (const repo of repos) {
+    if (mode === 'releases' || mode === 'both') await pollGithubRelease(repo, channel);
+    if (mode === 'commits'  || mode === 'both') await pollGithubCommits(repo, channel);
+  }
+}
+
+/** Startet den GitHub-Watcher (wird in initializeUpdateCycle aufgerufen) */
+function initializeGithubWatcher() {
+  if (!config.get('discord.githubWatchEnabled')) return;
+  const repos = getConfiguredGithubRepos();
+  if (repos.length === 0) {
+    logger.warn('[GitHub-Watcher] Keine gültigen Repos konfiguriert (DISCORD_GITHUB_REPOS).');
+    return;
+  }
+  const channelId = config.get('discord.githubInfoChannelId');
+  if (!channelId) {
+    logger.warn('[GitHub-Watcher] Kein Info-Kanal konfiguriert (DISCORD_GITHUB_CHANNEL_ID).');
+    return;
+  }
+  const interval = Math.max(60_000, config.get('discord.githubPollIntervalMs'));
+  logger.info(`[GitHub-Watcher] gestartet — ${repos.length} Repo(s), Intervall ${interval / 1000}s, Modus: ${config.get('discord.githubMode')}`);
+  // Ersten Zyklus leicht verzögert starten damit der Client vollständig bereit ist
+  setTimeout(runGithubWatcherCycle, 5_000);
+  setInterval(runGithubWatcherCycle, interval);
 }
 // #endregion
 
