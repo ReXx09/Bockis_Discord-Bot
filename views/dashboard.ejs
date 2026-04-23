@@ -886,7 +886,7 @@
           <button class="cfg-nav-btn active" data-cfg-pane-btn="bot" onclick="setActiveSettingsPane('bot')">🤖 Bot & IDs</button>
           <button class="cfg-nav-btn" data-cfg-pane-btn="commands" onclick="setActiveSettingsPane('commands')">⌨️ Bot-Kommandos</button>
           <button class="cfg-nav-btn" data-cfg-pane-btn="channels" onclick="setActiveSettingsPane('channels')">🧩 Dienst-Kanäle</button>
-          <button class="cfg-nav-btn" data-cfg-pane-btn="renderer" onclick="setActiveSettingsPane('renderer')">📡 Discord Renderer</button>
+          <button class="cfg-nav-btn" data-cfg-pane-btn="renderer" onclick="setActiveSettingsPane('renderer')">📡 Status-Renderer</button>
           <button class="cfg-nav-btn" data-cfg-pane-btn="security" onclick="setActiveSettingsPane('security')">🗂 Sicherheit & API</button>
           <button class="cfg-nav-btn" data-cfg-pane-btn="raspi" onclick="setActiveSettingsPane('raspi')">🍓 Raspi & Web</button>
           <button class="cfg-nav-btn" data-cfg-pane-btn="welcome" onclick="setActiveSettingsPane('welcome')">👋 Willkommen & Auto-Reply</button>
@@ -1119,16 +1119,6 @@
             </div>
           </div>
         </div>
-        <div class="cfg-field">
-          <label class="cfg-label" for="cfgStatusCh">Status-Channel ID</label>
-          <input class="cfg-input" id="cfgStatusCh" type="text" autocomplete="off"
-                 placeholder="z. B. 123456789012345678">
-        </div>
-        <div class="cfg-field">
-          <label class="cfg-label" for="cfgNotifCh">Benachrichtigungs-Channel ID</label>
-          <input class="cfg-input" id="cfgNotifCh" type="text" autocomplete="off"
-                 placeholder="z. B. 123456789012345678">
-        </div>
         <!-- Nachrichten-Cleanup Section -->
         <div class="cfg-section">
           <div class="cfg-section-header" onclick="toggleConfigSection(this)">
@@ -1225,11 +1215,6 @@
             </div>
           </div>
         </div>
-        <div class="cfg-field">
-          <label class="cfg-label" for="cfgGuildId">Guild ID</label>
-          <input class="cfg-input" id="cfgGuildId" type="text" autocomplete="off"
-                 placeholder="z. B. 123456789012345678">
-        </div>
       </div>
 
       <div class="cfg-pane-card hidden" data-cfg-pane="channels">
@@ -1276,7 +1261,7 @@
           <div class="cfg-section-content">
             <div class="cfg-section-body">
               <div class="cfg-field">
-                <label class="cfg-label" for="cfgMonitoredServices">Monitored Services</label>
+                <label class="cfg-label" for="cfgMonitoredServices">Überwachte Services</label>
           <input class="cfg-input" id="cfgMonitoredServices" type="text" autocomplete="off"
                  placeholder="Kommagetrennt, z. B. website,api,database">
           <div class="cfg-hint">Kommagetrennte Whitelist. Wenn leer, werden Einträge aus Kanal-Mapping verwendet.</div>
@@ -1443,9 +1428,10 @@
           <div class="cfg-section-content">
             <div class="cfg-section-body">
         <div class="cfg-field" style="margin-bottom:0">
-          <label class="cfg-label" for="cfgUpdateInterval">Update Intervall (ms)</label>
+          <label class="cfg-label" for="cfgUpdateInterval">Update-Intervall (ms)</label>
           <input class="cfg-input" id="cfgUpdateInterval" type="number" min="10000" step="1000"
                  placeholder="300000">
+          <div class="cfg-hint">Wie oft die Service-Kanäle mit aktuellem Status synchronisiert werden. Standard: 300000 ms (5 Minuten).</div>
               </div>
             </div>
           </div>
@@ -1592,7 +1578,7 @@
       </div>
 
       <div class="cfg-pane-card hidden" data-cfg-pane="security">
-        <div class="cfg-pane-title">🗂 .env / Sicherheit</div>
+        <div class="cfg-pane-title">🗂 Sicherheit & API</div>
         <!-- Uptime Kuma Section -->
         <div class="cfg-section open">
           <div class="cfg-section-header" onclick="toggleConfigSection(this)">
@@ -1642,7 +1628,7 @@
                  placeholder="Neues Passwort eingeben (leer lassen = unverändert)">
         </div>
         <div class="cfg-field" style="margin-bottom:0">
-          <label class="cfg-label" for="cfgDbStorage">DB Storage Pfad</label>
+          <label class="cfg-label" for="cfgDbStorage">Datenbank-Pfad</label>
           <input class="cfg-input" id="cfgDbStorage" type="text" autocomplete="off"
                  placeholder="./data/status.db">
               </div>
