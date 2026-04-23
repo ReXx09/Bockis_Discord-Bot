@@ -1347,7 +1347,20 @@
           </select>
           <div class="cfg-hint">Bei <code>pretty</code> und <code>mono</code> bleibt der Name so lesbar wie möglich. Wichtig: Discord normalisiert Textkanalnamen oft selbst auf Kleinbuchstaben oder lehnt bestimmte Unicode-Zeichen ab. Bei Ablehnung wird automatisch auf den sicheren Slug zurückgefallen.</div>
           <div class="cfg-hint" id="cfgChannelNamePreview" style="margin-top:6px"></div>
+              </div>
+            </div>
+          </div>
         </div>
+        <!-- Unicode Text Converter Section -->
+        <div class="cfg-section">
+          <div class="cfg-section-header" onclick="toggleConfigSection(this)">
+            <div class="cfg-section-header-title">
+              <span class="cfg-section-toggle">▾</span>
+              <span>🎨 Unicode-Text Konverter</span>
+            </div>
+          </div>
+          <div class="cfg-section-content">
+            <div class="cfg-section-body">
         <div class="cfg-field" style="border:1px solid var(--border);border-radius:8px;padding:12px;background:rgba(255,255,255,.01)">
           <label class="cfg-label" for="cfgUnicodeInput">Unicode-Schrift Konverter (Copy &amp; Paste)</label>
           <div class="cfg-inline-action">
@@ -1415,11 +1428,27 @@
             <button class="btn" type="button" onclick="copyUnicodeStyledText()">📋 Ergebnis kopieren</button>
           </div>
           <div class="cfg-hint">Nur ein Hilfswerkzeug für manuelles Copy/Paste in Discord. Nicht jede Unicode-Schrift wird in jedem Client gleich dargestellt.</div>
+              </div>
+            </div>
+          </div>
         </div>
+        <!-- Update Interval Section -->
+        <div class="cfg-section">
+          <div class="cfg-section-header" onclick="toggleConfigSection(this)">
+            <div class="cfg-section-header-title">
+              <span class="cfg-section-toggle">▾</span>
+              <span>⏱ Update-Intervall</span>
+            </div>
+          </div>
+          <div class="cfg-section-content">
+            <div class="cfg-section-body">
         <div class="cfg-field" style="margin-bottom:0">
           <label class="cfg-label" for="cfgUpdateInterval">Update Intervall (ms)</label>
           <input class="cfg-input" id="cfgUpdateInterval" type="number" min="10000" step="1000"
                  placeholder="300000">
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
