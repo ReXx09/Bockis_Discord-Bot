@@ -143,7 +143,7 @@ const config = convict({
     autoReplyRulesFile: {
       doc: 'Dateipfad zu Auto-Reply-Regeln (JSON-Array)',
       format: String,
-      default: './data/auto-replies.json',
+      default: './auto-replies.json',
       env: 'DISCORD_AUTO_REPLY_RULES_FILE'
     },
     enabledCommands: {

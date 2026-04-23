@@ -1,0 +1,16 @@
+[
+  {
+    "id": "hello",
+    "trigger": "hallo bot",
+    "mode": "contains",
+    "reply": "Hey {user}! 👋 Wenn du Hilfe brauchst, nutze /help.",
+    "caseSensitive": false
+  },
+  {
+    "id": "status",
+    "trigger": "status?",
+    "mode": "contains",
+    "reply": "Aktuellen Service-Status findest du im Status-Channel oder mit /status ✅",
+    "caseSensitive": false
+  }
+]
