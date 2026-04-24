@@ -12,5 +12,40 @@
     "mode": "contains",
     "reply": "Aktuellen Service-Status findest du im Status-Channel oder mit /status ✅",
     "caseSensitive": false
+  },
+  {
+    "id": "good-evening",
+    "trigger": "schönen abend",
+    "mode": "contains",
+    "reply": "Schönen Abend! 🌙",
+    "caseSensitive": false
+  },
+  {
+    "id": "good-day",
+    "trigger": "schönen tag",
+    "mode": "contains",
+    "reply": "Schönen Tag noch! ☀️",
+    "caseSensitive": false
+  },
+  {
+    "id": "greeting",
+    "trigger": "\\b(hallo|huhu|hallöchen|hey|hi|hello|winke|servus|tach|moin)\\b",
+    "mode": "regex",
+    "reply": "Hallo! 👋",
+    "caseSensitive": false
+  },
+  {
+    "id": "weekend",
+    "trigger": "schönes wochenende",
+    "mode": "contains",
+    "reply": "Dir auch ein schönes Wochenende! 🎉",
+    "caseSensitive": false
+  },
+  {
+    "id": "weekdays",
+    "trigger": "schönen\\s+(montag|dienstag|mittwoch|donnerstag|freitag|samstag|sonntag)",
+    "mode": "regex",
+    "reply": "Dir auch einen schönen Tag! ✨",
+    "caseSensitive": false
   }
 ]
