@@ -4059,13 +4059,13 @@
   }
 
   function _parseEnabledCommands(value) {
-    const allowed = ['status', 'uptime', 'refresh', 'help', 'coinflip', 'dice', 'eightball', 'cleanup', 'translate'];
+    const allowed = ['status', 'uptime', 'refresh', 'help', 'coinflip', 'dice', 'eightball', 'cleanup', 'translate', 'ping', 'botinfo', 'serverstatus', 'ki', 'wetter', 'subscribe', 'remind', 'quote', 'poll', 'avatar', 'userinfo'];
     const entries = String(value || '')
       .split(',')
       .map(s => s.trim().toLowerCase())
       .filter(Boolean);
     const unique = Array.from(new Set(entries)).filter(cmd => allowed.includes(cmd));
-    return unique.length ? unique : ['status', 'uptime', 'refresh', 'help', 'coinflip', 'dice', 'eightball', 'translate'];
+    return unique.length ? unique : ['status', 'uptime', 'refresh', 'help', 'coinflip', 'dice', 'eightball', 'cleanup', 'translate'];
   }
 
   // ── Discord-Kanal-Browser für Mapping-Übernahme ──────────────────────────
