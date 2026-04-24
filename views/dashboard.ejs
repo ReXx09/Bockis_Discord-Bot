@@ -901,6 +901,7 @@
           <button class="cfg-nav-btn" data-cfg-pane-btn="raspi" onclick="setActiveSettingsPane('raspi')">🍓 Raspi & Web</button>
           <button class="cfg-nav-btn" data-cfg-pane-btn="welcome" onclick="setActiveSettingsPane('welcome')">👋 Willkommen & Auto-Reply</button>
           <button class="cfg-nav-btn" data-cfg-pane-btn="github" onclick="setActiveSettingsPane('github')">🐙 GitHub-Watcher</button>
+          <button class="cfg-nav-btn" data-cfg-pane-btn="aichat" onclick="setActiveSettingsPane('aichat')">🤖 KI-Chat (OpenAI)</button>
         </div>
       </div>
 
@@ -2011,6 +2012,106 @@
                  placeholder="Leer lassen = unverändert">
           <div class="cfg-hint">Erhöht das Rate-Limit von 60 auf 5000 Anfragen/Stunde. Scope: <code>public_repo</code> reicht aus.</div>
               </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── PANE: KI-CHAT ─────────────────────────────── -->
+      <div class="cfg-pane-card hidden" data-cfg-pane="aichat">
+        <div class="cfg-pane-title">🤖 KI-Chat (OpenAI / ChatGPT)</div>
+        <div class="cfg-section open">
+          <div class="cfg-section-header" onclick="toggleConfigSection(this)">
+            <div class="cfg-section-header-title">
+              <span class="cfg-section-toggle">▾</span>
+              <span>⚙️ Grundeinstellungen</span>
+            </div>
+          </div>
+          <div class="cfg-section-content">
+            <div class="cfg-section-body">
+        <div class="cfg-field" style="border:1px solid var(--border);border-radius:8px;padding:12px;background:rgba(255,255,255,.01)">
+          <label class="cfg-label">KI-Chat aktivieren</label>
+          <div style="display:flex;align-items:center;gap:12px;margin-top:2px">
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px">
+              <input type="checkbox" id="cfgOpenaiEnabled" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
+              <span>Bot antwortet auf @Mentions und Direktnachrichten mit ChatGPT</span>
+            </label>
+          </div>
+          <div class="cfg-hint">Wenn aktiviert: Nutzer können den Bot direkt per @Erwähnung oder DM ansprechen. Der Bot antwortet mit KI-generierten Antworten.</div>
+        </div>
+        <div class="cfg-field">
+          <label class="cfg-label" for="cfgOpenaiApiKey">OpenAI API-Key</label>
+          <input class="cfg-input" id="cfgOpenaiApiKey" type="password" autocomplete="off" placeholder="sk-...">
+          <div class="cfg-hint">Erhältlich unter <a href="https://platform.openai.com/api-keys" target="_blank" style="color:var(--blue)">platform.openai.com/api-keys</a>. Der Key wird sicher in der .env gespeichert.</div>
+        </div>
+        <div class="cfg-field">
+          <label class="cfg-label" for="cfgOpenaiModel">KI-Modell</label>
+          <select class="cfg-input" id="cfgOpenaiModel">
+            <option value="gpt-4o-mini">gpt-4o-mini (günstig &amp; schnell – empfohlen)</option>
+            <option value="gpt-4o">gpt-4o (leistungsstark)</option>
+            <option value="gpt-3.5-turbo">gpt-3.5-turbo (legacy)</option>
+          </select>
+          <div class="cfg-hint">gpt-4o-mini ist die günstigste Option und für Discord-Chats völlig ausreichend.</div>
+        </div>
+        <div class="cfg-field">
+          <label class="cfg-label" for="cfgOpenaiPersonaName">Bot-Name / Persönlichkeit</label>
+          <input class="cfg-input" id="cfgOpenaiPersonaName" type="text" autocomplete="off" placeholder="Bockis">
+          <div class="cfg-hint">Der Name den der Bot im Chat verwendet. Beeinflusst auch die Standard-Persönlichkeit im System-Prompt.</div>
+        </div>
+            </div>
+          </div>
+        </div>
+        <div class="cfg-section">
+          <div class="cfg-section-header" onclick="toggleConfigSection(this)">
+            <div class="cfg-section-header-title">
+              <span class="cfg-section-toggle">▾</span>
+              <span>💬 Persönlichkeit &amp; Verhalten</span>
+            </div>
+          </div>
+          <div class="cfg-section-content">
+            <div class="cfg-section-body">
+        <div class="cfg-field">
+          <label class="cfg-label" for="cfgOpenaiSystemPrompt">System-Prompt (Persönlichkeit)</label>
+          <textarea class="cfg-input" id="cfgOpenaiSystemPrompt" rows="4" style="resize:vertical;font-family:monospace;font-size:12px" placeholder="Du bist Bockis, ein freundlicher Discord-Bot. Antworte immer auf Deutsch, kurz und präzise…"></textarea>
+          <div class="cfg-hint">Leer lassen für die Standard-Persönlichkeit. Hier kannst du dem Bot eine eigene Persönlichkeit, Sprache und Verhaltensregeln geben.</div>
+        </div>
+        <div class="cfg-field">
+          <label class="cfg-label" for="cfgOpenaiMaxTokens">Maximale Antwortlänge (Tokens)</label>
+          <input class="cfg-input" id="cfgOpenaiMaxTokens" type="number" min="50" max="2000" step="50" placeholder="600">
+          <div class="cfg-hint">Ungefähr 1 Token = 0,75 Wörter. 600 Tokens ≈ 450 Wörter. Höhere Werte = längere Antworten = höhere Kosten.</div>
+        </div>
+        <div class="cfg-field">
+          <label class="cfg-label" for="cfgOpenaiRateLimit">Rate-Limit (Anfragen/Minute pro Nutzer)</label>
+          <input class="cfg-input" id="cfgOpenaiRateLimit" type="number" min="1" max="30" step="1" placeholder="5">
+          <div class="cfg-hint">Maximale Anzahl Anfragen pro Nutzer pro Minute. Schützt vor Missbrauch und hält die API-Kosten in Grenzen.</div>
+        </div>
+            </div>
+          </div>
+        </div>
+        <div class="cfg-section">
+          <div class="cfg-section-header" onclick="toggleConfigSection(this)">
+            <div class="cfg-section-header-title">
+              <span class="cfg-section-toggle">▾</span>
+              <span>📍 Kanal &amp; Zugriffssteuerung</span>
+            </div>
+          </div>
+          <div class="cfg-section-content">
+            <div class="cfg-section-body">
+        <div class="cfg-field">
+          <label class="cfg-label" for="cfgOpenaiChannelIds">Erlaubte Kanal-IDs (optional)</label>
+          <input class="cfg-input" id="cfgOpenaiChannelIds" type="text" autocomplete="off" placeholder="123456789;987654321 (leer = alle Kanäle)">
+          <div class="cfg-hint">Nur in diesen Kanälen reagiert der Bot auf Mentions. Leer = keine Einschränkung. IDs mit <code>;</code> oder <code>,</code> trennen.</div>
+        </div>
+        <div class="cfg-field" style="border:1px solid var(--border);border-radius:8px;padding:12px;background:rgba(255,255,255,.01)">
+          <label class="cfg-label">Direktnachrichten (DMs) erlauben</label>
+          <div style="display:flex;align-items:center;gap:12px;margin-top:2px">
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px">
+              <input type="checkbox" id="cfgOpenaiAllowDMs" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
+              <span>Bot antwortet auch auf private Direktnachrichten</span>
+            </label>
+          </div>
+          <div class="cfg-hint">Wenn aktiviert, kann jeder Nutzer den Bot per DM kontaktieren (unabhängig von den Kanal-Einschränkungen oben).</div>
+        </div>
             </div>
           </div>
         </div>
@@ -4342,7 +4443,21 @@
         ? `Aktuell: ${d.GITHUB_TOKEN} — leer lassen = unverändert`
         : 'Token eingeben (optional)';
 
-      if (force) clearConfigDirtyTracking();
+        // KI-Chat (OpenAI)
+        setCheckboxValue('cfgOpenaiEnabled', (d.OPENAI_ENABLED || 'false') === 'true', { force });
+        setCfg('cfgOpenaiApiKey', '');
+        document.getElementById('cfgOpenaiApiKey').placeholder = d.OPENAI_API_KEY
+          ? 'sk-… (gesetzt – leer lassen = unverändert)'
+          : 'sk-… (noch nicht gesetzt)';
+        setCfg('cfgOpenaiModel', d.OPENAI_MODEL || 'gpt-4o-mini');
+        setCfg('cfgOpenaiPersonaName', d.OPENAI_PERSONA_NAME || 'Bockis');
+        setCfg('cfgOpenaiSystemPrompt', d.OPENAI_SYSTEM_PROMPT || '');
+        setCfg('cfgOpenaiMaxTokens', d.OPENAI_MAX_TOKENS || '600');
+        setCfg('cfgOpenaiRateLimit', d.OPENAI_RATE_LIMIT_PER_MINUTE || '5');
+        setCfg('cfgOpenaiChannelIds', d.OPENAI_CHANNEL_IDS || '');
+        setCheckboxValue('cfgOpenaiAllowDMs', (d.OPENAI_ALLOW_DMS || 'true') === 'true', { force });
+
+        if (force) clearConfigDirtyTracking();
     } catch (e) {
       document.getElementById('cfgStatus').textContent = 'Ladefehler: ' + e.message;
       document.getElementById('cfgStatus').className = 'err';
@@ -4513,7 +4628,23 @@
     const curGithubWatch = githubWatchEl.checked ? 'true' : 'false';
     if (curGithubWatch !== (githubWatchEl.dataset.initialValue || 'false')) body.DISCORD_GITHUB_WATCH_ENABLED = curGithubWatch;
 
-    const indicatorEl = document.getElementById('cfgChannelIndicator');
+      // KI-Chat (OpenAI)
+      maybeSetChanged(body, 'OPENAI_MODEL', 'cfgOpenaiModel');
+      maybeSetChanged(body, 'OPENAI_PERSONA_NAME', 'cfgOpenaiPersonaName', { allowEmpty: true });
+      maybeSetChanged(body, 'OPENAI_SYSTEM_PROMPT', 'cfgOpenaiSystemPrompt', { allowEmpty: true });
+      maybeSetChanged(body, 'OPENAI_MAX_TOKENS', 'cfgOpenaiMaxTokens');
+      maybeSetChanged(body, 'OPENAI_RATE_LIMIT_PER_MINUTE', 'cfgOpenaiRateLimit');
+      maybeSetChanged(body, 'OPENAI_CHANNEL_IDS', 'cfgOpenaiChannelIds', { allowEmpty: true });
+      const openaiApiKeyEl = document.getElementById('cfgOpenaiApiKey');
+      if (openaiApiKeyEl.value.trim()) body.OPENAI_API_KEY = openaiApiKeyEl.value.trim();
+      const openaiEnabledEl = document.getElementById('cfgOpenaiEnabled');
+      const curOpenaiEnabled = openaiEnabledEl.checked ? 'true' : 'false';
+      if (curOpenaiEnabled !== (openaiEnabledEl.dataset.initialValue || 'false')) body.OPENAI_ENABLED = curOpenaiEnabled;
+      const openaiDMsEl = document.getElementById('cfgOpenaiAllowDMs');
+      const curOpenaiDMs = openaiDMsEl.checked ? 'true' : 'false';
+      if (curOpenaiDMs !== (openaiDMsEl.dataset.initialValue || 'true')) body.OPENAI_ALLOW_DMS = curOpenaiDMs;
+
+      const indicatorEl = document.getElementById('cfgChannelIndicator');
     const currentIndicator = indicatorEl.checked ? 'true' : 'false';
     const initialIndicator = indicatorEl.dataset.initialValue || 'true';
     if (currentIndicator !== initialIndicator) {

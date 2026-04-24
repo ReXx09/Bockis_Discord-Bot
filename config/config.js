@@ -98,91 +98,6 @@ const config = convict({
       default: '',
       env: 'DISCORD_AUTO_REACTION_CHANNEL_IDS'
     },
-    welcomeEnabled: {
-      doc: 'Begruessungsnachricht fuer neue Mitglieder aktivieren',
-      format: Boolean,
-      default: false,
-      env: 'DISCORD_WELCOME_ENABLED'
-    },
-    welcomeChannelId: {
-      doc: 'Channel-ID fuer Begruessungsnachrichten (leer = DISCORD_NOTIFICATION_CHANNEL)',
-      format: String,
-      default: '',
-      env: 'DISCORD_WELCOME_CHANNEL_ID'
-    },
-    welcomeMessageTemplate: {
-      doc: 'Template fuer Begruessung: Platzhalter {user}, {username}, {server}',
-      format: String,
-      default: 'Willkommen {user} auf **{server}**! Viel Spass mit der Community. 👋',
-      env: 'DISCORD_WELCOME_MESSAGE_TEMPLATE'
-    },
-    autoReplyEnabled: {
-      doc: 'Automatische Bot-Antworten auf Triggernachrichten aktivieren',
-      format: Boolean,
-      default: false,
-      env: 'DISCORD_AUTO_REPLY_ENABLED'
-    },
-    autoReplyMentionOnly: {
-      doc: 'Auto-Antworten nur ausloesen, wenn der Bot erwaehnt wird',
-      format: Boolean,
-      default: false,
-      env: 'DISCORD_AUTO_REPLY_MENTION_ONLY'
-    },
-    autoReplyChannelIds: {
-      doc: 'Optionale Channel-IDs fuer Auto-Antworten, getrennt mit , oder ; (leer = alle Guild-Textkanaele)',
-      format: String,
-      default: '',
-      env: 'DISCORD_AUTO_REPLY_CHANNEL_IDS'
-    },
-    autoReplyCooldownMs: {
-      doc: 'Cooldown in ms zwischen identischen Auto-Antworten pro Kanal',
-      format: 'int',
-      default: 30000,
-      env: 'DISCORD_AUTO_REPLY_COOLDOWN_MS'
-    },
-    autoReplyRulesFile: {
-      doc: 'Dateipfad zu Auto-Reply-Regeln (JSON-Array)',
-      format: String,
-      default: './auto-replies.json',
-      env: 'DISCORD_AUTO_REPLY_RULES_FILE'
-    },
-    githubWatchEnabled: {
-      doc: 'GitHub-Update-Watcher aktivieren',
-      format: Boolean,
-      default: false,
-      env: 'DISCORD_GITHUB_WATCH_ENABLED'
-    },
-    githubInfoChannelId: {
-      doc: 'Channel-ID fuer GitHub-Update-Posts',
-      format: String,
-      default: '',
-      env: 'DISCORD_GITHUB_CHANNEL_ID'
-    },
-    githubRepos: {
-      doc: 'Zu ueberwachende GitHub-Repos, getrennt mit ; oder , (Format: owner/repo)',
-      format: String,
-      default: '',
-      env: 'DISCORD_GITHUB_REPOS'
-    },
-    githubMode: {
-      doc: 'Was ueberwacht werden soll: releases, commits oder both',
-      format: ['releases', 'commits', 'both'],
-      default: 'both',
-      env: 'DISCORD_GITHUB_MODE'
-    },
-    githubPollIntervalMs: {
-      doc: 'Poll-Intervall in ms (min. 60000)',
-      format: 'int',
-      default: 600000,
-      env: 'DISCORD_GITHUB_POLL_INTERVAL_MS'
-    },
-    githubToken: {
-      doc: 'Optionaler GitHub Personal Access Token (erhoeht Rate-Limit von 60 auf 5000 req/h)',
-      format: String,
-      default: '',
-      env: 'GITHUB_TOKEN',
-      sensitive: true
-    },
     enabledCommands: {
       doc: 'Aktive Slash-Commands als Komma-Liste (status,uptime,refresh,help,coinflip,dice,eightball,cleanup,translate)',
       format: String,
@@ -390,6 +305,63 @@ const config = convict({
       format: String,
       default: '',
       env: 'CLOUDFLARE_PUBLIC_URL'
+    }
+  },
+  openai: {
+    enabled: {
+      doc: 'KI-Chat via OpenAI aktivieren (Bot antwortet auf Mentions & DMs)',
+      format: Boolean,
+      default: false,
+      env: 'OPENAI_ENABLED'
+    },
+    apiKey: {
+      doc: 'OpenAI API-Key (sk-...)',
+      format: String,
+      default: '',
+      env: 'OPENAI_API_KEY',
+      sensitive: true
+    },
+    model: {
+      doc: 'OpenAI Modell (z.B. gpt-4o-mini, gpt-4o, gpt-3.5-turbo)',
+      format: String,
+      default: 'gpt-4o-mini',
+      env: 'OPENAI_MODEL'
+    },
+    personaName: {
+      doc: 'Name der Bot-Persönlichkeit im Chat (z.B. Bockis)',
+      format: String,
+      default: 'Bockis',
+      env: 'OPENAI_PERSONA_NAME'
+    },
+    systemPrompt: {
+      doc: 'System-Prompt für die Bot-Persönlichkeit (leer = Standard)',
+      format: String,
+      default: '',
+      env: 'OPENAI_SYSTEM_PROMPT'
+    },
+    channelIds: {
+      doc: 'Optionale Kanal-IDs in denen der KI-Chat aktiv ist, getrennt mit , oder ; (leer = überall)',
+      format: String,
+      default: '',
+      env: 'OPENAI_CHANNEL_IDS'
+    },
+    maxTokens: {
+      doc: 'Maximale Antwort-Tokens pro Anfrage (50–2000)',
+      format: 'int',
+      default: 600,
+      env: 'OPENAI_MAX_TOKENS'
+    },
+    allowDMs: {
+      doc: 'Bot antwortet auch auf Direktnachrichten (DMs)',
+      format: Boolean,
+      default: true,
+      env: 'OPENAI_ALLOW_DMS'
+    },
+    rateLimitPerMinute: {
+      doc: 'Maximale Anfragen pro Nutzer pro Minute (Schutz vor Missbrauch)',
+      format: 'int',
+      default: 5,
+      env: 'OPENAI_RATE_LIMIT_PER_MINUTE'
     }
   }
 });

@@ -186,9 +186,7 @@ class NotificationManager {
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.GuildMembers,
-    GatewayIntentBits.MessageContent
+    GatewayIntentBits.GuildMessages
   ]
 });
 const notificationManager = new NotificationManager();
@@ -223,7 +221,6 @@ let lastChannelNameMs      = _initState.lastChannelNameMs  ?? 0;
 let serviceCategoryId      = _initState.serviceCategoryId  ?? null;
 let serviceChannels        = _initState.serviceChannels     ?? {};  // { monitorName: channelId }
 const _svcRenameMs         = _initState.svcRenameMs         ?? {};  // Rate-Limit-Zeitstempel pro Kanal-ID
-let _githubLastSeen        = _initState.githubLastSeen      ?? {};  // { 'owner/repo': { commitSha, releaseTag, commitSince } }
 
 function persistState() {
   saveState({
@@ -233,8 +230,7 @@ function persistState() {
     lastChannelNameMs,
     serviceCategoryId,
     serviceChannels,
-    svcRenameMs: _svcRenameMs,
-    githubLastSeen: _githubLastSeen
+    svcRenameMs: _svcRenameMs
   });
 }
 // #endregion
@@ -2043,127 +2039,6 @@ function getConfiguredAutoReactionChannelIds() {
   ));
 }
 
-function isWelcomeEnabled() {
-  return config.get('discord.welcomeEnabled') === true;
-}
-
-function getConfiguredWelcomeChannelId() {
-  const configured = String(config.get('discord.welcomeChannelId') || '').trim();
-  const fallbackNotificationChannel = String(config.get('discord.notificationChannel') || '').trim();
-  const raw = configured || fallbackNotificationChannel;
-  return /^\d+$/.test(raw) ? raw : '';
-}
-
-function getWelcomeMessageTemplate() {
-  return String(config.get('discord.welcomeMessageTemplate') || '').trim()
-    || 'Willkommen {user} auf **{server}**! Viel Spass mit der Community. 👋';
-}
-
-function isAutoReplyEnabled() {
-  return config.get('discord.autoReplyEnabled') === true;
-}
-
-function isAutoReplyMentionOnly() {
-  return config.get('discord.autoReplyMentionOnly') === true;
-}
-
-function getConfiguredAutoReplyChannelIds() {
-  const raw = String(config.get('discord.autoReplyChannelIds') || '').trim();
-  if (!raw) return [];
-  return Array.from(new Set(
-    raw.split(/[;,]/)
-      .map(s => s.trim())
-      .filter(id => /^\d+$/.test(id))
-  ));
-}
-
-function getAutoReplyCooldownMs() {
-  const raw = Number(config.get('discord.autoReplyCooldownMs'));
-  if (!Number.isFinite(raw)) return 30000;
-  return Math.max(1000, Math.min(raw, 3_600_000));
-}
-
-function getAutoReplyRulesFilePath() {
-  const relativePath = String(config.get('discord.autoReplyRulesFile') || './data/auto-replies.json').trim();
-  return path.resolve(__dirname, relativePath);
-}
-
-function renderTextTemplate(input, vars = {}) {
-  return String(input || '').replace(/\{(\w+)\}/g, (_, key) => String(vars[key] ?? `{${key}}`));
-}
-
-const _autoReplyRulesCache = {
-  mtimeMs: -1,
-  rules: []
-};
-
-const _autoReplyLastReplyMs = new Map();
-
-function normalizeAutoReplyRule(rule, index) {
-  if (!rule || typeof rule !== 'object') return null;
-  const trigger = String(rule.trigger || '').trim();
-  const reply = String(rule.reply || '').trim();
-  const modeRaw = String(rule.mode || 'contains').trim().toLowerCase();
-  const mode = ['contains', 'exact', 'regex'].includes(modeRaw) ? modeRaw : 'contains';
-  const caseSensitive = rule.caseSensitive === true;
-  if (!trigger || !reply) return null;
-  return {
-    id: String(rule.id || `rule-${index + 1}`),
-    trigger,
-    reply,
-    mode,
-    caseSensitive,
-  };
-}
-
-function loadAutoReplyRules() {
-  const rulesFile = getAutoReplyRulesFilePath();
-  try {
-    const stat = fs.statSync(rulesFile);
-    if (_autoReplyRulesCache.mtimeMs === stat.mtimeMs) {
-      return _autoReplyRulesCache.rules;
-    }
-    const parsed = JSON.parse(fs.readFileSync(rulesFile, 'utf8'));
-    const rawRules = Array.isArray(parsed) ? parsed : [];
-    const normalized = rawRules
-      .map((r, i) => normalizeAutoReplyRule(r, i))
-      .filter(Boolean)
-      .slice(0, 100);
-    _autoReplyRulesCache.mtimeMs = stat.mtimeMs;
-    _autoReplyRulesCache.rules = normalized;
-    return normalized;
-  } catch (err) {
-    // Datei fehlt oder ist ungültig: einmalig warnen und leere Regeln zurückgeben.
-    if (_autoReplyRulesCache.mtimeMs !== 0) {
-      logger.warn(`Auto-Reply Regeln konnten nicht geladen werden (${rulesFile}): ${err.message}`);
-    }
-    _autoReplyRulesCache.mtimeMs = 0;
-    _autoReplyRulesCache.rules = [];
-    return [];
-  }
-}
-
-function matchAutoReplyRule(content, rules) {
-  const source = String(content || '');
-  for (const rule of rules) {
-    if (rule.mode === 'regex') {
-      try {
-        const re = new RegExp(rule.trigger, rule.caseSensitive ? '' : 'i');
-        if (re.test(source)) return rule;
-      } catch {
-        continue;
-      }
-      continue;
-    }
-
-    const left = rule.caseSensitive ? source : source.toLowerCase();
-    const right = rule.caseSensitive ? rule.trigger : rule.trigger.toLowerCase();
-    if (rule.mode === 'exact' && left === right) return rule;
-    if (rule.mode === 'contains' && left.includes(right)) return rule;
-  }
-  return null;
-}
-
 function isTranslationEnabled() {
   return config.get('discord.translateEnabled') === true;
 }
@@ -2551,33 +2426,130 @@ client.on('interactionCreate', async interaction => {
 });
 // #endregion
 
-client.on('guildMemberAdd', async (member) => {
-  if (!isWelcomeEnabled()) return;
-  if (!member || !member.guild || member.user?.bot) return;
+// #region 21.5 KI-CHATBOT (OpenAI + Wetter)
+const _chatRateLimitMap = new Map();
 
-  const channelId = getConfiguredWelcomeChannelId();
-  if (!channelId) return;
+function _getChatAllowedChannelIds() {
+  const raw = config.get('openai.channelIds') || '';
+  return raw.split(/[,;]/).map(s => s.trim()).filter(Boolean);
+}
 
+async function _fetchWeather(location) {
   try {
-    const channel = await client.channels.fetch(channelId);
-    if (!channel || !channel.isTextBased?.()) return;
+    const url = `https://wttr.in/${encodeURIComponent(location)}?format=3&lang=de`;
+    const res = await axios.get(url, { timeout: 5000, headers: { 'User-Agent': 'BockisDiscordBot/1.0' } });
+    const text = (res.data || '').toString().trim();
+    if (!text || text.includes('Unknown location')) return null;
+    return `🌤️ **Wetter für ${location}**\n\`\`\`${text}\`\`\``;
+  } catch {
+    return null;
+  }
+}
 
-    const content = renderTextTemplate(getWelcomeMessageTemplate(), {
-      user: `<@${member.id}>`,
-      username: member.user?.username || member.displayName || 'User',
-      server: member.guild.name || 'Server',
-    });
+async function _askOpenAI(userContent, userName) {
+  const apiKey = config.get('openai.apiKey');
+  if (!apiKey) return null;
+  const model = config.get('openai.model') || 'gpt-4o-mini';
+  const personaName = config.get('openai.personaName') || 'Bockis';
+  const maxTokens = Math.min(2000, Math.max(50, config.get('openai.maxTokens') || 600));
+  const customPrompt = config.get('openai.systemPrompt') || '';
+  const systemPrompt = customPrompt ||
+    `Du bist ${personaName}, ein freundlicher und hilfreicher Discord-Bot. ` +
+    `Antworte immer auf Deutsch, kurz und präzise (maximal 3-4 Sätze). ` +
+    `Du bist humorvoll aber respektvoll. Der Nutzer der dir schreibt heißt ${userName}.`;
 
-    await channel.send({
-      content,
-      allowedMentions: { users: [member.id] },
-    });
+  const res = await axios.post(
+    'https://api.openai.com/v1/chat/completions',
+    {
+      model,
+      max_tokens: maxTokens,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userContent }
+      ]
+    },
+    {
+      timeout: 20000,
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json'
+      }
+    }
+  );
+  return res.data?.choices?.[0]?.message?.content?.trim() || null;
+}
 
-    logger.info(`Willkommensnachricht gesendet: ${member.user?.tag || member.id} in #${channel.name || channel.id}`);
+client.on('messageCreate', async (message) => {
+  if (message.author?.bot) return;
+  if (message.system) return;
+  if (!config.get('openai.enabled')) return;
+
+  const isDM = message.channel?.type === ChannelType.DM;
+  const isMention = message.mentions.has(client.user);
+
+  if (!isDM && !isMention) return;
+  if (isDM && !config.get('openai.allowDMs')) return;
+
+  // Kanal-Filter (nur bei Guild-Nachrichten)
+  if (!isDM) {
+    const allowed = _getChatAllowedChannelIds();
+    if (allowed.length && !allowed.includes(message.channelId)) return;
+  }
+
+  // Rate-Limiting pro Nutzer
+  const now = Date.now();
+  const rateLimit = Math.max(1, config.get('openai.rateLimitPerMinute') || 5);
+  const history = (_chatRateLimitMap.get(message.author.id) || []).filter(t => now - t < 60000);
+  if (history.length >= rateLimit) {
+    await message.reply({ content: `⏳ Langsam! Du kannst maximal ${rateLimit} Anfragen pro Minute stellen.` }).catch(() => {});
+    return;
+  }
+  history.push(now);
+  _chatRateLimitMap.set(message.author.id, history);
+
+  // Mention-Prefix entfernen
+  const content = message.content.replace(/<@!?\d+>/g, '').trim();
+  if (!content) {
+    await message.reply({ content: `Hey ${message.author.displayName}! Wie kann ich dir helfen? 😊` }).catch(() => {});
+    return;
+  }
+
+  // Typing-Indikator
+  try { await message.channel.sendTyping(); } catch { /* ignorieren */ }
+
+  // Wetter-Erkennung
+  if (/\b(wetter|weather|temperatur(?:en)?|regen|schnee|nebel|wind|forecast|wettervorhersage)\b/i.test(content)) {
+    const locMatch = content.match(/(?:wetter|weather|in|für|für)\s+([a-zäöüßA-ZÄÖÜ][a-zäöüßA-ZÄÖÜ\s\-]{1,40})/i);
+    const location = locMatch ? locMatch[1].trim() : 'Deutschland';
+    const weather = await _fetchWeather(location);
+    if (weather) {
+      await message.reply({ content: weather }).catch(() => {});
+      return;
+    }
+  }
+
+  // OpenAI Anfrage
+  try {
+    const reply = await _askOpenAI(content, message.author.displayName || message.author.username);
+    if (reply) {
+      // Discord-Limit: 2000 Zeichen
+      const truncated = reply.length > 1900 ? reply.slice(0, 1897) + '…' : reply;
+      await message.reply({ content: truncated }).catch(() => {});
+    } else {
+      await message.reply({ content: '🤔 Ich konnte gerade keine Antwort generieren. Bitte versuche es später nochmal.' }).catch(() => {});
+    }
   } catch (err) {
-    logger.warn(`Willkommensnachricht fehlgeschlagen: ${err.message}`);
+    logger.warn(`KI-Chat Fehler für ${message.author.tag}: ${err.message}`);
+    if (err.response?.status === 401) {
+      await message.reply({ content: '🔑 OpenAI API-Key ungültig. Bitte im Dashboard prüfen.' }).catch(() => {});
+    } else if (err.response?.status === 429) {
+      await message.reply({ content: '⚡ OpenAI Rate-Limit erreicht. Bitte kurz warten.' }).catch(() => {});
+    } else {
+      await message.reply({ content: '❌ KI-Chat momentan nicht verfügbar.' }).catch(() => {});
+    }
   }
 });
+// #endregion
 
 client.on('messageCreate', async (message) => {
   if (!isAutoReactionEnabled()) return;
@@ -2598,57 +2570,6 @@ client.on('messageCreate', async (message) => {
     } catch (err) {
       logger.warn(`Auto-Reaction fehlgeschlagen in #${message.channel?.name || message.channelId} mit ${emoji}: ${err.message}`);
     }
-  }
-});
-
-client.on('messageCreate', async (message) => {
-  if (!isAutoReplyEnabled()) return;
-  if (!message.inGuild()) return;
-  if (message.author?.bot) return;
-  if (message.system) return;
-  if (!message.channel || message.channel.type !== ChannelType.GuildText) return;
-
-  const content = String(message.content || '').trim();
-  if (!content) return;
-
-  const allowedChannelIds = getConfiguredAutoReplyChannelIds();
-  if (allowedChannelIds.length && !allowedChannelIds.includes(message.channelId)) return;
-
-  if (isAutoReplyMentionOnly()) {
-    const botId = client.user?.id;
-    if (!botId || !message.mentions?.users?.has(botId)) return;
-  }
-
-  const rules = loadAutoReplyRules();
-  if (!rules.length) return;
-
-  const matchedRule = matchAutoReplyRule(content, rules);
-  if (!matchedRule) return;
-
-  const now = Date.now();
-  const cooldownMs = getAutoReplyCooldownMs();
-  const key = `${message.guildId}:${message.channelId}:${matchedRule.id}`;
-  const lastAt = _autoReplyLastReplyMs.get(key) || 0;
-  if (now - lastAt < cooldownMs) return;
-  _autoReplyLastReplyMs.set(key, now);
-
-  const replyText = renderTextTemplate(matchedRule.reply, {
-    user: `<@${message.author.id}>`,
-    username: message.author.username,
-    server: message.guild?.name || 'Server',
-    channel: `<#${message.channelId}>`,
-  });
-
-  try {
-    await message.reply({
-      content: replyText,
-      allowedMentions: {
-        repliedUser: false,
-        users: [message.author.id],
-      },
-    });
-  } catch (err) {
-    logger.warn(`Auto-Reply fehlgeschlagen in #${message.channel?.name || message.channelId}: ${err.message}`);
   }
 });
 
@@ -2707,160 +2628,6 @@ function initializeUpdateCycle() {
   // DB-Cleanup einmal täglich ausführen
   cleanupOldEntries();
   setInterval(cleanupOldEntries, 24 * 60 * 60 * 1000);
-  initializeGithubWatcher();
-}
-// #endregion
-
-// #region 23.5 GITHUB-WATCHER
-// Pollt konfigurierte GitHub-Repos und postet neue Releases/Commits als Embed
-// in den konfigurierten Info-Kanal.
-
-/**
- * Gibt geparste Repo-Liste zurück: ['owner/repo', ...]
- * Trenner: ; oder ,
- */
-function getConfiguredGithubRepos() {
-  const raw = config.get('discord.githubRepos');
-  if (!raw) return [];
-  return raw
-    .split(/[;,]/)
-    .map(r => r.trim())
-    .filter(r => /^[\w.-]+\/[\w.-]+$/.test(r))
-    .slice(0, 20);
-}
-
-/** Baut Authorization-Header wenn GITHUB_TOKEN gesetzt ist */
-function getGithubAxiosHeaders() {
-  const token = config.get('discord.githubToken');
-  return token ? { Authorization: `Bearer ${token}`, 'User-Agent': 'Bockis-Discord-Bot/1.0' } : { 'User-Agent': 'Bockis-Discord-Bot/1.0' };
-}
-
-/** Erstellt einen Discord-Embed für ein neues Release */
-function buildReleaseEmbed(repo, release) {
-  const body = (release.body || '').slice(0, 2000);
-  return new EmbedBuilder()
-    .setColor(0x6e5494)
-    .setTitle(`🚀 Neues Release: ${release.tag_name}`)
-    .setURL(release.html_url)
-    .setAuthor({ name: `${repo}`, url: `https://github.com/${repo}` })
-    .setDescription(body || '*Keine Release-Notizen.*')
-    .addFields(
-      { name: 'Veröffentlicht von', value: release.author?.login ?? 'Unbekannt', inline: true },
-      { name: 'Pre-Release', value: release.prerelease ? 'Ja' : 'Nein', inline: true }
-    )
-    .setTimestamp(new Date(release.published_at))
-    .setFooter({ text: 'GitHub Release' });
-}
-
-/** Erstellt einen Discord-Embed für neue Commits (bis zu 10) */
-function buildCommitEmbed(repo, commits) {
-  const lines = commits.slice(0, 10).map(c => {
-    const sha = c.sha.slice(0, 7);
-    const msg = (c.commit.message.split('\n')[0] || '').slice(0, 72);
-    const author = c.commit.author?.name ?? 'Unbekannt';
-    return `[\`${sha}\`](${c.html_url}) ${msg} — *${author}*`;
-  });
-  return new EmbedBuilder()
-    .setColor(0x238636)
-    .setTitle(`📦 ${commits.length} neuer Commit${commits.length > 1 ? 's' : ''} in ${repo}`)
-    .setURL(`https://github.com/${repo}/commits`)
-    .setDescription(lines.join('\n'))
-    .setTimestamp()
-    .setFooter({ text: 'GitHub Commits' });
-}
-
-/** Pollt Releases für ein Repo und postet ggf. ein Embed */
-async function pollGithubRelease(repo, channel) {
-  try {
-    const resp = await axios.get(`https://api.github.com/repos/${repo}/releases/latest`, {
-      headers: getGithubAxiosHeaders(),
-      timeout: 10_000
-    });
-    const release = resp.data;
-    const tag = release.tag_name;
-    const lastTag = _githubLastSeen[repo]?.releaseTag;
-    if (tag && tag !== lastTag) {
-      await channel.send({ embeds: [buildReleaseEmbed(repo, release)] });
-      _githubLastSeen[repo] = { ..._githubLastSeen[repo], releaseTag: tag };
-      persistState();
-      logger.info(`[GitHub-Watcher] Neues Release gepostet: ${repo}@${tag}`);
-    }
-  } catch (err) {
-    if (err.response?.status === 404) return; // kein Release vorhanden
-    logger.warn(`[GitHub-Watcher] Release-Poll fehlgeschlagen (${repo}): ${err.message}`);
-  }
-}
-
-/** Pollt Commits für ein Repo und postet ggf. ein Embed */
-async function pollGithubCommits(repo, channel) {
-  try {
-    // since = letzter bekannter Commit-Zeitstempel oder 1h vor Bot-Start
-    const since = _githubLastSeen[repo]?.commitSince
-      ?? new Date(Date.now() - 3_600_000).toISOString();
-    const resp = await axios.get(`https://api.github.com/repos/${repo}/commits`, {
-      headers: getGithubAxiosHeaders(),
-      params: { per_page: 10, since },
-      timeout: 10_000
-    });
-    // Rate-Limit prüfen
-    const remaining = parseInt(resp.headers['x-ratelimit-remaining'] ?? '60', 10);
-    if (remaining === 0) {
-      logger.warn('[GitHub-Watcher] Rate-Limit erreicht — Commit-Poll übersprungen');
-      return;
-    }
-    const commits = resp.data;
-    if (!Array.isArray(commits) || commits.length === 0) return;
-    await channel.send({ embeds: [buildCommitEmbed(repo, commits)] });
-    // Neuesten Commit-Timestamp als neues since speichern
-    const newest = commits[0]?.commit?.author?.date ?? new Date().toISOString();
-    // +1ms damit der nächste Poll diesen Commit nicht nochmal holt
-    const newSince = new Date(new Date(newest).getTime() + 1).toISOString();
-    _githubLastSeen[repo] = { ..._githubLastSeen[repo], commitSince: newSince };
-    persistState();
-    logger.info(`[GitHub-Watcher] ${commits.length} neuer/e Commit/s gepostet: ${repo}`);
-  } catch (err) {
-    logger.warn(`[GitHub-Watcher] Commit-Poll fehlgeschlagen (${repo}): ${err.message}`);
-  }
-}
-
-/** Ein vollständiger Watcher-Zyklus über alle konfigurierten Repos */
-async function runGithubWatcherCycle() {
-  const repos = getConfiguredGithubRepos();
-  if (repos.length === 0) return;
-  const channelId = config.get('discord.githubInfoChannelId');
-  if (!channelId) return;
-  let channel;
-  try {
-    channel = await client.channels.fetch(channelId);
-  } catch (err) {
-    logger.warn(`[GitHub-Watcher] Kanal ${channelId} nicht abrufbar: ${err.message}`);
-    return;
-  }
-  const mode = config.get('discord.githubMode');
-  for (const repo of repos) {
-    if (mode === 'releases' || mode === 'both') await pollGithubRelease(repo, channel);
-    if (mode === 'commits'  || mode === 'both') await pollGithubCommits(repo, channel);
-  }
-}
-
-/** Startet den GitHub-Watcher (wird in initializeUpdateCycle aufgerufen) */
-function initializeGithubWatcher() {
-  if (!config.get('discord.githubWatchEnabled')) return;
-  const repos = getConfiguredGithubRepos();
-  if (repos.length === 0) {
-    logger.warn('[GitHub-Watcher] Keine gültigen Repos konfiguriert (DISCORD_GITHUB_REPOS).');
-    return;
-  }
-  const channelId = config.get('discord.githubInfoChannelId');
-  if (!channelId) {
-    logger.warn('[GitHub-Watcher] Kein Info-Kanal konfiguriert (DISCORD_GITHUB_CHANNEL_ID).');
-    return;
-  }
-  const interval = Math.max(60_000, config.get('discord.githubPollIntervalMs'));
-  logger.info(`[GitHub-Watcher] gestartet — ${repos.length} Repo(s), Intervall ${interval / 1000}s, Modus: ${config.get('discord.githubMode')}`);
-  // Ersten Zyklus leicht verzögert starten damit der Client vollständig bereit ist
-  setTimeout(runGithubWatcherCycle, 5_000);
-  setInterval(runGithubWatcherCycle, interval);
 }
 // #endregion
 

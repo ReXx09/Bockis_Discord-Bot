@@ -57,6 +57,13 @@ module.exports = function startWebServer({
   app.use(express.json());
   app.use(express.static(path.join(rootDir, 'public')));
 
+  let dashboardBuildId = 'unknown';
+  try {
+    dashboardBuildId = execFileSync('git', ['rev-parse', '--short', 'HEAD'], { cwd: rootDir }).toString().trim();
+  } catch {
+    dashboardBuildId = process.env.BOT_BUILD_ID || 'unknown';
+  }
+
   // ── Middleware ──────────────────────────────────────────────────────────────
 
   /** Nur localhost darf zugreifen (für /health und /metrics) */
@@ -321,7 +328,23 @@ module.exports = function startWebServer({
   app.get('/', (req, res) => res.redirect('/dashboard'));
 
   app.get('/dashboard', dashboardAuth, (req, res) => {
-    res.render('dashboard');
+    res.set('Content-Type', 'text/html; charset=utf-8');
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.set('Pragma', 'no-cache');
+    res.set('Expires', '0');
+    res.render('dashboard', {
+      buildId: dashboardBuildId,
+      rootBase: path.basename(rootDir)
+    });
+  });
+
+  app.get('/api/build-info', dashboardAuth, (req, res) => {
+    res.json({
+      ok: true,
+      buildId: dashboardBuildId,
+      rootDir: rootDir,
+      rootBase: path.basename(rootDir)
+    });
   });
 
   // ── Health-Check (nur localhost) ────────────────────────────────────────────
@@ -842,50 +865,6 @@ module.exports = function startWebServer({
 
   app.get('/api/deps-check', dashboardAuth, async (req, res) => {
     try {
-      const parseVersionTuple = (value) => {
-        const raw = String(value || '').trim().replace(/^v/i, '');
-        const m = raw.match(/(\d+)(?:\.(\d+))?(?:\.(\d+))?/);
-        if (!m) return null;
-        return [Number(m[1] || 0), Number(m[2] || 0), Number(m[3] || 0)];
-      };
-
-      const compareVersionTuple = (a, b) => {
-        for (let i = 0; i < 3; i += 1) {
-          const av = Number(a?.[i] || 0);
-          const bv = Number(b?.[i] || 0);
-          if (av > bv) return 1;
-          if (av < bv) return -1;
-        }
-        return 0;
-      };
-
-      const parseMinFromRange = (range) => {
-        const raw = String(range || '').trim();
-        const gte = raw.match(/>=\s*v?(\d+(?:\.\d+){0,2})/i);
-        if (gte?.[1]) return gte[1];
-        const exact = raw.match(/^v?(\d+(?:\.\d+){0,2})$/i);
-        if (exact?.[1]) return exact[1];
-        return null;
-      };
-
-      const detectNodeEngineRequirement = () => {
-        try {
-          const sqlitePkgPath = path.join(rootDir, 'node_modules', 'sqlite3', 'package.json');
-          if (!fs.existsSync(sqlitePkgPath)) return null;
-          const sqlitePkg = JSON.parse(fs.readFileSync(sqlitePkgPath, 'utf8').replace(/^\uFEFF/, ''));
-          const requiredRange = String(sqlitePkg?.engines?.node || '').trim();
-          const requiredMin = parseMinFromRange(requiredRange);
-          if (!requiredRange || !requiredMin) return null;
-          return {
-            source: 'sqlite3',
-            requiredRange,
-            requiredMin,
-          };
-        } catch {
-          return null;
-        }
-      };
-
       const checkCommand = (cmd, args = ['--version']) => {
         try {
           const out = execFileSync(cmd, args, { timeout: 4000 }).toString().trim();
@@ -1007,48 +986,17 @@ module.exports = function startWebServer({
         };
       });
 
-      // Node.js-Version gegen Engine-Anforderungen installierter Kern-Abhängigkeiten prüfen.
-      const nodeDep = systemDeps.find(d => d.key === 'node');
-      const nodeReq = detectNodeEngineRequirement();
-      if (nodeDep && nodeDep.installed && nodeReq?.requiredMin) {
-        const currentTuple = parseVersionTuple(nodeDep.version);
-        const requiredTuple = parseVersionTuple(nodeReq.requiredMin);
-        const needsUpdate = !!(currentTuple && requiredTuple && compareVersionTuple(currentTuple, requiredTuple) < 0);
-        if (needsUpdate) {
-          nodeDep.updateAvailable = true;
-          nodeDep.availableVersion = nodeReq.requiredMin;
-          nodeDep.requiredVersion = nodeReq.requiredRange;
-          nodeDep.updateReason = `Runtime-Anforderung von ${nodeReq.source}`;
-          // Architektur prüfen: NodeSource unterstützt kein armhf (32-bit ARM)
-          let sysArch = '';
-          try { sysArch = execFileSync('dpkg', ['--print-architecture'], { timeout: 3000 }).toString().trim(); } catch { /* ignore */ }
-          const nodeSourceSupported = sysArch !== 'armhf';
-
-          if (nodeSourceSupported && aptAvailable && nodeDep.aptPackage) {
-            nodeDep.installable = true;
-            nodeDep.installCommand = `sudo apt-get install -y ${nodeDep.aptPackage}`;
-            nodeDep.updateCommand = 'Node.js 20 LTS installieren (NodeSource)';
-          } else {
-            nodeDep.installable = false;
-            nodeDep.updateCommand = `Manuell via nvm: curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.2/install.sh | bash && nvm install 20 && sudo ln -sf $(which node) /usr/bin/node`;
-          }
-        }
-      }
-
       const pkgPath = path.join(rootDir, 'package.json');
       if (!fs.existsSync(pkgPath)) {
         return res.json({
           ok: true,
           packages: [],
           outdatedCount: 0,
-          compatibleUpdateCount: 0,
-          majorOnlyCount: 0,
           total: 0,
           warning: 'package.json nicht gefunden',
           systemDeps,
           systemMissingCount: systemDeps.filter(d => !d.installed).length,
           systemRequiredMissingCount: systemDeps.filter(d => d.required && !d.installed).length,
-          systemUpdateCount: systemDeps.filter(d => d.updateAvailable).length,
           aptAvailable,
         });
       }
@@ -1075,14 +1023,11 @@ module.exports = function startWebServer({
           ok: true,
           packages: [],
           outdatedCount: 0,
-          compatibleUpdateCount: 0,
-          majorOnlyCount: 0,
           total: 0,
           warning: 'Keine npm-Abhängigkeiten gefunden oder package.json nicht lesbar',
           systemDeps,
           systemMissingCount: systemDeps.filter(d => !d.installed).length,
           systemRequiredMissingCount: systemDeps.filter(d => d.required && !d.installed).length,
-          systemUpdateCount: systemDeps.filter(d => d.updateAvailable).length,
           aptAvailable,
         });
       }
@@ -1132,8 +1077,6 @@ module.exports = function startWebServer({
         const installed = od?.current ?? getInstalled(name);
         const curMajor = od ? parseInt((od.current || '0').split('.')[0], 10) : 0;
         const latMajor = od ? parseInt((od.latest  || '0').split('.')[0], 10) : 0;
-        const hasCompatibleUpdate = !!(od && od.wanted && od.current && od.wanted !== od.current);
-        const hasMajorUpdate = !!(od && latMajor > curMajor);
         return {
           name,
           required : info.required,
@@ -1142,27 +1085,20 @@ module.exports = function startWebServer({
           wanted   : od?.wanted  ?? null,
           latest   : od?.latest  ?? null,
           outdated : !!od,
-          majorBump: hasMajorUpdate,
-          compatibleUpdate: hasCompatibleUpdate,
-          majorOnlyUpdate: !!od && !hasCompatibleUpdate && hasMajorUpdate,
+          majorBump: od ? (latMajor > curMajor) : false,
         };
       });
 
       packages.sort((a, b) => (b.outdated - a.outdated) || a.name.localeCompare(b.name));
       const outdatedCount = packages.filter(p => p.outdated).length;
-      const compatibleUpdateCount = packages.filter(p => p.compatibleUpdate).length;
-      const majorOnlyCount = packages.filter(p => p.majorOnlyUpdate).length;
       res.json({
         ok: true,
         packages,
         outdatedCount,
-        compatibleUpdateCount,
-        majorOnlyCount,
         total: packages.length,
         systemDeps,
         systemMissingCount: systemDeps.filter(d => !d.installed).length,
         systemRequiredMissingCount: systemDeps.filter(d => d.required && !d.installed).length,
-        systemUpdateCount: systemDeps.filter(d => d.updateAvailable).length,
         aptAvailable,
       });
     } catch (err) {
@@ -1211,129 +1147,8 @@ module.exports = function startWebServer({
 
     const send = (line) => res.write(`data: ${line.replace(/\n/g, ' ')}\n\n`);
 
-    let proc;
-    if (key === 'node') {
-      // Debian apt nodejs/npm combinations often conflict on Raspberry Pi images.
-      // Use NodeSource 20.x to provide a consistent Node+npm pair.
-      const nodeSetupScript = [
-        'set -euo pipefail',
-        'export DEBIAN_FRONTEND=noninteractive',
-        'sudo apt-get update -y',
-        'sudo dpkg --configure -a || true',
-        'sudo apt-get -f install -y || true',
-        'sudo apt-get install -y ca-certificates curl gnupg',
-        // Keep existing nodejs until replacement is ready to avoid downtime.
-        'sudo apt-get remove -y npm nodejs-legacy libnode72 || true',
-        'sudo apt-get autoremove -y || true',
-        'curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -',
-        'sudo apt-get install -y nodejs',
-        'if [ ! -x /usr/bin/node ] && [ -x /usr/bin/nodejs ]; then sudo ln -sf /usr/bin/nodejs /usr/bin/node; fi',
-        'echo "Node: $(node -v)"',
-        'echo "npm: $(npm -v)"',
-      ].join('; ');
-
-      send('[Dashboard] Installiere Node.js 20 LTS via NodeSource (Konflikte werden vorab bereinigt)');
-      proc = spawn('bash', ['-lc', nodeSetupScript], {
-        env: { ...process.env },
-      });
-    } else {
-      send(`[Dashboard] sudo apt-get install -y ${aptPackage}`);
-      proc = spawn('sudo', ['apt-get', 'install', '-y', ...aptPackage.split(' ')], {
-        env: { ...process.env, DEBIAN_FRONTEND: 'noninteractive' },
-      });
-    }
-    proc.stdout.on('data', d => d.toString().split('\n').filter(Boolean).forEach(send));
-    proc.stderr.on('data', d => d.toString().split('\n').filter(Boolean).forEach(send));
-    proc.on('close', code => { res.write(`data: __EXIT__:${code}\n\n`); res.end(); });
-  });
-
-  // ── API: Reparatur (Server-Sent Events) ────────────────────────────────────
-
-  app.post('/api/repair', dashboardAuth, (req, res) => {
-    const ALLOWED_ACTIONS = ['node-symlink', 'apt-fix', 'npm-reinstall', 'restart', 'full'];
-    const action = req.body?.action;
-    if (!action || !ALLOWED_ACTIONS.includes(action)) {
-      return res.status(400).json({ ok: false, error: 'Ungültige Repair-Aktion.' });
-    }
-
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Connection', 'keep-alive');
-    res.flushHeaders();
-
-    const send = (line) => res.write(`data: ${line.replace(/\n/g, ' ')}\n\n`);
-
-    // Skripte — rootDir ist durch cwd des spawn-Prozesses gesetzt (kein cd nötig)
-    const S = {
-      'node-symlink': `
-echo "→ Prüfe /usr/bin/node ..."
-if [ ! -x /usr/bin/node ]; then
-  if [ -x /usr/bin/nodejs ]; then
-    sudo ln -sf /usr/bin/nodejs /usr/bin/node
-    echo "✓ Symlink /usr/bin/node -> /usr/bin/nodejs gesetzt"
-  elif NODE_BIN=$(command -v node 2>/dev/null); then
-    sudo ln -sf "$NODE_BIN" /usr/bin/node
-    echo "✓ Symlink gesetzt: /usr/bin/node -> $NODE_BIN"
-  else
-    echo "✗ Kein node-Binary gefunden — bitte Node.js installieren" >&2
-    exit 1
-  fi
-else
-  echo "✓ /usr/bin/node bereits vorhanden ($(node -v 2>/dev/null || echo unbekannt))"
-fi
-if [ ! -x /usr/bin/npm ] && command -v npm >/dev/null 2>&1; then
-  sudo ln -sf "$(command -v npm)" /usr/bin/npm
-  echo "✓ Symlink /usr/bin/npm gesetzt"
-fi`,
-
-      'apt-fix': `
-export DEBIAN_FRONTEND=noninteractive
-echo "→ dpkg --configure -a ..."
-sudo dpkg --configure -a || true
-echo "→ apt-get -f install ..."
-sudo apt-get -f install -y
-echo "→ apt-get autoremove ..."
-sudo apt-get autoremove -y || true
-echo "✓ apt-Fehler behoben"`,
-
-      'npm-reinstall': `
-echo "→ Entferne node_modules ..."
-rm -rf node_modules
-echo "→ npm install --omit=dev ..."
-npm install --omit=dev 2>&1
-echo "✓ npm-Pakete neu installiert"`,
-
-      'restart': `
-echo "→ Starte bockis-bot neu ..."
-sudo systemctl restart bockis-bot
-sleep 2
-STATUS=$(systemctl is-active bockis-bot 2>/dev/null || echo inactive)
-if [ "$STATUS" = "active" ]; then
-  echo "✓ Service ist aktiv"
-else
-  echo "⚠ Service-Status: $STATUS"
-fi`,
-    };
-
-    S['full'] = `
-set -eo pipefail
-echo "=== Schritt 1/4: Node-Symlink ==="
-${S['node-symlink']}
-echo ""
-echo "=== Schritt 2/4: apt-Fehler beheben ==="
-${S['apt-fix']}
-echo ""
-echo "=== Schritt 3/4: npm neu installieren ==="
-${S['npm-reinstall']}
-echo ""
-echo "=== Schritt 4/4: Service neu starten ==="
-${S['restart']}
-echo ""
-echo "✓ Vollreparatur abgeschlossen"`;
-
-    send(`[Reparatur] Starte: ${action}`);
-    const proc = spawn('bash', ['-c', S[action]], {
-      cwd: rootDir,
+    send(`[Dashboard] sudo apt-get install -y ${aptPackage}`);
+    const proc = spawn('sudo', ['apt-get', 'install', '-y', ...aptPackage.split(' ')], {
       env: { ...process.env, DEBIAN_FRONTEND: 'noninteractive' },
     });
     proc.stdout.on('data', d => d.toString().split('\n').filter(Boolean).forEach(send));
@@ -1428,72 +1243,6 @@ echo "✓ Vollreparatur abgeschlossen"`;
     }
   });
 
-  // ── API: Auto-Reply Regeln lesen ───────────────────────────────────────────
-
-  app.get('/api/auto-replies', dashboardAuth, (req, res) => {
-    try {
-      const envPath = path.join(rootDir, '.env');
-      let rulesFile = './auto-replies.json';
-      if (fs.existsSync(envPath)) {
-        const raw = fs.readFileSync(envPath, 'utf8');
-        const m = raw.match(/^DISCORD_AUTO_REPLY_RULES_FILE=(.*)$/m);
-        if (m) rulesFile = m[1].trim().replace(/^["']|["']$/g, '') || rulesFile;
-      }
-      const absPath = path.isAbsolute(rulesFile) ? rulesFile : path.join(rootDir, rulesFile);
-      if (!fs.existsSync(absPath)) return res.json({ ok: true, rules: [] });
-      const rules = JSON.parse(fs.readFileSync(absPath, 'utf8'));
-      if (!Array.isArray(rules)) return res.json({ ok: false, error: 'Regeldatei ist kein JSON-Array' });
-      res.json({ ok: true, rules });
-    } catch (err) {
-      logger.error(`/api/auto-replies GET Fehler: ${err.message}`);
-      res.json({ ok: false, error: err.message });
-    }
-  });
-
-  // ── API: Auto-Reply Regeln speichern ───────────────────────────────────────
-
-  app.post('/api/auto-replies', dashboardAuth, (req, res) => {
-    try {
-      const rules = req.body?.rules;
-      if (!Array.isArray(rules)) return res.json({ ok: false, error: 'rules muss ein Array sein' });
-      if (rules.length > 100) return res.json({ ok: false, error: 'Maximal 100 Regeln erlaubt' });
-
-      const seen = new Set();
-      for (const rule of rules) {
-        if (!rule.id || typeof rule.id !== 'string' || !/^[\w-]{1,64}$/.test(rule.id))
-          return res.json({ ok: false, error: `Ungültige ID: "${rule.id}" (nur Buchstaben, Zahlen, - und _)` });
-        if (seen.has(rule.id)) return res.json({ ok: false, error: `Doppelte ID: "${rule.id}"` });
-        seen.add(rule.id);
-        if (!rule.trigger || typeof rule.trigger !== 'string' || rule.trigger.length > 500)
-          return res.json({ ok: false, error: `Trigger bei ID "${rule.id}" fehlt oder zu lang (max 500)` });
-        if (!['contains', 'exact', 'regex'].includes(rule.mode))
-          return res.json({ ok: false, error: `Ungültiger Modus bei ID "${rule.id}" (contains, exact oder regex)` });
-        if (rule.mode === 'regex') {
-          try { new RegExp(rule.trigger); } catch {
-            return res.json({ ok: false, error: `Ungültiger Regex bei ID "${rule.id}": ${rule.trigger}` });
-          }
-        }
-        if (!rule.reply || typeof rule.reply !== 'string' || rule.reply.length > 2000)
-          return res.json({ ok: false, error: `Antwort bei ID "${rule.id}" fehlt oder zu lang (max 2000)` });
-      }
-
-      const envPath = path.join(rootDir, '.env');
-      let rulesFile = './auto-replies.json';
-      if (fs.existsSync(envPath)) {
-        const raw = fs.readFileSync(envPath, 'utf8');
-        const m = raw.match(/^DISCORD_AUTO_REPLY_RULES_FILE=(.*)$/m);
-        if (m) rulesFile = m[1].trim().replace(/^["']|["']$/g, '') || rulesFile;
-      }
-      const absPath = path.isAbsolute(rulesFile) ? rulesFile : path.join(rootDir, rulesFile);
-      fs.writeFileSync(absPath, JSON.stringify(rules, null, 2), 'utf8');
-      logger.info(`Auto-Reply Regeln gespeichert: ${rules.length} Regel(n) → ${absPath}`);
-      res.json({ ok: true, count: rules.length });
-    } catch (err) {
-      logger.error(`/api/auto-replies POST Fehler: ${err.message}`);
-      res.json({ ok: false, error: err.message });
-    }
-  });
-
   // ── API: Konfiguration lesen (Token maskiert) ───────────────────────────────
 
   app.get('/api/config', dashboardAuth, (req, res) => {
@@ -1571,20 +1320,15 @@ echo "✓ Vollreparatur abgeschlossen"`;
         DASHBOARD_PASSWORD:           maskSecret(dashboardPassword),
         DB_DIALECT:                   get('DB_DIALECT') || 'sqlite',
         DB_STORAGE:                   get('DB_STORAGE') || './data/status.db',
-        DISCORD_WELCOME_ENABLED:      get('DISCORD_WELCOME_ENABLED') || 'false',
-        DISCORD_WELCOME_CHANNEL_ID:   get('DISCORD_WELCOME_CHANNEL_ID') || '',
-        DISCORD_WELCOME_MESSAGE_TEMPLATE: get('DISCORD_WELCOME_MESSAGE_TEMPLATE') || 'Willkommen {user} auf **{server}**! 👋',
-        DISCORD_AUTO_REPLY_ENABLED:   get('DISCORD_AUTO_REPLY_ENABLED') || 'false',
-        DISCORD_AUTO_REPLY_MENTION_ONLY: get('DISCORD_AUTO_REPLY_MENTION_ONLY') || 'false',
-        DISCORD_AUTO_REPLY_CHANNEL_IDS: get('DISCORD_AUTO_REPLY_CHANNEL_IDS') || '',
-        DISCORD_AUTO_REPLY_COOLDOWN_MS: get('DISCORD_AUTO_REPLY_COOLDOWN_MS') || '30000',
-        DISCORD_AUTO_REPLY_RULES_FILE: get('DISCORD_AUTO_REPLY_RULES_FILE') || './auto-replies.json',
-        DISCORD_GITHUB_WATCH_ENABLED: get('DISCORD_GITHUB_WATCH_ENABLED') || 'false',
-        DISCORD_GITHUB_CHANNEL_ID:    get('DISCORD_GITHUB_CHANNEL_ID') || '',
-        DISCORD_GITHUB_REPOS:         get('DISCORD_GITHUB_REPOS') || '',
-        DISCORD_GITHUB_MODE:          get('DISCORD_GITHUB_MODE') || 'both',
-        DISCORD_GITHUB_POLL_INTERVAL_MS: get('DISCORD_GITHUB_POLL_INTERVAL_MS') || '600000',
-        GITHUB_TOKEN:                 maskSecret(get('GITHUB_TOKEN')),
+        OPENAI_ENABLED:               get('OPENAI_ENABLED') || 'false',
+        OPENAI_API_KEY:               maskSecret(get('OPENAI_API_KEY')),
+        OPENAI_MODEL:                 get('OPENAI_MODEL') || 'gpt-4o-mini',
+        OPENAI_PERSONA_NAME:          get('OPENAI_PERSONA_NAME') || 'Bockis',
+        OPENAI_SYSTEM_PROMPT:         get('OPENAI_SYSTEM_PROMPT') || '',
+        OPENAI_CHANNEL_IDS:           get('OPENAI_CHANNEL_IDS') || '',
+        OPENAI_MAX_TOKENS:            get('OPENAI_MAX_TOKENS') || '600',
+        OPENAI_ALLOW_DMS:             get('OPENAI_ALLOW_DMS') || 'true',
+        OPENAI_RATE_LIMIT_PER_MINUTE: get('OPENAI_RATE_LIMIT_PER_MINUTE') || '5',
       });
     } catch (err) {
       logger.error(`/api/config GET Fehler: ${err.message}`);
@@ -1648,21 +1392,16 @@ echo "✓ Vollreparatur abgeschlossen"`;
       'WEB_PORT',
       'DASHBOARD_PASSWORD',
       'DB_DIALECT',
-      'DB_STORAGE',
-      'DISCORD_WELCOME_ENABLED',
-      'DISCORD_WELCOME_CHANNEL_ID',
-      'DISCORD_WELCOME_MESSAGE_TEMPLATE',
-      'DISCORD_AUTO_REPLY_ENABLED',
-      'DISCORD_AUTO_REPLY_MENTION_ONLY',
-      'DISCORD_AUTO_REPLY_CHANNEL_IDS',
-      'DISCORD_AUTO_REPLY_COOLDOWN_MS',
-      'DISCORD_AUTO_REPLY_RULES_FILE',
-      'DISCORD_GITHUB_WATCH_ENABLED',
-      'DISCORD_GITHUB_CHANNEL_ID',
-      'DISCORD_GITHUB_REPOS',
-      'DISCORD_GITHUB_MODE',
-      'DISCORD_GITHUB_POLL_INTERVAL_MS',
-      'GITHUB_TOKEN'
+        'DB_STORAGE',
+        'OPENAI_ENABLED',
+        'OPENAI_API_KEY',
+        'OPENAI_MODEL',
+        'OPENAI_PERSONA_NAME',
+        'OPENAI_SYSTEM_PROMPT',
+        'OPENAI_CHANNEL_IDS',
+        'OPENAI_MAX_TOKENS',
+        'OPENAI_ALLOW_DMS',
+        'OPENAI_RATE_LIMIT_PER_MINUTE'
     ];
     const CLEARABLE_CFG = new Set([
       'DISCORD_PRESENCE_TEXT',
@@ -1682,13 +1421,8 @@ echo "✓ Vollreparatur abgeschlossen"`;
       'MESSAGE_CLEANUP_CHANNEL_IDS',
       'SERVICE_CHANNEL_DEBUG_FILTER',
       'DISCORD_TRANSLATE_ALLOWED_GUILD_IDS',
-      'DISCORD_WELCOME_CHANNEL_ID',
-      'DISCORD_WELCOME_MESSAGE_TEMPLATE',
-      'DISCORD_AUTO_REPLY_CHANNEL_IDS',
-      'DISCORD_AUTO_REPLY_RULES_FILE',
-      'DISCORD_GITHUB_CHANNEL_ID',
-      'DISCORD_GITHUB_REPOS',
-      'GITHUB_TOKEN'
+      'OPENAI_SYSTEM_PROMPT',
+      'OPENAI_CHANNEL_IDS'
     ]);
     const envPath = path.join(rootDir, '.env');
     if (!fs.existsSync(envPath)) return res.json({ ok: false, error: '.env nicht gefunden' });
@@ -1707,6 +1441,7 @@ echo "✓ Vollreparatur abgeschlossen"`;
 
       const val = String(raw).trim();
       if (key === 'DISCORD_TOKEN' || key === 'UPTIME_KUMA_API_KEY' || key === 'DISCORD_STATUS_WEBHOOK_URL' || key === 'DASHBOARD_PASSWORD' || key === 'DISCORD_TRANSLATE_API_KEY') {
+      if (key === 'DISCORD_TOKEN' || key === 'UPTIME_KUMA_API_KEY' || key === 'DISCORD_STATUS_WEBHOOK_URL' || key === 'DASHBOARD_PASSWORD' || key === 'DISCORD_TRANSLATE_API_KEY' || key === 'OPENAI_API_KEY') {
         if (val.includes('*')) continue;
         if (/[\n\r]/.test(val)) return res.json({ ok: false, error: 'Ungültiger Token (enthält Zeilenumbruch)' });
       }
@@ -1858,51 +1593,26 @@ echo "✓ Vollreparatur abgeschlossen"`;
         if (!Number.isFinite(n) || n < 1 || n > 65535)
           return res.json({ ok: false, error: 'WEB_PORT muss zwischen 1 und 65535 liegen' });
       }
+      if (key === 'OPENAI_MAX_TOKENS') {
+        const n = parseInt(val, 10);
+        if (!Number.isFinite(n) || n < 50 || n > 2000)
+          return res.json({ ok: false, error: 'OPENAI_MAX_TOKENS muss zwischen 50 und 2000 liegen' });
+      }
+      if (key === 'OPENAI_RATE_LIMIT_PER_MINUTE') {
+        const n = parseInt(val, 10);
+        if (!Number.isFinite(n) || n < 1 || n > 30)
+          return res.json({ ok: false, error: 'OPENAI_RATE_LIMIT_PER_MINUTE muss zwischen 1 und 30 liegen' });
+      }
+      if (key === 'OPENAI_MODEL' && /[\n\r]/.test(val))
+        return res.json({ ok: false, error: 'OPENAI_MODEL darf keine Zeilenumbrüche enthalten' });
+      if (key === 'OPENAI_PERSONA_NAME') {
+        if (/[\n\r]/.test(val)) return res.json({ ok: false, error: 'OPENAI_PERSONA_NAME darf keine Zeilenumbrüche enthalten' });
+        if (val.length > 64) return res.json({ ok: false, error: 'OPENAI_PERSONA_NAME darf maximal 64 Zeichen enthalten' });
+      }
       if (key === 'DB_DIALECT' && val !== 'sqlite')
         return res.json({ ok: false, error: 'DB_DIALECT darf aktuell nur sqlite sein' });
       if (key === 'DB_STORAGE' && /[\n\r]/.test(val))
         return res.json({ ok: false, error: 'DB_STORAGE darf keine Zeilenumbrüche enthalten' });
-      if (key === 'DISCORD_WELCOME_ENABLED' && !['true', 'false'].includes(val))
-        return res.json({ ok: false, error: 'DISCORD_WELCOME_ENABLED muss true oder false sein' });
-      if (key === 'DISCORD_WELCOME_CHANNEL_ID' && val && !/^\d+$/.test(val))
-        return res.json({ ok: false, error: 'DISCORD_WELCOME_CHANNEL_ID: Nur Zahlen erlaubt (Discord ID)' });
-      if (key === 'DISCORD_WELCOME_MESSAGE_TEMPLATE' && /[\n\r]/.test(val))
-        return res.json({ ok: false, error: 'DISCORD_WELCOME_MESSAGE_TEMPLATE darf keine Zeilenumbrüche enthalten' });
-      if (key === 'DISCORD_AUTO_REPLY_ENABLED' && !['true', 'false'].includes(val))
-        return res.json({ ok: false, error: 'DISCORD_AUTO_REPLY_ENABLED muss true oder false sein' });
-      if (key === 'DISCORD_AUTO_REPLY_MENTION_ONLY' && !['true', 'false'].includes(val))
-        return res.json({ ok: false, error: 'DISCORD_AUTO_REPLY_MENTION_ONLY muss true oder false sein' });
-      if (key === 'DISCORD_AUTO_REPLY_CHANNEL_IDS') {
-        const entries = val.split(/[;,]/).map(s => s.trim()).filter(Boolean);
-        const invalid = entries.filter(id => !/^\d+$/.test(id));
-        if (invalid.length) return res.json({ ok: false, error: `DISCORD_AUTO_REPLY_CHANNEL_IDS ungueltig: ${invalid.join(', ')}` });
-      }
-      if (key === 'DISCORD_AUTO_REPLY_COOLDOWN_MS') {
-        const n = parseInt(val, 10);
-        if (!Number.isFinite(n) || n < 0 || n > 3600000)
-          return res.json({ ok: false, error: 'DISCORD_AUTO_REPLY_COOLDOWN_MS muss zwischen 0 und 3600000 liegen' });
-      }
-      if (key === 'DISCORD_GITHUB_WATCH_ENABLED' && !['true', 'false'].includes(val))
-        return res.json({ ok: false, error: 'DISCORD_GITHUB_WATCH_ENABLED muss true oder false sein' });
-      if (key === 'DISCORD_GITHUB_CHANNEL_ID' && val && !/^\d+$/.test(val))
-        return res.json({ ok: false, error: 'DISCORD_GITHUB_CHANNEL_ID: Nur Zahlen erlaubt (Discord ID)' });
-      if (key === 'DISCORD_GITHUB_REPOS') {
-        const entries = val.split(/[;,]/).map(s => s.trim()).filter(Boolean);
-        const invalid = entries.filter(r => !/^[\w.-]+\/[\w.-]+$/.test(r));
-        if (invalid.length) return res.json({ ok: false, error: `DISCORD_GITHUB_REPOS ungueltig (Format owner/repo): ${invalid.join(', ')}` });
-        if (entries.length > 20) return res.json({ ok: false, error: 'DISCORD_GITHUB_REPOS maximal 20 Repos erlaubt' });
-      }
-      if (key === 'DISCORD_GITHUB_MODE' && !['releases', 'commits', 'both'].includes(val))
-        return res.json({ ok: false, error: 'DISCORD_GITHUB_MODE muss releases, commits oder both sein' });
-      if (key === 'DISCORD_GITHUB_POLL_INTERVAL_MS') {
-        const n = parseInt(val, 10);
-        if (!Number.isFinite(n) || n < 60000 || n > 86400000)
-          return res.json({ ok: false, error: 'DISCORD_GITHUB_POLL_INTERVAL_MS muss zwischen 60000 (1 Min) und 86400000 (24 Std) liegen' });
-      }
-      if (key === 'GITHUB_TOKEN') {
-        if (val.includes('*')) continue;
-        if (/[\n\r]/.test(val)) return res.json({ ok: false, error: 'GITHUB_TOKEN darf keine Zeilenumbrüche enthalten' });
-      }
 
       updates[key] = val;
     }
