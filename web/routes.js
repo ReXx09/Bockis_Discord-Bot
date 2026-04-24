@@ -2049,8 +2049,8 @@ module.exports = function startWebServer({
         if (templates[key]) {
           // Versuche existierende Regel mit diesem Template-ID zu finden
           const existingTemplate = existingTemplateRules.find(r => r.id === templateDef.id);
-          // Behalte caseSensitive-Wert wenn vorhanden
-          if (existingTemplate && existingTemplate.caseSensitive !== undefined) {
+          // Behalte caseSensitive-Wert wenn vorhanden (Ausnahme: good-night immer case-insensitiv)
+          if (existingTemplate && existingTemplate.caseSensitive !== undefined && templateDef.id !== 'good-night') {
             templateDef.caseSensitive = existingTemplate.caseSensitive;
           }
           existingRules.push(templateDef);

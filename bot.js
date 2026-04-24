@@ -3585,7 +3585,7 @@ client.on('interactionCreate', async interaction => {
         return !!res.matched;
       });
       const hint = nearMiss
-        ? `\n\n💡 Hinweis: Regel \`${nearMiss.id || 'ohne-id'}\` würde bei deaktivierter Groß/Klein-Prüfung matchen.`
+        ? `\n\n💡 Hinweis: Regel \`${nearMiss.id || 'ohne-id'}\` ist aktuell auf Groß/Klein-Prüfung gestellt und matcht deshalb hier nicht.`
         : '';
       const gateHintText = gateHints.length
         ? `\n\n⚙️ Live-Blocker:\n- ${gateHints.join('\n- ')}`
