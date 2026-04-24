@@ -86,6 +86,7 @@ const logger = winston.createLogger({
 
 // #region 3. KONFIGURATION
 const config = require('./config/config');
+const pkg = require('./package.json');
 // #endregion
 
 // #region 4. DATENBANK-INITIALISIERUNG
@@ -174,7 +175,11 @@ class NotificationManager {
       if (!channelId) return;
       const channel = await client.channels.fetch(channelId);
       const emoji = status === 'up' ? '\u2705' : '\uD83D\uDEA8';
-      await channel.send(`${emoji} Status\u00e4nderung bei **${monitor.name}**: ${status.toUpperCase()}`);
+      const mentions = getSubscriptionMentions(monitor);
+      await channel.send({
+        content: `${emoji} Status\u00e4nderung bei **${monitor.name}**: ${status.toUpperCase()}${mentions ? `\n${mentions}` : ''}`,
+        allowedMentions: { users: mentions ? Array.from(new Set((userSubscriptions[String(monitor?.id || '')] || []))) : [] }
+      });
     } catch (err) {
       logger.error(`Benachrichtigung fehlgeschlagen: ${err.message}`);
     }
@@ -220,7 +225,11 @@ let lastChannelStatus      = _initState.lastChannelStatus  ?? null;
 let lastChannelNameMs      = _initState.lastChannelNameMs  ?? 0;
 let serviceCategoryId      = _initState.serviceCategoryId  ?? null;
 let serviceChannels        = _initState.serviceChannels     ?? {};  // { monitorName: channelId }
+let userSubscriptions      = _initState.userSubscriptions   ?? {};  // { monitorId: [userId, ...] }
+let savedQuotes            = Array.isArray(_initState.quotes) ? _initState.quotes : [];
+let pendingReminders       = Array.isArray(_initState.reminders) ? _initState.reminders : [];
 const _svcRenameMs         = _initState.svcRenameMs         ?? {};  // Rate-Limit-Zeitstempel pro Kanal-ID
+const _reminderTimers      = new Map();
 
 function persistState() {
   saveState({
@@ -230,8 +239,197 @@ function persistState() {
     lastChannelNameMs,
     serviceCategoryId,
     serviceChannels,
+    userSubscriptions,
+    quotes: savedQuotes,
+    reminders: pendingReminders,
     svcRenameMs: _svcRenameMs
   });
+}
+
+function formatDurationShort(ms) {
+  const totalSeconds = Math.max(1, Math.floor(ms / 1000));
+  const days = Math.floor(totalSeconds / 86400);
+  const hours = Math.floor((totalSeconds % 86400) / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  const parts = [];
+  if (days) parts.push(`${days}d`);
+  if (hours) parts.push(`${hours}h`);
+  if (minutes) parts.push(`${minutes}m`);
+  if (!parts.length || (!days && !hours && seconds)) parts.push(`${seconds}s`);
+  return parts.slice(0, 3).join(' ');
+}
+
+function formatBytes(bytes) {
+  const value = Number(bytes) || 0;
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+  if (value < 1024 * 1024 * 1024) return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(value / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+}
+
+function parseDurationInput(input) {
+  const raw = String(input || '').trim().toLowerCase();
+  if (!raw) return null;
+  const match = raw.match(/^(\d+)\s*(m|min|mins|minute|minutes|h|hr|hrs|hour|hours|d|day|days|w|week|weeks)?$/i);
+  if (!match) return null;
+
+  const amount = parseInt(match[1], 10);
+  if (!Number.isFinite(amount) || amount <= 0) return null;
+
+  const unit = match[2] || 'm';
+  if (/^(m|min|mins|minute|minutes)$/i.test(unit)) return amount * 60 * 1000;
+  if (/^(h|hr|hrs|hour|hours)$/i.test(unit)) return amount * 60 * 60 * 1000;
+  if (/^(d|day|days)$/i.test(unit)) return amount * 24 * 60 * 60 * 1000;
+  if (/^(w|week|weeks)$/i.test(unit)) return amount * 7 * 24 * 60 * 60 * 1000;
+  return null;
+}
+
+function resolveMonitorByQuery(monitors, query) {
+  const raw = String(query || '').trim();
+  if (!raw) return null;
+  const needle = raw.toLowerCase();
+  return monitors.find(m => String(m.id) === raw)
+    || monitors.find(m => String(m.name || '').toLowerCase() === needle)
+    || monitors.find(m => String(m.name || '').toLowerCase().includes(needle))
+    || null;
+}
+
+function getSubscriptionMentions(monitor) {
+  const ids = Array.from(new Set(userSubscriptions[String(monitor?.id || '')] || []));
+  return ids.length ? ids.map((id) => `<@${id}>`).join(' ') : '';
+}
+
+function toggleMonitorSubscription(monitorId, userId) {
+  const key = String(monitorId);
+  const current = Array.isArray(userSubscriptions[key]) ? userSubscriptions[key] : [];
+  const exists = current.includes(userId);
+  userSubscriptions[key] = exists
+    ? current.filter((id) => id !== userId)
+    : Array.from(new Set([...current, userId]));
+  if (!userSubscriptions[key].length) delete userSubscriptions[key];
+  persistState();
+  return !exists;
+}
+
+function getSubscriptionsForUser(userId) {
+  return Object.entries(userSubscriptions)
+    .filter(([, userIds]) => Array.isArray(userIds) && userIds.includes(userId))
+    .map(([monitorId]) => monitorId);
+}
+
+function getNextQuoteId() {
+  return savedQuotes.reduce((maxId, entry) => Math.max(maxId, Number(entry.id) || 0), 0) + 1;
+}
+
+function addQuoteEntry({ guildId, text, authorId, authorName, addedById }) {
+  const entry = {
+    id: getNextQuoteId(),
+    guildId: guildId || null,
+    text: String(text || '').trim(),
+    authorId: authorId || null,
+    authorName: authorName || null,
+    addedById,
+    addedAt: new Date().toISOString(),
+  };
+  savedQuotes.push(entry);
+  if (savedQuotes.length > 500) savedQuotes = savedQuotes.slice(-500);
+  persistState();
+  return entry;
+}
+
+function pickRandomQuote(guildId) {
+  const pool = savedQuotes.filter((entry) => (guildId ? entry.guildId === guildId : true));
+  if (!pool.length) return null;
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
+function removeReminder(reminderId) {
+  const key = String(reminderId);
+  const timer = _reminderTimers.get(key);
+  if (timer) {
+    clearTimeout(timer);
+    _reminderTimers.delete(key);
+  }
+  pendingReminders = pendingReminders.filter((entry) => String(entry.id) !== key);
+  persistState();
+}
+
+async function deliverReminder(reminderId) {
+  const reminder = pendingReminders.find((entry) => String(entry.id) === String(reminderId));
+  if (!reminder) return;
+  const delay = new Date(reminder.remindAt).getTime() - Date.now();
+  if (delay > 1000) {
+    scheduleReminder(reminder);
+    return;
+  }
+
+  const payload = `⏰ <@${reminder.userId}> Erinnerung: ${reminder.message}`;
+  try {
+    let delivered = false;
+    if (reminder.channelId) {
+      const channel = await client.channels.fetch(reminder.channelId).catch(() => null);
+      if (channel?.isTextBased?.()) {
+        await channel.send({ content: payload, allowedMentions: { users: [reminder.userId] } });
+        delivered = true;
+      }
+    }
+    if (!delivered) {
+      const user = await client.users.fetch(reminder.userId).catch(() => null);
+      if (user) {
+        await user.send(`⏰ Erinnerung: ${reminder.message}`).catch(() => {});
+      }
+    }
+  } catch (err) {
+    logger.warn(`Reminder ${reminder.id} konnte nicht zugestellt werden: ${err.message}`);
+  } finally {
+    removeReminder(reminder.id);
+  }
+}
+
+function scheduleReminder(reminder) {
+  const key = String(reminder.id);
+  const existing = _reminderTimers.get(key);
+  if (existing) clearTimeout(existing);
+
+  const delay = new Date(reminder.remindAt).getTime() - Date.now();
+  if (!Number.isFinite(delay) || delay <= 0) {
+    void deliverReminder(reminder.id);
+    return;
+  }
+
+  const timeoutMs = Math.min(delay, 2147483647);
+  const timer = setTimeout(() => {
+    _reminderTimers.delete(key);
+    void deliverReminder(reminder.id);
+  }, timeoutMs);
+  _reminderTimers.set(key, timer);
+}
+
+function addReminder({ userId, channelId, guildId, message, remindAt }) {
+  const entry = {
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    userId,
+    channelId,
+    guildId: guildId || null,
+    message: String(message || '').trim(),
+    remindAt: new Date(remindAt).toISOString(),
+    createdAt: new Date().toISOString(),
+  };
+  pendingReminders.push(entry);
+  persistState();
+  scheduleReminder(entry);
+  return entry;
+}
+
+function reschedulePendingReminders() {
+  for (const timer of _reminderTimers.values()) clearTimeout(timer);
+  _reminderTimers.clear();
+
+  const now = Date.now();
+  pendingReminders = pendingReminders.filter((entry) => new Date(entry.remindAt).getTime() > now - 60_000);
+  persistState();
+  for (const reminder of pendingReminders) scheduleReminder(reminder);
 }
 // #endregion
 
@@ -1800,7 +1998,7 @@ async function calculateUptimeMetrics() {
 // #endregion
 
 // #region 20. SLASH-COMMANDS REGISTRIEREN
-const AVAILABLE_SLASH_COMMANDS = ['status', 'uptime', 'refresh', 'help', 'coinflip', 'dice', 'eightball', 'cleanup', 'translate'];
+const AVAILABLE_SLASH_COMMANDS = ['status', 'uptime', 'refresh', 'help', 'coinflip', 'dice', 'eightball', 'cleanup', 'translate', 'ping', 'botinfo', 'serverstatus', 'ki', 'wetter', 'subscribe', 'remind', 'quote', 'poll', 'avatar', 'userinfo'];
 const SLASH_COMMAND_I18N = {
   status: {
     names: { de: 'status' },
@@ -1874,6 +2072,130 @@ const SLASH_COMMAND_I18N = {
       'en-GB': 'Translates text (for example English <-> German)',
     },
   },
+  ping: {
+    names: { de: 'ping' },
+    descriptions: {
+      'de': 'Zeigt die aktuelle Bot-Latenz',
+      'en-US': 'Shows the current bot latency',
+      'en-GB': 'Shows the current bot latency',
+    },
+  },
+  botinfo: {
+    names: { de: 'botinfo' },
+    descriptions: {
+      'de': 'Zeigt technische Informationen über den Bot',
+      'en-US': 'Shows technical information about the bot',
+      'en-GB': 'Shows technical information about the bot',
+    },
+  },
+  serverstatus: {
+    names: { de: 'dienststatus' },
+    descriptions: {
+      'de': 'Zeigt den Status eines einzelnen Dienstes oder einer Gruppe',
+      'en-US': 'Shows the status of a single service or group',
+      'en-GB': 'Shows the status of a single service or group',
+    },
+  },
+  ki: {
+    names: { de: 'ki' },
+    descriptions: {
+      'de': 'Stellt dem KI-Chatbot direkt eine Frage',
+      'en-US': 'Ask the AI chatbot a question directly',
+      'en-GB': 'Ask the AI chatbot a question directly',
+    },
+  },
+  wetter: {
+    names: { de: 'wetter' },
+    descriptions: {
+      'de': 'Zeigt das aktuelle Wetter für einen Ort',
+      'en-US': 'Shows the current weather for a location',
+      'en-GB': 'Shows the current weather for a location',
+    },
+  },
+  subscribe: {
+    names: { de: 'abonnieren' },
+    descriptions: {
+      'de': 'Abonniert Statusänderungen für einen Dienst oder listet deine Abos',
+      'en-US': 'Subscribe to service status changes or list your subscriptions',
+      'en-GB': 'Subscribe to service status changes or list your subscriptions',
+    },
+  },
+  remind: {
+    names: { de: 'erinnern' },
+    descriptions: {
+      'de': 'Setzt eine Erinnerung',
+      'en-US': 'Sets a reminder',
+      'en-GB': 'Sets a reminder',
+    },
+  },
+  quote: {
+    names: { de: 'zitat' },
+    descriptions: {
+      'de': 'Speichert ein Zitat oder zeigt ein zufälliges an',
+      'en-US': 'Stores a quote or shows a random one',
+      'en-GB': 'Stores a quote or shows a random one',
+    },
+  },
+  poll: {
+    names: { de: 'umfrage' },
+    descriptions: {
+      'de': 'Erstellt eine einfache Umfrage mit Reaktionen',
+      'en-US': 'Creates a simple poll with reactions',
+      'en-GB': 'Creates a simple poll with reactions',
+    },
+  },
+  avatar: {
+    names: { de: 'avatar' },
+    descriptions: {
+      'de': 'Zeigt den Avatar eines Nutzers',
+      'en-US': 'Shows a user avatar',
+      'en-GB': 'Shows a user avatar',
+    },
+  },
+  userinfo: {
+    names: { de: 'nutzerinfo' },
+    descriptions: {
+      'de': 'Zeigt Informationen über einen Nutzer',
+      'en-US': 'Shows information about a user',
+      'en-GB': 'Shows information about a user',
+    },
+  },
+};
+
+const SLASH_OPTION_ALIASES = {
+  dice: { seiten: ['seiten', 'sides'] },
+  eightball: { frage: ['frage', 'question'] },
+  cleanup: {
+    kanal: ['kanal', 'channel'],
+    max_nachrichten: ['max_nachrichten', 'max_messages'],
+    max_alter_stunden: ['max_alter_stunden', 'max_age_hours'],
+    nur_bot: ['nur_bot', 'only_bot'],
+    dry_run: ['dry_run'],
+  },
+  translate: {
+    text: ['text'],
+    ziel: ['ziel', 'target'],
+    quelle: ['quelle', 'source'],
+  },
+  serverstatus: {
+    dienst: ['dienst', 'service'],
+    gruppe: ['gruppe', 'group'],
+  },
+  ki: { frage: ['frage', 'question', 'prompt'] },
+  wetter: { ort: ['ort', 'location'] },
+  subscribe: { dienst: ['dienst', 'service'] },
+  remind: { zeit: ['zeit', 'time'], text: ['text'] },
+  quote: { text: ['text'] },
+  poll: {
+    frage: ['frage', 'question'],
+    option1: ['option1'],
+    option2: ['option2'],
+    option3: ['option3'],
+    option4: ['option4'],
+    option5: ['option5'],
+  },
+  avatar: { nutzer: ['nutzer', 'user'] },
+  userinfo: { nutzer: ['nutzer', 'user'] },
 };
 
 function applySlashCommandI18n(builder, commandKey) {
@@ -1901,13 +2223,74 @@ function getSlashCommandDisplayName(commandKey, locale) {
   return commandKey;
 }
 
+function resolveCanonicalCommandName(name) {
+  const raw = String(name || '').trim().toLowerCase();
+  if (!raw) return raw;
+  if (AVAILABLE_SLASH_COMMANDS.includes(raw)) return raw;
+  for (const [commandKey, meta] of Object.entries(SLASH_COMMAND_I18N)) {
+    if (Object.values(meta.names || {}).some((localizedName) => String(localizedName).toLowerCase() === raw)) {
+      return commandKey;
+    }
+  }
+  return raw;
+}
+
+function getSlashOptionAliases(commandKey, optionKey) {
+  const aliases = SLASH_OPTION_ALIASES[commandKey]?.[optionKey] || [optionKey];
+  return Array.from(new Set([optionKey, ...aliases]));
+}
+
+function getSlashStringOption(interaction, commandKey, optionKey) {
+  for (const alias of getSlashOptionAliases(commandKey, optionKey)) {
+    const value = interaction.options.getString(alias, false);
+    if (value !== null && value !== undefined) return value;
+  }
+  return null;
+}
+
+function getSlashIntegerOption(interaction, commandKey, optionKey) {
+  for (const alias of getSlashOptionAliases(commandKey, optionKey)) {
+    const value = interaction.options.getInteger(alias, false);
+    if (value !== null && value !== undefined) return value;
+  }
+  return null;
+}
+
+function getSlashBooleanOption(interaction, commandKey, optionKey) {
+  for (const alias of getSlashOptionAliases(commandKey, optionKey)) {
+    const value = interaction.options.getBoolean(alias, false);
+    if (value !== null && value !== undefined) return value;
+  }
+  return null;
+}
+
+function getSlashChannelOption(interaction, commandKey, optionKey) {
+  for (const alias of getSlashOptionAliases(commandKey, optionKey)) {
+    const value = interaction.options.getChannel(alias, false);
+    if (value !== null && value !== undefined) return value;
+  }
+  return null;
+}
+
+function getSlashUserOption(interaction, commandKey, optionKey) {
+  for (const alias of getSlashOptionAliases(commandKey, optionKey)) {
+    const value = interaction.options.getUser(alias, false);
+    if (value !== null && value !== undefined) return value;
+  }
+  return null;
+}
+
 function getEnabledSlashCommands() {
+  const legacyDefault = ['status', 'uptime', 'refresh', 'help', 'coinflip', 'dice', 'eightball', 'cleanup', 'translate'];
   const raw = String(config.get('discord.enabledCommands') || '').trim();
   const entries = raw
     .split(',')
     .map(s => s.trim().toLowerCase())
     .filter(Boolean);
   const unique = Array.from(new Set(entries)).filter(cmd => AVAILABLE_SLASH_COMMANDS.includes(cmd));
+  if (unique.length === legacyDefault.length && legacyDefault.every((cmd) => unique.includes(cmd))) {
+    return [...AVAILABLE_SLASH_COMMANDS];
+  }
   return unique.length ? unique : [...AVAILABLE_SLASH_COMMANDS];
 }
 
@@ -2111,6 +2494,231 @@ async function registerSlashCommands() {
             })
         )
         , 'translate')
+        .toJSON()
+    );
+  }
+
+  if (enabled.has('ping')) {
+    commands.push(
+      applySlashCommandI18n(new SlashCommandBuilder()
+        .setName('ping')
+        .setDescription('Zeigt die aktuelle Bot-Latenz'), 'ping')
+        .toJSON()
+    );
+  }
+
+  if (enabled.has('botinfo')) {
+    commands.push(
+      applySlashCommandI18n(new SlashCommandBuilder()
+        .setName('botinfo')
+        .setDescription('Zeigt technische Informationen über den Bot'), 'botinfo')
+        .toJSON()
+    );
+  }
+
+  if (enabled.has('serverstatus')) {
+    commands.push(
+      applySlashCommandI18n(new SlashCommandBuilder()
+        .setName('serverstatus')
+        .setDescription('Zeigt den Status eines einzelnen Dienstes oder einer Gruppe')
+        .addStringOption(opt =>
+          applySlashOptionI18n(opt.setName('dienst')
+            .setDescription('Name oder ID des Dienstes')
+            .setRequired(false), {
+              names: { 'en-US': 'service', 'en-GB': 'service' },
+              descriptions: {
+                'en-US': 'Service name or ID',
+                'en-GB': 'Service name or ID',
+              },
+            })
+        )
+        .addStringOption(opt =>
+          applySlashOptionI18n(opt.setName('gruppe')
+            .setDescription('Optionaler Gruppenname')
+            .setRequired(false), {
+              names: { 'en-US': 'group', 'en-GB': 'group' },
+              descriptions: {
+                'en-US': 'Optional group name',
+                'en-GB': 'Optional group name',
+              },
+            })
+        )
+        , 'serverstatus')
+        .toJSON()
+    );
+  }
+
+  if (enabled.has('ki')) {
+    commands.push(
+      applySlashCommandI18n(new SlashCommandBuilder()
+        .setName('ki')
+        .setDescription('Stellt dem KI-Chatbot direkt eine Frage')
+        .addStringOption(opt =>
+          applySlashOptionI18n(opt.setName('frage')
+            .setDescription('Deine Frage an den Bot')
+            .setRequired(true), {
+              names: { 'en-US': 'question', 'en-GB': 'question' },
+              descriptions: {
+                'en-US': 'Your question for the bot',
+                'en-GB': 'Your question for the bot',
+              },
+            })
+        )
+        , 'ki')
+        .toJSON()
+    );
+  }
+
+  if (enabled.has('wetter')) {
+    commands.push(
+      applySlashCommandI18n(new SlashCommandBuilder()
+        .setName('wetter')
+        .setDescription('Zeigt das aktuelle Wetter für einen Ort')
+        .addStringOption(opt =>
+          applySlashOptionI18n(opt.setName('ort')
+            .setDescription('Ort, z. B. Berlin')
+            .setRequired(true), {
+              names: { 'en-US': 'location', 'en-GB': 'location' },
+              descriptions: {
+                'en-US': 'Location, for example Berlin',
+                'en-GB': 'Location, for example Berlin',
+              },
+            })
+        )
+        , 'wetter')
+        .toJSON()
+    );
+  }
+
+  if (enabled.has('subscribe')) {
+    commands.push(
+      applySlashCommandI18n(new SlashCommandBuilder()
+        .setName('subscribe')
+        .setDescription('Abonniert Statusänderungen für einen Dienst oder listet deine Abos')
+        .addStringOption(opt =>
+          applySlashOptionI18n(opt.setName('dienst')
+            .setDescription('Dienstname oder ID; leer = aktuelle Abos anzeigen')
+            .setRequired(false), {
+              names: { 'en-US': 'service', 'en-GB': 'service' },
+              descriptions: {
+                'en-US': 'Service name or ID; empty = show your subscriptions',
+                'en-GB': 'Service name or ID; empty = show your subscriptions',
+              },
+            })
+        )
+        , 'subscribe')
+        .toJSON()
+    );
+  }
+
+  if (enabled.has('remind')) {
+    commands.push(
+      applySlashCommandI18n(new SlashCommandBuilder()
+        .setName('remind')
+        .setDescription('Setzt eine Erinnerung')
+        .addStringOption(opt =>
+          applySlashOptionI18n(opt.setName('zeit')
+            .setDescription('Zeit bis zur Erinnerung, z. B. 10m, 2h oder 1d')
+            .setRequired(true), {
+              names: { 'en-US': 'time', 'en-GB': 'time' },
+              descriptions: {
+                'en-US': 'Reminder delay, for example 10m, 2h or 1d',
+                'en-GB': 'Reminder delay, for example 10m, 2h or 1d',
+              },
+            })
+        )
+        .addStringOption(opt =>
+          applySlashOptionI18n(opt.setName('text')
+            .setDescription('Woran soll erinnert werden?')
+            .setRequired(true), {
+              descriptions: {
+                'en-US': 'What should I remind you about?',
+                'en-GB': 'What should I remind you about?',
+              },
+            })
+        )
+        , 'remind')
+        .toJSON()
+    );
+  }
+
+  if (enabled.has('quote')) {
+    commands.push(
+      applySlashCommandI18n(new SlashCommandBuilder()
+        .setName('quote')
+        .setDescription('Speichert ein Zitat oder zeigt ein zufälliges an')
+        .addStringOption(opt =>
+          applySlashOptionI18n(opt.setName('text')
+            .setDescription('Zitattext; leer = zufälliges Zitat anzeigen')
+            .setRequired(false), {
+              descriptions: {
+                'en-US': 'Quote text; empty = show a random quote',
+                'en-GB': 'Quote text; empty = show a random quote',
+              },
+            })
+        )
+        , 'quote')
+        .toJSON()
+    );
+  }
+
+  if (enabled.has('poll')) {
+    commands.push(
+      applySlashCommandI18n(new SlashCommandBuilder()
+        .setName('poll')
+        .setDescription('Erstellt eine einfache Umfrage mit Reaktionen')
+        .addStringOption(opt => applySlashOptionI18n(opt.setName('frage').setDescription('Frage der Umfrage').setRequired(true), {
+          names: { 'en-US': 'question', 'en-GB': 'question' },
+          descriptions: { 'en-US': 'Poll question', 'en-GB': 'Poll question' },
+        }))
+        .addStringOption(opt => opt.setName('option1').setDescription('Option 1').setRequired(true))
+        .addStringOption(opt => opt.setName('option2').setDescription('Option 2').setRequired(true))
+        .addStringOption(opt => opt.setName('option3').setDescription('Option 3').setRequired(false))
+        .addStringOption(opt => opt.setName('option4').setDescription('Option 4').setRequired(false))
+        .addStringOption(opt => opt.setName('option5').setDescription('Option 5').setRequired(false))
+        , 'poll')
+        .toJSON()
+    );
+  }
+
+  if (enabled.has('avatar')) {
+    commands.push(
+      applySlashCommandI18n(new SlashCommandBuilder()
+        .setName('avatar')
+        .setDescription('Zeigt den Avatar eines Nutzers')
+        .addUserOption(opt =>
+          applySlashOptionI18n(opt.setName('nutzer')
+            .setDescription('Optionaler Zielnutzer')
+            .setRequired(false), {
+              names: { 'en-US': 'user', 'en-GB': 'user' },
+              descriptions: {
+                'en-US': 'Optional target user',
+                'en-GB': 'Optional target user',
+              },
+            })
+        )
+        , 'avatar')
+        .toJSON()
+    );
+  }
+
+  if (enabled.has('userinfo')) {
+    commands.push(
+      applySlashCommandI18n(new SlashCommandBuilder()
+        .setName('userinfo')
+        .setDescription('Zeigt Informationen über einen Nutzer')
+        .addUserOption(opt =>
+          applySlashOptionI18n(opt.setName('nutzer')
+            .setDescription('Optionaler Zielnutzer')
+            .setRequired(false), {
+              names: { 'en-US': 'user', 'en-GB': 'user' },
+              descriptions: {
+                'en-US': 'Optional target user',
+                'en-GB': 'Optional target user',
+              },
+            })
+        )
+        , 'userinfo')
         .toJSON()
     );
   }
@@ -2361,12 +2969,14 @@ function startPresenceRotation() {
 client.on('interactionCreate', async interaction => {
   if (!interaction.isChatInputCommand()) return;
 
+  const commandName = resolveCanonicalCommandName(interaction.commandName);
+  const interactionLocale = interaction.locale || interaction.guildLocale;
   const enabledSlashCommands = new Set(getEnabledSlashCommands());
-  if (!enabledSlashCommands.has(interaction.commandName)) {
+  if (!enabledSlashCommands.has(commandName)) {
     return interaction.reply({ content: '❌ Dieses Bot-Kommando ist derzeit deaktiviert.', ephemeral: true });
   }
 
-  if (interaction.commandName === 'status') {
+  if (commandName === 'status') {
     await interaction.deferReply({ ephemeral: true });
     try {
       const monitors = await getMonitorData();
@@ -2395,7 +3005,7 @@ client.on('interactionCreate', async interaction => {
     }
   }
 
-  if (interaction.commandName === 'uptime') {
+  if (commandName === 'uptime') {
     await interaction.deferReply({ ephemeral: true });
     try {
       const uptime = await calculateUptimeMetrics();
@@ -2413,7 +3023,7 @@ client.on('interactionCreate', async interaction => {
     }
   }
 
-  if (interaction.commandName === 'refresh') {
+  if (commandName === 'refresh') {
     if (!interaction.memberPermissions?.has('ManageGuild')) {
       return interaction.reply({ content: '\u274C Keine Berechtigung (ManageGuild erforderlich).', ephemeral: true });
     }
@@ -2422,10 +3032,10 @@ client.on('interactionCreate', async interaction => {
     await interaction.editReply('\u2705 Status-Nachricht wurde aktualisiert.');
   }
 
-  if (interaction.commandName === 'help') {
-    const germanLocale = isGermanDiscordLocale(interaction.locale || interaction.guildLocale);
+  if (commandName === 'help') {
+    const germanLocale = isGermanDiscordLocale(interactionLocale);
     const enabled = getEnabledSlashCommands()
-      .map(cmd => `/${getSlashCommandDisplayName(cmd, interaction.locale || interaction.guildLocale)}`)
+      .map(cmd => `/${getSlashCommandDisplayName(cmd, interactionLocale)}`)
       .join(', ');
     const description = germanLocale
       ? [
@@ -2435,6 +3045,17 @@ client.on('interactionCreate', async interaction => {
           `/aktualisieren - manueller Refresh (ManageGuild)`,
           `/bereinigen - Nachrichten-Cleanup (ManageGuild)`,
           `/uebersetzen <text> [ziel] [quelle] - Text uebersetzen`,
+          `/ping - Bot-Latenz`,
+          `/botinfo - technische Bot-Infos`,
+          `/dienststatus [dienst] [gruppe] - einzelner Dienst oder Gruppe`,
+          `/ki <frage> - direkte KI-Frage`,
+          `/wetter <ort> - Wetter abrufen`,
+          `/abonnieren [dienst] - Status-Abos umschalten/anzeigen`,
+          `/erinnern <zeit> <text> - Erinnerung setzen`,
+          `/zitat [text] - Zitat speichern oder zufällig anzeigen`,
+          `/umfrage <frage> <optionen> - Umfrage erstellen`,
+          `/avatar [nutzer] - Avatar anzeigen`,
+          `/nutzerinfo [nutzer] - Nutzerinfos anzeigen`,
           '',
           '**Fun & Gadgets**',
           `/muenzwurf - Münzwurf`,
@@ -2450,6 +3071,17 @@ client.on('interactionCreate', async interaction => {
           `/refresh - manual refresh (ManageGuild)`,
           `/cleanup - message cleanup (ManageGuild)`,
           `/translate <text> [target] [source] - translate text`,
+          `/ping - bot latency`,
+          `/botinfo - technical bot info`,
+          `/serverstatus [service] [group] - single service or group`,
+          `/ki <question> - direct AI question`,
+          `/wetter <location> - get weather`,
+          `/subscribe [service] - toggle or list subscriptions`,
+          `/remind <time> <text> - create a reminder`,
+          `/quote [text] - save a quote or show a random one`,
+          `/poll <question> <options> - create a poll`,
+          `/avatar [user] - show avatar`,
+          `/userinfo [user] - show user info`,
           '',
           '**Fun & Gadgets**',
           `/coinflip - coin flip`,
@@ -2469,7 +3101,7 @@ client.on('interactionCreate', async interaction => {
     });
   }
 
-  if (interaction.commandName === 'translate') {
+  if (commandName === 'translate') {
     if (!isTranslationEnabled()) {
       return interaction.reply({ content: '❌ Uebersetzer ist aktuell deaktiviert.', ephemeral: true });
     }
@@ -2479,15 +3111,15 @@ client.on('interactionCreate', async interaction => {
 
     await interaction.deferReply({ ephemeral: true });
     try {
-      const rawText = String(interaction.options.getString('text', true) || '').trim();
+      const rawText = String(getSlashStringOption(interaction, 'translate', 'text') || '').trim();
       const maxLen = getConfiguredTranslateMaxTextLength();
       if (!rawText) return interaction.editReply('❌ Bitte gib einen Text an.');
       if (rawText.length > maxLen) {
         return interaction.editReply(`❌ Text zu lang (${rawText.length}/${maxLen}).`);
       }
 
-      const sourceInput = String(interaction.options.getString('quelle') || '').trim().toLowerCase();
-      const targetInput = String(interaction.options.getString('ziel') || '').trim().toLowerCase();
+      const sourceInput = String(getSlashStringOption(interaction, 'translate', 'quelle') || '').trim().toLowerCase();
+      const targetInput = String(getSlashStringOption(interaction, 'translate', 'ziel') || '').trim().toLowerCase();
       const source = sourceInput || getConfiguredTranslateSource();
       const target = targetInput || getConfiguredTranslateTarget();
 
@@ -2527,19 +3159,301 @@ client.on('interactionCreate', async interaction => {
     }
   }
 
-  if (interaction.commandName === 'coinflip') {
+  if (commandName === 'ping') {
+    const gatewayPing = Math.max(0, Math.round(client.ws.ping || 0));
+    const latency = Math.max(0, Date.now() - interaction.createdTimestamp);
+    return interaction.reply({
+      ephemeral: true,
+      embeds: [{
+        color: 0x57F287,
+        title: '🏓 Pong',
+        fields: [
+          { name: 'Bot-Latenz', value: `${latency} ms`, inline: true },
+          { name: 'Gateway-Ping', value: `${gatewayPing} ms`, inline: true },
+        ],
+        timestamp: new Date().toISOString(),
+      }]
+    });
+  }
+
+  if (commandName === 'botinfo') {
+    const mem = process.memoryUsage();
+    const providerUrl = String(config.get('openai.baseUrl') || 'https://api.openai.com/v1').trim();
+    const providerName = providerUrl.replace(/^https?:\/\//, '').replace(/\/.*$/, '') || 'unbekannt';
+    return interaction.reply({
+      ephemeral: true,
+      embeds: [{
+        color: 0x5865F2,
+        title: '🤖 Bot-Informationen',
+        fields: [
+          { name: 'Version', value: pkg.version || 'unbekannt', inline: true },
+          { name: 'Laufzeit', value: formatDurationShort(process.uptime() * 1000), inline: true },
+          { name: 'Discord Gateway', value: `${Math.round(client.ws.ping || 0)} ms`, inline: true },
+          { name: 'RAM', value: `${formatBytes(mem.heapUsed)} / ${formatBytes(mem.heapTotal)}`, inline: true },
+          { name: 'Server', value: String(client.guilds.cache.size || 0), inline: true },
+          { name: 'KI-Modell', value: String(config.get('openai.model') || 'deaktiviert'), inline: true },
+          { name: 'KI-Provider', value: providerName, inline: true },
+          { name: 'Node.js', value: process.version, inline: true },
+        ],
+        timestamp: new Date().toISOString(),
+      }]
+    });
+  }
+
+  if (commandName === 'serverstatus') {
+    await interaction.deferReply({ ephemeral: true });
+    try {
+      const monitors = await getMonitorData();
+      if (!monitors?.length) return interaction.editReply('❌ Keine Daten von Uptime Kuma erhalten.');
+
+      const serviceQuery = String(getSlashStringOption(interaction, 'serverstatus', 'dienst') || '').trim();
+      const groupQuery = String(getSlashStringOption(interaction, 'serverstatus', 'gruppe') || '').trim();
+
+      if (serviceQuery) {
+        const monitor = resolveMonitorByQuery(monitors, serviceQuery);
+        if (!monitor) return interaction.editReply(`❌ Kein Dienst gefunden für: ${serviceQuery}`);
+        const statusIcon = monitor.status === 1 ? '🟢' : monitor.status === 0 ? '🔴' : '🟡';
+        return interaction.editReply({
+          embeds: [{
+            color: monitor.status === 1 ? 0x43B581 : monitor.status === 0 ? 0xF04747 : 0xFAA61A,
+            title: `${statusIcon} ${monitor.name}`,
+            fields: [
+              { name: 'Gruppe', value: monitor.group || 'General', inline: true },
+              { name: 'Status', value: monitor.status === 1 ? 'Online' : monitor.status === 0 ? 'Offline' : 'Pending', inline: true },
+              { name: 'Uptime', value: `${monitor.uptime}%`, inline: true },
+              { name: 'Ping', value: monitor.ping != null ? `${monitor.ping} ms` : '–', inline: true },
+              { name: 'Zuletzt geprüft', value: monitor.time ? new Date(monitor.time).toLocaleString('de-DE') : '–', inline: true },
+              { name: 'ID', value: String(monitor.id), inline: true },
+            ],
+            timestamp: new Date().toISOString(),
+          }]
+        });
+      }
+
+      let filtered = monitors;
+      if (groupQuery) {
+        const needle = groupQuery.toLowerCase();
+        filtered = monitors.filter((monitor) => String(monitor.group || '').toLowerCase().includes(needle));
+      }
+      if (!filtered.length) return interaction.editReply(`❌ Keine Dienste für die Gruppe gefunden: ${groupQuery}`);
+
+      const lines = filtered
+        .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'de'))
+        .map((monitor) => `${monitor.status === 1 ? '🟢' : monitor.status === 0 ? '🔴' : '🟡'} **${monitor.name}** · ${monitor.uptime}% · ${monitor.ping != null ? `${monitor.ping} ms` : '–'}`)
+        .slice(0, 20);
+      const titleSuffix = groupQuery ? ` (${groupQuery})` : '';
+      return interaction.editReply({
+        embeds: [{
+          color: 0x5865F2,
+          title: `📋 Dienststatus${titleSuffix}`,
+          description: lines.join('\n'),
+          footer: { text: `${filtered.length} Dienst(e)` },
+          timestamp: new Date().toISOString(),
+        }]
+      });
+    } catch (err) {
+      logger.error(`/serverstatus Fehler: ${err.message}`);
+      return interaction.editReply('❌ Fehler beim Abrufen des Dienststatus.');
+    }
+  }
+
+  if (commandName === 'ki') {
+    if (!config.get('openai.enabled')) {
+      return interaction.reply({ content: '❌ KI-Chat ist aktuell deaktiviert.', ephemeral: true });
+    }
+    if (!interaction.guildId && !config.get('openai.allowDMs')) {
+      return interaction.reply({ content: '❌ KI-Chat ist per DM deaktiviert.', ephemeral: true });
+    }
+    if (interaction.guildId) {
+      const allowed = _getChatAllowedChannelIds();
+      if (allowed.length && !allowed.includes(interaction.channelId)) {
+        return interaction.reply({ content: '❌ KI-Chat ist in diesem Kanal nicht freigegeben.', ephemeral: true });
+      }
+    }
+
+    const question = String(getSlashStringOption(interaction, 'ki', 'frage') || '').trim();
+    if (!question) return interaction.reply({ content: '❌ Bitte gib eine Frage an.', ephemeral: true });
+
+    const now = Date.now();
+    const rateLimit = Math.max(1, config.get('openai.rateLimitPerMinute') || 5);
+    const history = (_chatRateLimitMap.get(interaction.user.id) || []).filter((timestamp) => now - timestamp < 60000);
+    if (history.length >= rateLimit) {
+      return interaction.reply({ content: `⏳ Langsam! Du kannst maximal ${rateLimit} Anfragen pro Minute stellen.`, ephemeral: true });
+    }
+    history.push(now);
+    _chatRateLimitMap.set(interaction.user.id, history);
+
+    await interaction.deferReply();
+    try {
+      const reply = await _askOpenAI(question, interaction.member?.displayName || interaction.user.username);
+      if (!reply) return interaction.editReply('🤔 Ich konnte gerade keine Antwort generieren. Bitte versuche es später nochmal.');
+      return interaction.editReply(reply.length > 1900 ? `${reply.slice(0, 1897)}…` : reply);
+    } catch (err) {
+      logger.warn(`/ki Fehler für ${interaction.user.tag}: ${err.message}`);
+      if (err.response?.status === 401) return interaction.editReply('🔑 API-Key ungültig. Bitte im Dashboard prüfen.');
+      if (err.response?.status === 429) return interaction.editReply('⚡ Rate-Limit erreicht. Bitte kurz warten.');
+      return interaction.editReply('❌ KI-Chat momentan nicht verfügbar.');
+    }
+  }
+
+  if (commandName === 'wetter') {
+    const location = String(getSlashStringOption(interaction, 'wetter', 'ort') || '').trim();
+    if (!location) return interaction.reply({ content: '❌ Bitte gib einen Ort an.', ephemeral: true });
+    await interaction.deferReply();
+    const weather = await _fetchWeather(location);
+    return interaction.editReply(weather || `❌ Für ${location} konnte kein Wetter abgerufen werden.`);
+  }
+
+  if (commandName === 'subscribe') {
+    await interaction.deferReply({ ephemeral: true });
+    try {
+      const monitors = await getMonitorData();
+      if (!monitors?.length) return interaction.editReply('❌ Keine Daten von Uptime Kuma erhalten.');
+
+      const serviceQuery = String(getSlashStringOption(interaction, 'subscribe', 'dienst') || '').trim();
+      if (!serviceQuery) {
+        const subscribedIds = getSubscriptionsForUser(interaction.user.id);
+        if (!subscribedIds.length) return interaction.editReply('ℹ️ Du hast aktuell keine Dienst-Abos.');
+        const subscribedNames = subscribedIds.map((monitorId) => {
+          const monitor = monitors.find((entry) => String(entry.id) === String(monitorId));
+          return monitor ? `• ${monitor.name}` : `• Dienst ${monitorId}`;
+        });
+        return interaction.editReply(`🔔 Deine Abos:\n${subscribedNames.join('\n')}`);
+      }
+
+      const monitor = resolveMonitorByQuery(monitors, serviceQuery);
+      if (!monitor) return interaction.editReply(`❌ Kein Dienst gefunden für: ${serviceQuery}`);
+
+      const subscribed = toggleMonitorSubscription(monitor.id, interaction.user.id);
+      return interaction.editReply(subscribed
+        ? `✅ Du erhältst jetzt Benachrichtigungen für **${monitor.name}**.`
+        : `🛑 Abo für **${monitor.name}** entfernt.`);
+    } catch (err) {
+      logger.error(`/subscribe Fehler: ${err.message}`);
+      return interaction.editReply('❌ Abo konnte nicht verarbeitet werden.');
+    }
+  }
+
+  if (commandName === 'remind') {
+    const durationInput = String(getSlashStringOption(interaction, 'remind', 'zeit') || '').trim();
+    const reminderText = String(getSlashStringOption(interaction, 'remind', 'text') || '').trim();
+    const durationMs = parseDurationInput(durationInput);
+    if (!durationMs || durationMs > 30 * 24 * 60 * 60 * 1000) {
+      return interaction.reply({ content: '❌ Ungültige Zeit. Erlaubt sind z. B. 10m, 2h, 1d oder 1w (max. 30 Tage).', ephemeral: true });
+    }
+    if (!reminderText) return interaction.reply({ content: '❌ Bitte gib einen Erinnerungstext an.', ephemeral: true });
+
+    const remindAt = Date.now() + durationMs;
+    addReminder({
+      userId: interaction.user.id,
+      channelId: interaction.channelId,
+      guildId: interaction.guildId,
+      message: reminderText,
+      remindAt,
+    });
+    return interaction.reply({
+      content: `⏰ Erinnerung gesetzt für ${new Date(remindAt).toLocaleString('de-DE')} (${formatDurationShort(durationMs)}).`,
+      ephemeral: true,
+    });
+  }
+
+  if (commandName === 'quote') {
+    const quoteText = String(getSlashStringOption(interaction, 'quote', 'text') || '').trim();
+    if (quoteText) {
+      const entry = addQuoteEntry({
+        guildId: interaction.guildId,
+        text: quoteText,
+        authorId: interaction.user.id,
+        authorName: interaction.user.username,
+        addedById: interaction.user.id,
+      });
+      return interaction.reply({ content: `💾 Zitat #${entry.id} gespeichert.`, ephemeral: true });
+    }
+
+    const entry = pickRandomQuote(interaction.guildId);
+    if (!entry) return interaction.reply({ content: '❌ Noch keine Zitate gespeichert.', ephemeral: true });
+    return interaction.reply({
+      embeds: [{
+        color: 0xF1C40F,
+        title: `💬 Zitat #${entry.id}`,
+        description: entry.text.slice(0, 4096),
+        footer: { text: `Gespeichert von ${entry.authorName || 'unbekannt'} am ${new Date(entry.addedAt).toLocaleString('de-DE')}` },
+      }]
+    });
+  }
+
+  if (commandName === 'poll') {
+    const question = String(getSlashStringOption(interaction, 'poll', 'frage') || '').trim();
+    const options = ['option1', 'option2', 'option3', 'option4', 'option5']
+      .map((key) => String(getSlashStringOption(interaction, 'poll', key) || '').trim())
+      .filter(Boolean)
+      .slice(0, 5);
+    if (!question || options.length < 2) {
+      return interaction.reply({ content: '❌ Bitte gib eine Frage und mindestens zwei Optionen an.', ephemeral: true });
+    }
+
+    const emojis = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣'];
+    await interaction.reply({
+      embeds: [{
+        color: 0x5865F2,
+        title: '📊 Umfrage',
+        description: [`**${question}**`, '', ...options.map((option, index) => `${emojis[index]} ${option}`)].join('\n'),
+        footer: { text: `Erstellt von ${interaction.user.username}` },
+        timestamp: new Date().toISOString(),
+      }]
+    });
+    const reply = await interaction.fetchReply();
+    for (let index = 0; index < options.length; index++) {
+      await reply.react(emojis[index]).catch(() => {});
+    }
+    return;
+  }
+
+  if (commandName === 'avatar') {
+    const targetUser = getSlashUserOption(interaction, 'avatar', 'nutzer') || interaction.user;
+    return interaction.reply({
+      embeds: [{
+        color: 0x5865F2,
+        title: `🖼️ Avatar von ${targetUser.username}`,
+        image: { url: targetUser.displayAvatarURL({ size: 1024, extension: 'png' }) },
+      }],
+      ephemeral: true,
+    });
+  }
+
+  if (commandName === 'userinfo') {
+    const targetUser = getSlashUserOption(interaction, 'userinfo', 'nutzer') || interaction.user;
+    const member = interaction.guild?.members?.cache?.get(targetUser.id) || interaction.options.getMember('nutzer') || null;
+    return interaction.reply({
+      embeds: [{
+        color: 0x5865F2,
+        title: `👤 ${targetUser.username}`,
+        thumbnail: { url: targetUser.displayAvatarURL({ size: 256, extension: 'png' }) },
+        fields: [
+          { name: 'ID', value: targetUser.id, inline: true },
+          { name: 'Bot', value: targetUser.bot ? 'Ja' : 'Nein', inline: true },
+          { name: 'Account erstellt', value: new Date(targetUser.createdTimestamp).toLocaleString('de-DE'), inline: false },
+          { name: 'Server beigetreten', value: member?.joinedTimestamp ? new Date(member.joinedTimestamp).toLocaleString('de-DE') : '–', inline: false },
+        ],
+      }],
+      ephemeral: true,
+    });
+  }
+
+  if (commandName === 'coinflip') {
     const result = Math.random() < 0.5 ? 'Kopf \uD83E\uDE99' : 'Zahl \uD83D\uDCB0';
     return interaction.reply({ content: `\uD83E\uDE99 Münzwurf: **${result}**`, ephemeral: true });
   }
 
-  if (interaction.commandName === 'dice') {
-    const sides = interaction.options.getInteger('seiten') || 6;
+  if (commandName === 'dice') {
+    const sides = getSlashIntegerOption(interaction, 'dice', 'seiten') || 6;
     const roll = Math.floor(Math.random() * sides) + 1;
     return interaction.reply({ content: `\uD83C\uDFB2 d${sides}: **${roll}**`, ephemeral: true });
   }
 
-  if (interaction.commandName === 'eightball') {
-    const question = interaction.options.getString('frage', true);
+  if (commandName === 'eightball') {
+    const question = String(getSlashStringOption(interaction, 'eightball', 'frage') || '').trim();
+    if (!question) return interaction.reply({ content: '❌ Bitte gib eine Frage an.', ephemeral: true });
     const answers = [
       'Ja, eindeutig.',
       'Sieht gut aus.',
@@ -2564,22 +3478,22 @@ client.on('interactionCreate', async interaction => {
     });
   }
 
-  if (interaction.commandName === 'cleanup') {
+  if (commandName === 'cleanup') {
     if (!interaction.memberPermissions?.has('ManageGuild')) {
       return interaction.reply({ content: '❌ Keine Berechtigung (ManageGuild erforderlich).', ephemeral: true });
     }
 
     await interaction.deferReply({ ephemeral: true });
     try {
-      const targetChannel = interaction.options.getChannel('kanal') || interaction.channel;
+      const targetChannel = getSlashChannelOption(interaction, 'cleanup', 'kanal') || interaction.channel;
       if (!targetChannel || !targetChannel.isTextBased?.()) {
         return interaction.editReply('❌ Bitte einen gültigen Textkanal auswählen.');
       }
 
-      const maxMessages = interaction.options.getInteger('max_nachrichten');
-      const maxAgeHours = interaction.options.getInteger('max_alter_stunden');
-      const onlyBot = interaction.options.getBoolean('nur_bot');
-      const dryRun = interaction.options.getBoolean('dry_run') === true;
+      const maxMessages = getSlashIntegerOption(interaction, 'cleanup', 'max_nachrichten');
+      const maxAgeHours = getSlashIntegerOption(interaction, 'cleanup', 'max_alter_stunden');
+      const onlyBot = getSlashBooleanOption(interaction, 'cleanup', 'nur_bot');
+      const dryRun = getSlashBooleanOption(interaction, 'cleanup', 'dry_run') === true;
 
       const options = getMessageCleanupOptions({
         enabled: true,
@@ -2830,6 +3744,7 @@ client.once('ready', async () => {
   await applyConfiguredBotName();
   startPresenceRotation();
   await registerSlashCommands();
+  reschedulePendingReminders();
   initializeUpdateCycle();
 });
 

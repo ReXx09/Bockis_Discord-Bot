@@ -1500,8 +1500,52 @@
               <input type="checkbox" id="cfgCmdTranslate" data-cmd="translate" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
               <span><code>/translate</code> - Text in eine andere Sprache uebersetzen</span>
             </label>
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px">
+              <input type="checkbox" id="cfgCmdPing" data-cmd="ping" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
+              <span><code>/ping</code> - Bot-Latenz anzeigen</span>
+            </label>
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px">
+              <input type="checkbox" id="cfgCmdBotinfo" data-cmd="botinfo" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
+              <span><code>/botinfo</code> - technische Bot-Infos</span>
+            </label>
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px">
+              <input type="checkbox" id="cfgCmdServerstatus" data-cmd="serverstatus" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
+              <span><code>/serverstatus</code> - Status eines einzelnen Dienstes oder einer Gruppe</span>
+            </label>
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px">
+              <input type="checkbox" id="cfgCmdKi" data-cmd="ki" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
+              <span><code>/ki</code> - direkte Frage an den KI-Chat</span>
+            </label>
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px">
+              <input type="checkbox" id="cfgCmdWetter" data-cmd="wetter" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
+              <span><code>/wetter</code> - Wetter für einen Ort anzeigen</span>
+            </label>
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px">
+              <input type="checkbox" id="cfgCmdSubscribe" data-cmd="subscribe" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
+              <span><code>/subscribe</code> - Dienst-Status abonnieren oder auflisten</span>
+            </label>
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px">
+              <input type="checkbox" id="cfgCmdRemind" data-cmd="remind" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
+              <span><code>/remind</code> - Erinnerung setzen</span>
+            </label>
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px">
+              <input type="checkbox" id="cfgCmdQuote" data-cmd="quote" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
+              <span><code>/quote</code> - Zitat speichern oder zufällig anzeigen</span>
+            </label>
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px">
+              <input type="checkbox" id="cfgCmdPoll" data-cmd="poll" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
+              <span><code>/poll</code> - Umfrage mit Reaktionen erstellen</span>
+            </label>
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px">
+              <input type="checkbox" id="cfgCmdAvatar" data-cmd="avatar" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
+              <span><code>/avatar</code> - Avatar eines Nutzers anzeigen</span>
+            </label>
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px">
+              <input type="checkbox" id="cfgCmdUserinfo" data-cmd="userinfo" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
+              <span><code>/userinfo</code> - Nutzerinformationen anzeigen</span>
+            </label>
           </div>
-          <input type="hidden" id="cfgEnabledCommands" value="status,uptime,refresh,help,coinflip,dice,eightball,cleanup,translate">
+          <input type="hidden" id="cfgEnabledCommands" value="status,uptime,refresh,help,coinflip,dice,eightball,cleanup,translate,ping,botinfo,serverstatus,ki,wetter,subscribe,remind,quote,poll,avatar,userinfo">
           <div class="cfg-hint">Mindestens ein Kommando muss aktiv bleiben. Änderungen werden beim Neustart neu registriert.</div>
               </div>
             </div>
@@ -4359,8 +4403,8 @@
       setCfg('cfgPresenceRotateMs', d.DISCORD_PRESENCE_ROTATE_MS || '90000');
       setCfg('cfgAutoReactionEmojis', d.DISCORD_AUTO_REACTION_EMOJIS || '👍');
       setCfg('cfgAutoReactionChannelIds', d.DISCORD_AUTO_REACTION_CHANNEL_IDS || '');
-      setCfg('cfgEnabledCommands', d.DISCORD_ENABLED_COMMANDS || 'status,uptime,refresh,help,coinflip,dice,eightball,cleanup,translate');
-      applyEnabledCommandsToCheckboxes(d.DISCORD_ENABLED_COMMANDS || 'status,uptime,refresh,help,coinflip,dice,eightball,cleanup,translate');
+      setCfg('cfgEnabledCommands', d.DISCORD_ENABLED_COMMANDS || 'status,uptime,refresh,help,coinflip,dice,eightball,cleanup,translate,ping,botinfo,serverstatus,ki,wetter,subscribe,remind,quote,poll,avatar,userinfo');
+      applyEnabledCommandsToCheckboxes(d.DISCORD_ENABLED_COMMANDS || 'status,uptime,refresh,help,coinflip,dice,eightball,cleanup,translate,ping,botinfo,serverstatus,ki,wetter,subscribe,remind,quote,poll,avatar,userinfo');
       ensureSelectOption('cfgTranslateDefaultTarget', d.DISCORD_TRANSLATE_DEFAULT_TARGET || 'de');
       ensureSelectOption('cfgTranslateDefaultSource', d.DISCORD_TRANSLATE_DEFAULT_SOURCE || 'auto');
       setCfg('cfgTranslateDefaultTarget', d.DISCORD_TRANSLATE_DEFAULT_TARGET || 'de');

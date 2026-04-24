@@ -99,9 +99,9 @@ const config = convict({
       env: 'DISCORD_AUTO_REACTION_CHANNEL_IDS'
     },
     enabledCommands: {
-      doc: 'Aktive Slash-Commands als Komma-Liste (status,uptime,refresh,help,coinflip,dice,eightball,cleanup,translate)',
+      doc: 'Aktive Slash-Commands als Komma-Liste (status,uptime,refresh,help,coinflip,dice,eightball,cleanup,translate,ping,botinfo,serverstatus,ki,wetter,subscribe,remind,quote,poll,avatar,userinfo)',
       format: String,
-      default: 'status,uptime,refresh,help,coinflip,dice,eightball,cleanup,translate',
+      default: 'status,uptime,refresh,help,coinflip,dice,eightball,cleanup,translate,ping,botinfo,serverstatus,ki,wetter,subscribe,remind,quote,poll,avatar,userinfo',
       env: 'DISCORD_ENABLED_COMMANDS'
     },
     translateEnabled: {

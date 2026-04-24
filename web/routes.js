@@ -1275,7 +1275,7 @@ module.exports = function startWebServer({
         DISCORD_AUTO_REACTION_ENABLED:get('DISCORD_AUTO_REACTION_ENABLED') || 'false',
         DISCORD_AUTO_REACTION_EMOJIS: get('DISCORD_AUTO_REACTION_EMOJIS') || '👍',
         DISCORD_AUTO_REACTION_CHANNEL_IDS: get('DISCORD_AUTO_REACTION_CHANNEL_IDS') || '',
-        DISCORD_ENABLED_COMMANDS:     get('DISCORD_ENABLED_COMMANDS') || 'status,uptime,refresh,help,coinflip,dice,eightball,cleanup,translate',
+        DISCORD_ENABLED_COMMANDS:     get('DISCORD_ENABLED_COMMANDS') || 'status,uptime,refresh,help,coinflip,dice,eightball,cleanup,translate,ping,botinfo,serverstatus,ki,wetter,subscribe,remind,quote,poll,avatar,userinfo',
         DISCORD_TRANSLATE_ENABLED:    get('DISCORD_TRANSLATE_ENABLED') || 'false',
         DISCORD_TRANSLATE_DEFAULT_TARGET: get('DISCORD_TRANSLATE_DEFAULT_TARGET') || 'de',
         DISCORD_TRANSLATE_DEFAULT_SOURCE: get('DISCORD_TRANSLATE_DEFAULT_SOURCE') || 'auto',
@@ -1474,7 +1474,7 @@ module.exports = function startWebServer({
         if (invalid.length) return res.json({ ok: false, error: `DISCORD_AUTO_REACTION_CHANNEL_IDS ungueltig: ${invalid.join(', ')}` });
       }
       if (key === 'DISCORD_ENABLED_COMMANDS') {
-        const allowedCommands = new Set(['status', 'uptime', 'refresh', 'help', 'coinflip', 'dice', 'eightball', 'cleanup', 'translate']);
+        const allowedCommands = new Set(['status', 'uptime', 'refresh', 'help', 'coinflip', 'dice', 'eightball', 'cleanup', 'translate', 'ping', 'botinfo', 'serverstatus', 'ki', 'wetter', 'subscribe', 'remind', 'quote', 'poll', 'avatar', 'userinfo']);
         const entries = val.split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
         const uniqueEntries = Array.from(new Set(entries));
         if (!uniqueEntries.length) {
