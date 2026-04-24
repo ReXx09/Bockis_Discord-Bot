@@ -1801,6 +1801,105 @@ async function calculateUptimeMetrics() {
 
 // #region 20. SLASH-COMMANDS REGISTRIEREN
 const AVAILABLE_SLASH_COMMANDS = ['status', 'uptime', 'refresh', 'help', 'coinflip', 'dice', 'eightball', 'cleanup', 'translate'];
+const SLASH_COMMAND_I18N = {
+  status: {
+    names: { de: 'status' },
+    descriptions: {
+      'de': 'Zeigt den aktuellen Status aller Services',
+      'en-US': 'Shows the current status of all services',
+      'en-GB': 'Shows the current status of all services',
+    },
+  },
+  uptime: {
+    names: { de: 'betriebszeit' },
+    descriptions: {
+      'de': 'Zeigt die Gesamt-Uptime aller aufgezeichneten Checks',
+      'en-US': 'Shows the total uptime across all recorded checks',
+      'en-GB': 'Shows the total uptime across all recorded checks',
+    },
+  },
+  refresh: {
+    names: { de: 'aktualisieren' },
+    descriptions: {
+      'de': 'Erzwingt einen sofortigen Status-Refresh (nur Admins)',
+      'en-US': 'Forces an immediate status refresh (admins only)',
+      'en-GB': 'Forces an immediate status refresh (admins only)',
+    },
+  },
+  help: {
+    names: { de: 'hilfe' },
+    descriptions: {
+      'de': 'Zeigt alle verfügbaren Bot-Kommandos',
+      'en-US': 'Shows all available bot commands',
+      'en-GB': 'Shows all available bot commands',
+    },
+  },
+  coinflip: {
+    names: { de: 'muenzwurf' },
+    descriptions: {
+      'de': 'Wirft eine Münze (Kopf oder Zahl)',
+      'en-US': 'Flips a coin (heads or tails)',
+      'en-GB': 'Flips a coin (heads or tails)',
+    },
+  },
+  dice: {
+    names: { de: 'wuerfeln' },
+    descriptions: {
+      'de': 'Würfelt eine Zahl mit frei wählbaren Seiten',
+      'en-US': 'Rolls a die with a selectable number of sides',
+      'en-GB': 'Rolls a die with a selectable number of sides',
+    },
+  },
+  eightball: {
+    names: { de: 'achtball' },
+    descriptions: {
+      'de': 'Magische 8-Ball Antwort auf deine Frage',
+      'en-US': 'Magic 8-ball answer to your question',
+      'en-GB': 'Magic 8-ball answer to your question',
+    },
+  },
+  cleanup: {
+    names: { de: 'bereinigen' },
+    descriptions: {
+      'de': 'Bereinigt Kanal-Nachrichten anhand der Cleanup-Regeln',
+      'en-US': 'Cleans channel messages using the cleanup rules',
+      'en-GB': 'Cleans channel messages using the cleanup rules',
+    },
+  },
+  translate: {
+    names: { de: 'uebersetzen' },
+    descriptions: {
+      'de': 'Uebersetzt Text (z. B. Englisch <-> Deutsch)',
+      'en-US': 'Translates text (for example English <-> German)',
+      'en-GB': 'Translates text (for example English <-> German)',
+    },
+  },
+};
+
+function applySlashCommandI18n(builder, commandKey) {
+  const meta = SLASH_COMMAND_I18N[commandKey];
+  if (!meta) return builder;
+  if (meta.names) builder.setNameLocalizations(meta.names);
+  if (meta.descriptions) builder.setDescriptionLocalizations(meta.descriptions);
+  return builder;
+}
+
+function applySlashOptionI18n(option, config) {
+  if (!config) return option;
+  if (config.names) option.setNameLocalizations(config.names);
+  if (config.descriptions) option.setDescriptionLocalizations(config.descriptions);
+  return option;
+}
+
+function isGermanDiscordLocale(locale) {
+  return String(locale || '').toLowerCase().startsWith('de');
+}
+
+function getSlashCommandDisplayName(commandKey, locale) {
+  const meta = SLASH_COMMAND_I18N[commandKey];
+  if (meta && isGermanDiscordLocale(locale) && meta.names?.de) return meta.names.de;
+  return commandKey;
+}
 
 function getEnabledSlashCommands() {
   const raw = String(config.get('discord.enabledCommands') || '').trim();
@@ -1818,138 +1917,200 @@ async function registerSlashCommands() {
 
   if (enabled.has('status')) {
     commands.push(
-      new SlashCommandBuilder()
+      applySlashCommandI18n(new SlashCommandBuilder()
         .setName('status')
-        .setDescription('Zeigt den aktuellen Status aller Services')
+        .setDescription('Zeigt den aktuellen Status aller Services'), 'status')
         .toJSON()
     );
   }
 
   if (enabled.has('uptime')) {
     commands.push(
-      new SlashCommandBuilder()
+      applySlashCommandI18n(new SlashCommandBuilder()
         .setName('uptime')
-        .setDescription('Zeigt die Gesamt-Uptime aller aufgezeichneten Checks')
+        .setDescription('Zeigt die Gesamt-Uptime aller aufgezeichneten Checks'), 'uptime')
         .toJSON()
     );
   }
 
   if (enabled.has('refresh')) {
     commands.push(
-      new SlashCommandBuilder()
+      applySlashCommandI18n(new SlashCommandBuilder()
         .setName('refresh')
-        .setDescription('Erzwingt einen sofortigen Status-Refresh (nur Admins)')
+        .setDescription('Erzwingt einen sofortigen Status-Refresh (nur Admins)'), 'refresh')
         .toJSON()
     );
   }
 
   if (enabled.has('help')) {
     commands.push(
-      new SlashCommandBuilder()
+      applySlashCommandI18n(new SlashCommandBuilder()
         .setName('help')
-        .setDescription('Zeigt alle verfügbaren Bot-Kommandos')
+        .setDescription('Zeigt alle verfügbaren Bot-Kommandos'), 'help')
         .toJSON()
     );
   }
 
   if (enabled.has('coinflip')) {
     commands.push(
-      new SlashCommandBuilder()
+      applySlashCommandI18n(new SlashCommandBuilder()
         .setName('coinflip')
-        .setDescription('Wirft eine Münze (Kopf oder Zahl)')
+        .setDescription('Wirft eine Münze (Kopf oder Zahl)'), 'coinflip')
         .toJSON()
     );
   }
 
   if (enabled.has('dice')) {
     commands.push(
-      new SlashCommandBuilder()
+      applySlashCommandI18n(new SlashCommandBuilder()
         .setName('dice')
         .setDescription('Würfelt eine Zahl mit frei wählbaren Seiten')
         .addIntegerOption(opt =>
-          opt.setName('seiten')
+          applySlashOptionI18n(opt.setName('seiten')
             .setDescription('Anzahl Seiten (2-100, Standard: 6)')
             .setMinValue(2)
             .setMaxValue(100)
-            .setRequired(false)
+            .setRequired(false), {
+              names: { 'en-US': 'sides', 'en-GB': 'sides' },
+              descriptions: {
+                'en-US': 'Number of sides (2-100, default: 6)',
+                'en-GB': 'Number of sides (2-100, default: 6)',
+              },
+            })
         )
+        , 'dice')
         .toJSON()
     );
   }
 
   if (enabled.has('eightball')) {
     commands.push(
-      new SlashCommandBuilder()
+      applySlashCommandI18n(new SlashCommandBuilder()
         .setName('eightball')
         .setDescription('Magische 8-Ball Antwort auf deine Frage')
         .addStringOption(opt =>
-          opt.setName('frage')
+          applySlashOptionI18n(opt.setName('frage')
             .setDescription('Deine Frage an den 8-Ball')
-            .setRequired(true)
+            .setRequired(true), {
+              names: { 'en-US': 'question', 'en-GB': 'question' },
+              descriptions: {
+                'en-US': 'Your question for the 8-ball',
+                'en-GB': 'Your question for the 8-ball',
+              },
+            })
         )
+        , 'eightball')
         .toJSON()
     );
   }
 
   if (enabled.has('cleanup')) {
     commands.push(
-      new SlashCommandBuilder()
+      applySlashCommandI18n(new SlashCommandBuilder()
         .setName('cleanup')
         .setDescription('Bereinigt Kanal-Nachrichten anhand der Cleanup-Regeln')
         .addChannelOption(opt =>
-          opt.setName('kanal')
+          applySlashOptionI18n(opt.setName('kanal')
             .setDescription('Optionaler Zielkanal (Standard: aktueller Kanal)')
             .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)
-            .setRequired(false)
+            .setRequired(false), {
+              names: { 'en-US': 'channel', 'en-GB': 'channel' },
+              descriptions: {
+                'en-US': 'Optional target channel (default: current channel)',
+                'en-GB': 'Optional target channel (default: current channel)',
+              },
+            })
         )
         .addIntegerOption(opt =>
-          opt.setName('max_nachrichten')
+          applySlashOptionI18n(opt.setName('max_nachrichten')
             .setDescription('Maximal erlaubte Nachrichten (0 = deaktiviert)')
             .setMinValue(0)
             .setMaxValue(200)
-            .setRequired(false)
+            .setRequired(false), {
+              names: { 'en-US': 'max_messages', 'en-GB': 'max_messages' },
+              descriptions: {
+                'en-US': 'Maximum allowed messages (0 = disabled)',
+                'en-GB': 'Maximum allowed messages (0 = disabled)',
+              },
+            })
         )
         .addIntegerOption(opt =>
-          opt.setName('max_alter_stunden')
+          applySlashOptionI18n(opt.setName('max_alter_stunden')
             .setDescription('Nachrichten älter als X Stunden löschen (0 = deaktiviert)')
             .setMinValue(0)
             .setMaxValue(720)
-            .setRequired(false)
+            .setRequired(false), {
+              names: { 'en-US': 'max_age_hours', 'en-GB': 'max_age_hours' },
+              descriptions: {
+                'en-US': 'Delete messages older than X hours (0 = disabled)',
+                'en-GB': 'Delete messages older than X hours (0 = disabled)',
+              },
+            })
         )
         .addBooleanOption(opt =>
-          opt.setName('nur_bot')
+          applySlashOptionI18n(opt.setName('nur_bot')
             .setDescription('Nur Bot-Nachrichten löschen')
-            .setRequired(false)
+            .setRequired(false), {
+              names: { 'en-US': 'only_bot', 'en-GB': 'only_bot' },
+              descriptions: {
+                'en-US': 'Delete bot messages only',
+                'en-GB': 'Delete bot messages only',
+              },
+            })
         )
         .addBooleanOption(opt =>
-          opt.setName('dry_run')
+          applySlashOptionI18n(opt.setName('dry_run')
             .setDescription('Nur prüfen, nichts löschen')
-            .setRequired(false)
+            .setRequired(false), {
+              descriptions: {
+                'en-US': 'Check only, do not delete anything',
+                'en-GB': 'Check only, do not delete anything',
+              },
+            })
         )
+        , 'cleanup')
         .toJSON()
     );
   }
 
   if (enabled.has('translate')) {
     commands.push(
-      new SlashCommandBuilder()
+      applySlashCommandI18n(new SlashCommandBuilder()
         .setName('translate')
         .setDescription('Uebersetzt Text (z. B. Englisch <-> Deutsch)')
         .addStringOption(opt =>
-          opt.setName('text')
+          applySlashOptionI18n(opt.setName('text')
             .setDescription('Zu uebersetzender Text')
-            .setRequired(true)
+            .setRequired(true), {
+              descriptions: {
+                'en-US': 'Text to translate',
+                'en-GB': 'Text to translate',
+              },
+            })
         )
         .addStringOption(opt =>
-          opt.setName('ziel')
+          applySlashOptionI18n(opt.setName('ziel')
             .setDescription('Zielsprache, z. B. de, en, fr (leer = Standard)')
-            .setRequired(false)
+            .setRequired(false), {
+              names: { 'en-US': 'target', 'en-GB': 'target' },
+              descriptions: {
+                'en-US': 'Target language, for example de, en, fr (empty = default)',
+                'en-GB': 'Target language, for example de, en, fr (empty = default)',
+              },
+            })
         )
         .addStringOption(opt =>
-          opt.setName('quelle')
+          applySlashOptionI18n(opt.setName('quelle')
             .setDescription('Quellsprache, z. B. auto, en, de (leer = Standard)')
-            .setRequired(false)
+            .setRequired(false), {
+              names: { 'en-US': 'source', 'en-GB': 'source' },
+              descriptions: {
+                'en-US': 'Source language, for example auto, en, de (empty = default)',
+                'en-GB': 'Source language, for example auto, en, de (empty = default)',
+              },
+            })
         )
+        , 'translate')
         .toJSON()
     );
   }
@@ -2262,27 +2423,47 @@ client.on('interactionCreate', async interaction => {
   }
 
   if (interaction.commandName === 'help') {
-    const enabled = getEnabledSlashCommands().map(cmd => `\`/${cmd}\``).join(', ');
+    const germanLocale = isGermanDiscordLocale(interaction.locale || interaction.guildLocale);
+    const enabled = getEnabledSlashCommands()
+      .map(cmd => `/${getSlashCommandDisplayName(cmd, interaction.locale || interaction.guildLocale)}`)
+      .join(', ');
+    const description = germanLocale
+      ? [
+          '**Info**',
+          `/status - aktueller Service-Status`,
+          `/betriebszeit - Gesamt-Uptime`,
+          `/aktualisieren - manueller Refresh (ManageGuild)`,
+          `/bereinigen - Nachrichten-Cleanup (ManageGuild)`,
+          `/uebersetzen <text> [ziel] [quelle] - Text uebersetzen`,
+          '',
+          '**Fun & Gadgets**',
+          `/muenzwurf - Münzwurf`,
+          `/wuerfeln [seiten] - Würfel`,
+          `/achtball <frage> - magische Antwort`,
+          '',
+          `**Aktiv:** ${enabled}`,
+        ].join('\n')
+      : [
+          '**Info**',
+          `/status - current service status`,
+          `/uptime - total uptime`,
+          `/refresh - manual refresh (ManageGuild)`,
+          `/cleanup - message cleanup (ManageGuild)`,
+          `/translate <text> [target] [source] - translate text`,
+          '',
+          '**Fun & Gadgets**',
+          `/coinflip - coin flip`,
+          `/dice [sides] - roll a die`,
+          `/eightball <question> - magic answer`,
+          '',
+          `**Enabled:** ${enabled}`,
+        ].join('\n');
     return interaction.reply({
       ephemeral: true,
       embeds: [{
         color: 0x5865F2,
-        title: '\u2139\uFE0F Bot-Kommandos',
-        description: [
-          '**Info**',
-          '`/status` - aktueller Service-Status',
-          '`/uptime` - Gesamt-Uptime',
-          '`/refresh` - manueller Refresh (ManageGuild)',
-          '`/cleanup` - Nachrichten-Cleanup (ManageGuild)',
-          '`/translate <text> [ziel] [quelle]` - Text uebersetzen',
-          '',
-          '**Fun & Gadgets**',
-          '`/coinflip` - Münzwurf',
-          '`/dice [seiten]` - Würfel',
-          '`/eightball <frage>` - magische Antwort',
-          '',
-          `**Aktiv:** ${enabled}`,
-        ].join('\n'),
+        title: germanLocale ? '\u2139\uFE0F Bot-Kommandos' : '\u2139\uFE0F Bot Commands',
+        description,
         timestamp: new Date().toISOString()
       }]
     });
