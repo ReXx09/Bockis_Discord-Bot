@@ -40,7 +40,7 @@
     }
     .header h1 { font-size: 20px; font-weight: 600; }
     .header .sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
-    .header-right { display: flex; align-items: center; gap: 12px; }
+    .header-right { display: flex; align-items: center; gap: 12px; position: relative; z-index: 1; }
     .timer { font-size: 12px; color: var(--muted); }
 
     /* SUBNAV */
@@ -57,6 +57,11 @@
       border: none;
       border-radius: 0;
       background: transparent;
+    }
+    @media (max-width: 1200px) {
+      .header { flex-wrap: wrap; gap: 12px; }
+      .subnav { position: static; left: auto; transform: none; width: 100%; justify-content: center; order: 3; }
+      .header-right { margin-left: auto; }
     }
     .subnav-btn {
       border: 1px solid var(--border);
@@ -75,31 +80,6 @@
       color: #c8e1ff;
       border-color: rgba(56,139,253,.75);
       box-shadow: inset 0 0 0 1px rgba(56,139,253,.2);
-    }
-
-    .header-right {
-      position: relative;
-      z-index: 1;
-    }
-
-    @media (max-width: 1200px) {
-      .header {
-        flex-wrap: wrap;
-        gap: 12px;
-      }
-
-      .subnav {
-        position: static;
-        left: auto;
-        transform: none;
-        width: 100%;
-        justify-content: center;
-        order: 3;
-      }
-
-      .header-right {
-        margin-left: auto;
-      }
     }
     .pane-hidden { display: none !important; }
 
@@ -653,6 +633,47 @@
       .cfg-nav { flex-direction: row; flex-wrap: wrap; }
     }
     .cfg-field { margin-bottom: 14px; }
+    /* ── Collapsible Sections ─────────────────────────────────────────────── */
+    .cfg-section { margin-bottom: 12px; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+    .cfg-section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: linear-gradient(135deg, var(--surface2) 0%, rgba(255,255,255,.02) 100%);
+      padding: 12px 14px;
+      cursor: pointer;
+      border-bottom: 1px solid var(--border);
+      user-select: none;
+      transition: background 0.15s ease;
+    }
+    .cfg-section-header:hover { background: linear-gradient(135deg, rgba(255,255,255,.06) 0%, rgba(255,255,255,.03) 100%); }
+    .cfg-section-header-title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 600;
+      color: var(--text);
+      font-size: 13px;
+    }
+    .cfg-section-toggle {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 20px;
+      height: 20px;
+      color: var(--muted);
+      transition: transform 0.2s ease;
+      font-size: 12px;
+    }
+    .cfg-section.open .cfg-section-toggle { transform: rotate(180deg); }
+    .cfg-section-content {
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.3s ease;
+    }
+    .cfg-section.open .cfg-section-content { max-height: 4000px; }
+    .cfg-section-body { padding: 14px; }
+    .cfg-section-body .cfg-field:last-child { margin-bottom: 0; }
     .cfg-label {
       display: block;
       font-size: 11px;
@@ -724,7 +745,7 @@
 <div class="header">
   <div>
     <h1>🤖 Bockis Bot · Dashboard</h1>
-    <div class="sub" id="headerSub">Service Monitor · Live-Ansicht · Build <%= (typeof buildId !== 'undefined' && buildId) ? buildId : 'unknown' %> · Quelle <%= (typeof rootBase !== 'undefined' && rootBase) ? rootBase : 'unknown' %></div>
+    <div class="sub" id="headerSub">Service Monitor · Live-Ansicht</div>
   </div>
   
   <!-- ── SUBNAV IN HEADER ─────────────────────────────── -->
@@ -875,282 +896,351 @@
           <button class="cfg-nav-btn active" data-cfg-pane-btn="bot" onclick="setActiveSettingsPane('bot')">🤖 Bot & IDs</button>
           <button class="cfg-nav-btn" data-cfg-pane-btn="commands" onclick="setActiveSettingsPane('commands')">⌨️ Bot-Kommandos</button>
           <button class="cfg-nav-btn" data-cfg-pane-btn="channels" onclick="setActiveSettingsPane('channels')">🧩 Dienst-Kanäle</button>
-          <button class="cfg-nav-btn" data-cfg-pane-btn="renderer" onclick="setActiveSettingsPane('renderer')">📡 Discord Renderer</button>
+          <button class="cfg-nav-btn" data-cfg-pane-btn="renderer" onclick="setActiveSettingsPane('renderer')">📡 Status-Renderer</button>
           <button class="cfg-nav-btn" data-cfg-pane-btn="security" onclick="setActiveSettingsPane('security')">🗂 Sicherheit & API</button>
           <button class="cfg-nav-btn" data-cfg-pane-btn="raspi" onclick="setActiveSettingsPane('raspi')">🍓 Raspi & Web</button>
+          <button class="cfg-nav-btn" data-cfg-pane-btn="welcome" onclick="setActiveSettingsPane('welcome')">👋 Willkommen & Auto-Reply</button>
+          <button class="cfg-nav-btn" data-cfg-pane-btn="github" onclick="setActiveSettingsPane('github')">🐙 GitHub-Watcher</button>
         </div>
       </div>
 
       <div class="cfg-panels">
       <div class="cfg-pane-card" data-cfg-pane="bot">
         <div class="cfg-pane-title">🤖 Bot & IDs</div>
-        <div class="cfg-field">
-          <label class="cfg-label" for="cfgToken">Discord Bot Token</label>
-          <input class="cfg-input" id="cfgToken" type="password" autocomplete="off"
-                 placeholder="Neuen Token eingeben (leer lassen = unverändert)">
-          <div class="cfg-hint">Leer lassen, um den bestehenden Token zu behalten.</div>
-        </div>
-        <div class="cfg-field">
-          <label class="cfg-label" for="cfgBotName">Discord Bot Name</label>
-          <input class="cfg-input" id="cfgBotName" type="text" autocomplete="off"
-                 placeholder="z. B. Uptime-Bot">
-          <div class="cfg-hint">Wird beim nächsten Bot-Start als Discord-Username gesetzt (max. 32 Zeichen).</div>
-        </div>
-        <div class="cfg-field">
-          <label class="cfg-label" for="cfgPresenceText">Discord "Schaut zu" Texte</label>
-          <input class="cfg-input" id="cfgPresenceText" type="text" autocomplete="off"
-                 placeholder="Service Health;den Serverstatus;neue Updates">
-          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
-            <select class="cfg-input" id="cfgPresencePreset" style="min-width:220px;flex:1">
-              <option value="">Lustige Vorlage wählen…</option>
-              <option value="den Kühlschrankstatus 🧊">den Kühlschrankstatus 🧊</option>
-              <option value="ob der Kaffee schon fertig ist ☕">ob der Kaffee schon fertig ist ☕</option>
-              <option value="Memes in Produktion 😂">Memes in Produktion 😂</option>
-              <option value="die Uptime tanzen 💃">die Uptime tanzen 💃</option>
-              <option value="den Server beim Atmen 🫁">den Server beim Atmen 🫁</option>
-              <option value="Updates mit Popcorn 🍿">Updates mit Popcorn 🍿</option>
-              <option value="dem Chaos beim Skalieren 📈">dem Chaos beim Skalieren 📈</option>
-              <option value="den Logs beim Leuchten ✨">den Logs beim Leuchten ✨</option>
-            </select>
-            <button class="btn" onclick="appendPresencePreset()">➕ Vorlage übernehmen</button>
-          </div>
-          <div class="cfg-hint">Mehrere lustige Texte mit <code>;</code> trennen. Der Bot rotiert diese automatisch im Profil.</div>
-        </div>
-        <div class="cfg-field">
-          <label class="cfg-label" for="cfgPresenceRotateMs">"Schaut zu" Rotation (ms)</label>
-          <input class="cfg-input" id="cfgPresenceRotateMs" type="number" min="15000" step="5000"
-                 placeholder="90000">
-          <div class="cfg-hint">Wie oft der nächste Text aktiv wird (15s bis 60min).</div>
-        </div>
-        <div class="cfg-field" style="border:1px solid var(--border);border-radius:8px;padding:12px;background:rgba(255,255,255,.01)">
-          <label class="cfg-label">Automatische Reaktionen auf neue Nachrichten</label>
-          <div style="display:flex;align-items:center;gap:12px;margin-top:2px;flex-wrap:wrap">
-            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px">
-              <input type="checkbox" id="cfgAutoReactionEnabled" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
-              <span>Für neue Guild-Nachrichten automatisch Emojis setzen</span>
-            </label>
-          </div>
-          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
-            <input class="cfg-input" id="cfgAutoReactionEmojis" type="text" autocomplete="off" style="min-width:260px;flex:2"
-                   placeholder="👍;🔥;😂">
-            <select class="cfg-input" id="cfgAutoReactionPreset" style="min-width:220px;flex:1">
-              <option value="">Emoji-Vorlage wählen…</option>
-              <option value="👍">👍 Zustimmung</option>
-              <option value="🔥">🔥 Hype</option>
-              <option value="😂">😂 Lustig</option>
-              <option value="🎉">🎉 Feiern</option>
-              <option value="👀">👀 Beobachten</option>
-              <option value="🤖">🤖 Bot</option>
-              <option value="❤️">❤️ Herz</option>
-              <option value="✅">✅ Erledigt</option>
-              <option value="🚀">🚀 Rocket</option>
-              <option value="<a:partyblob:ID>">Custom Emoji Muster</option>
-            </select>
-            <button class="btn" onclick="appendAutoReactionEmoji()">➕ Emoji übernehmen</button>
-          </div>
-          <div class="cfg-hint">Trenne mehrere Emojis mit <code>;</code> oder <code>,</code>. Maximal 5 Emojis. Unicode und Custom-Emoji-Strings sind möglich.</div>
-          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
-            <input class="cfg-input" id="cfgAutoReactionChannelIds" type="text" autocomplete="off" style="min-width:260px;flex:1"
-                   placeholder="Optional: 123456789012345678,234567890123456789">
-          </div>
-          <div class="cfg-hint">Optional nur bestimmte Textkanäle per Channel-ID. Leer = in allen Guild-Textkanälen.</div>
-        </div>
-        <div class="cfg-field" style="border:1px solid var(--border);border-radius:8px;padding:12px;background:rgba(255,255,255,.01)">
-          <label class="cfg-label">Uebersetzer (/translate)</label>
-          <div style="display:flex;align-items:center;gap:12px;margin-top:2px;flex-wrap:wrap">
-            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px">
-              <input type="checkbox" id="cfgTranslateEnabled" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
-              <span>Slash-Command <code>/translate</code> aktivieren</span>
-            </label>
-          </div>
-          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px;margin-top:8px">
-            <div>
-              <label class="cfg-label" for="cfgTranslateDefaultTarget" style="font-size:12px;margin-bottom:4px">Standard Zielsprache</label>
-              <select class="cfg-input" id="cfgTranslateDefaultTarget">
-                <option value="de">de - Deutsch</option>
-                <option value="en">en - English</option>
-                <option value="fr">fr - Francais</option>
-                <option value="es">es - Espanol</option>
-                <option value="it">it - Italiano</option>
-                <option value="nl">nl - Nederlands</option>
-                <option value="pl">pl - Polski</option>
-                <option value="pt">pt - Portugues</option>
-                <option value="ru">ru - Russian</option>
-                <option value="tr">tr - Turkish</option>
-                <option value="uk">uk - Ukrainian</option>
-                <option value="ja">ja - Japanese</option>
-                <option value="ko">ko - Korean</option>
-                <option value="zh">zh - Chinese</option>
-              </select>
-            </div>
-            <div>
-              <label class="cfg-label" for="cfgTranslateDefaultSource" style="font-size:12px;margin-bottom:4px">Standard Quellsprache</label>
-              <select class="cfg-input" id="cfgTranslateDefaultSource">
-                <option value="auto">auto - Auto detect</option>
-                <option value="de">de - Deutsch</option>
-                <option value="en">en - English</option>
-                <option value="fr">fr - Francais</option>
-                <option value="es">es - Espanol</option>
-                <option value="it">it - Italiano</option>
-                <option value="nl">nl - Nederlands</option>
-                <option value="pl">pl - Polski</option>
-                <option value="pt">pt - Portugues</option>
-                <option value="ru">ru - Russian</option>
-                <option value="tr">tr - Turkish</option>
-                <option value="uk">uk - Ukrainian</option>
-                <option value="ja">ja - Japanese</option>
-                <option value="ko">ko - Korean</option>
-                <option value="zh">zh - Chinese</option>
-              </select>
-            </div>
-            <div>
-              <label class="cfg-label" for="cfgTranslateMaxTextLength" style="font-size:12px;margin-bottom:4px">Max. Textlaenge</label>
-              <input class="cfg-input" id="cfgTranslateMaxTextLength" type="number" min="64" max="4000" step="1" placeholder="1800">
+        <!-- Token & IDs Section -->
+        <div class="cfg-section open">
+          <div class="cfg-section-header" onclick="toggleConfigSection(this)">
+            <div class="cfg-section-header-title">
+              <span class="cfg-section-toggle">▾</span>
+              <span>🔑 Token & IDs</span>
             </div>
           </div>
-          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
-            <input class="cfg-input" id="cfgTranslateAllowedGuildIds" type="text" autocomplete="off" style="min-width:260px;flex:1"
-                   placeholder="Optional: Guild-Whitelist IDs (Komma/Semikolon)">
-          </div>
-          <div class="cfg-hint">Leer bei Guild-Whitelist = in allen Servern und DMs nutzbar, in denen der Bot verfuegbar ist.</div>
-          <div style="border-top:1px solid var(--border);margin-top:12px;padding-top:12px">
-            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;margin-bottom:8px">
-              <input type="checkbox" id="cfgUseDeepL" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
-              <span>DeepL als primaerer Uebersetzer nutzen (falls API-Key gesetzt)</span>
-            </label>
-            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px;margin-top:8px">
-              <div>
-                <label class="cfg-label" for="cfgDeepLApiKey" style="font-size:12px;margin-bottom:4px">DeepL API Key</label>
-                <input class="cfg-input" id="cfgDeepLApiKey" type="password" autocomplete="off" placeholder="Leer = nicht genutzt">
+          <div class="cfg-section-content">
+            <div class="cfg-section-body">
+              <div class="cfg-field">
+                <label class="cfg-label" for="cfgToken">Discord Bot Token</label>
+                <input class="cfg-input" id="cfgToken" type="password" autocomplete="off"
+                       placeholder="Neuen Token eingeben (leer lassen = unverändert)">
+                <div class="cfg-hint">Leer lassen, um den bestehenden Token zu behalten.</div>
               </div>
-              <div>
-                <label class="cfg-label" for="cfgDeepLApiUrl" style="font-size:12px;margin-bottom:4px">DeepL API URL</label>
-                <select class="cfg-input" id="cfgDeepLApiUrl">
-                  <option value="https://api-free.deepl.com">api-free.deepl.com (Free)</option>
-                  <option value="https://api.deepl.com">api.deepl.com (Pro)</option>
+              <div class="cfg-field">
+                <label class="cfg-label" for="cfgBotName">Discord Bot Name</label>
+                <input class="cfg-input" id="cfgBotName" type="text" autocomplete="off"
+                       placeholder="z. B. Uptime-Bot">
+                <div class="cfg-hint">Wird beim nächsten Bot-Start als Discord-Username gesetzt (max. 32 Zeichen).</div>
+              </div>
+              <div class="cfg-field">
+                <label class="cfg-label" for="cfgGuildId">Guild ID</label>
+                <input class="cfg-input" id="cfgGuildId" type="text" autocomplete="off"
+                       placeholder="z. B. 123456789012345678">
+              </div>
+            </div>
+          </div>
+        </div>
+        <!-- Präsenz & Status Section -->
+        <div class="cfg-section open">
+          <div class="cfg-section-header" onclick="toggleConfigSection(this)">
+            <div class="cfg-section-header-title">
+              <span class="cfg-section-toggle">▾</span>
+              <span>😎 Präsenz & Status</span>
+            </div>
+          </div>
+          <div class="cfg-section-content">
+            <div class="cfg-section-body">
+              <div class="cfg-field">
+                <label class="cfg-label" for="cfgPresenceText">Discord "Schaut zu" Texte</label>
+                <input class="cfg-input" id="cfgPresenceText" type="text" autocomplete="off"
+                       placeholder="Service Health;den Serverstatus;neue Updates">
+                <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+                  <select class="cfg-input" id="cfgPresencePreset" style="min-width:220px;flex:1">
+                    <option value="">Lustige Vorlage wählen…</option>
+                    <option value="den Kühlschrankstatus 🧊">den Kühlschrankstatus 🧊</option>
+                    <option value="ob der Kaffee schon fertig ist ☕">ob der Kaffee schon fertig ist ☕</option>
+                    <option value="Memes in Produktion 😂">Memes in Produktion 😂</option>
+                    <option value="die Uptime tanzen 💃">die Uptime tanzen 💃</option>
+                    <option value="den Server beim Atmen 🫁">den Server beim Atmen 🫁</option>
+                    <option value="Updates mit Popcorn 🍿">Updates mit Popcorn 🍿</option>
+                    <option value="dem Chaos beim Skalieren 📈">dem Chaos beim Skalieren 📈</option>
+                    <option value="den Logs beim Leuchten ✨">den Logs beim Leuchten ✨</option>
+                  </select>
+                  <button class="btn" onclick="appendPresencePreset()">➕ Vorlage übernehmen</button>
+                </div>
+                <div class="cfg-hint">Mehrere lustige Texte mit <code>;</code> trennen. Der Bot rotiert diese automatisch im Profil.</div>
+              </div>
+              <div class="cfg-field">
+                <label class="cfg-label" for="cfgPresenceRotateMs">"Schaut zu" Rotation (ms)</label>
+                <input class="cfg-input" id="cfgPresenceRotateMs" type="number" min="15000" step="5000"
+                       placeholder="90000">
+                <div class="cfg-hint">Wie oft der nächste Text aktiv wird (15s bis 60min).</div>
+              </div>
+              <div class="cfg-field">
+                <label class="cfg-label" for="cfgStatusCh">Status-Channel ID</label>
+                <input class="cfg-input" id="cfgStatusCh" type="text" autocomplete="off"
+                       placeholder="z. B. 123456789012345678">
+              </div>
+              <div class="cfg-field" style="margin-bottom:0">
+                <label class="cfg-label" for="cfgNotifCh">Benachrichtigungs-Channel ID</label>
+                <input class="cfg-input" id="cfgNotifCh" type="text" autocomplete="off"
+                       placeholder="z. B. 123456789012345678">
+              </div>
+            </div>
+          </div>
+        </div>
+        <!-- Automatische Reaktionen Section -->
+        <div class="cfg-section">
+          <div class="cfg-section-header" onclick="toggleConfigSection(this)">
+            <div class="cfg-section-header-title">
+              <span class="cfg-section-toggle">▾</span>
+              <span>⚡ Automatische Reaktionen</span>
+            </div>
+          </div>
+          <div class="cfg-section-content">
+            <div class="cfg-section-body">
+              <label class="cfg-label">Automatische Reaktionen auf neue Nachrichten</label>
+              <div style="display:flex;align-items:center;gap:12px;margin-top:2px;flex-wrap:wrap">
+                <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px">
+                  <input type="checkbox" id="cfgAutoReactionEnabled" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
+                  <span>Für neue Guild-Nachrichten automatisch Emojis setzen</span>
+                </label>
+              </div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+                <input class="cfg-input" id="cfgAutoReactionEmojis" type="text" autocomplete="off" style="min-width:260px;flex:2"
+                       placeholder="👍;🔥;😂">
+                <select class="cfg-input" id="cfgAutoReactionPreset" style="min-width:220px;flex:1">
+                  <option value="">Emoji-Vorlage wählen…</option>
+                  <option value="👍">👍 Zustimmung</option>
+                  <option value="🔥">🔥 Hype</option>
+                  <option value="😂">😂 Lustig</option>
+                  <option value="🎉">🎉 Feiern</option>
+                  <option value="👀">👀 Beobachten</option>
+                  <option value="🤖">🤖 Bot</option>
+                  <option value="❤️">❤️ Herz</option>
+                  <option value="✅">✅ Erledigt</option>
+                  <option value="🚀">🚀 Rocket</option>
+                  <option value="<a:partyblob:ID>">Custom Emoji Muster</option>
                 </select>
+                <button class="btn" onclick="appendAutoReactionEmoji()">➕ Emoji übernehmen</button>
+              </div>
+              <div class="cfg-hint">Trenne mehrere Emojis mit <code>;</code> oder <code>,</code>. Maximal 5 Emojis. Unicode und Custom-Emoji-Strings sind möglich.</div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+                <input class="cfg-input" id="cfgAutoReactionChannelIds" type="text" autocomplete="off" style="min-width:260px;flex:1"
+                       placeholder="Optional: 123456789012345678,234567890123456789">
+              </div>
+              <div class="cfg-hint" style="margin-bottom:0">Optional nur bestimmte Textkanäle per Channel-ID. Leer = in allen Guild-Textkanälen.</div>
+            </div>
+          </div>
+        </div>
+        <!-- Übersetzer Section -->
+        <div class="cfg-section">
+          <div class="cfg-section-header" onclick="toggleConfigSection(this)">
+            <div class="cfg-section-header-title">
+              <span class="cfg-section-toggle">▾</span>
+              <span>🌐 Übersetzer (/translate)</span>
+            </div>
+          </div>
+          <div class="cfg-section-content">
+            <div class="cfg-section-body">
+              <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;flex-wrap:wrap">
+                <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px">
+                  <input type="checkbox" id="cfgTranslateEnabled" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
+                  <span>Slash-Command <code>/translate</code> aktivieren</span>
+                </label>
+              </div>
+              <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px;margin-bottom:12px">
+                <div>
+                  <label class="cfg-label" for="cfgTranslateDefaultTarget" style="font-size:12px;margin-bottom:4px">Standard Zielsprache</label>
+                  <select class="cfg-input" id="cfgTranslateDefaultTarget">
+                    <option value="de">de - Deutsch</option>
+                    <option value="en">en - English</option>
+                    <option value="fr">fr - Francais</option>
+                    <option value="es">es - Espanol</option>
+                    <option value="it">it - Italiano</option>
+                    <option value="nl">nl - Nederlands</option>
+                    <option value="pl">pl - Polski</option>
+                    <option value="pt">pt - Portugues</option>
+                    <option value="ru">ru - Russian</option>
+                    <option value="tr">tr - Turkish</option>
+                    <option value="uk">uk - Ukrainian</option>
+                    <option value="ja">ja - Japanese</option>
+                    <option value="ko">ko - Korean</option>
+                    <option value="zh">zh - Chinese</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="cfg-label" for="cfgTranslateDefaultSource" style="font-size:12px;margin-bottom:4px">Standard Quellsprache</label>
+                  <select class="cfg-input" id="cfgTranslateDefaultSource">
+                    <option value="auto">auto - Auto detect</option>
+                    <option value="de">de - Deutsch</option>
+                    <option value="en">en - English</option>
+                    <option value="fr">fr - Francais</option>
+                    <option value="es">es - Espanol</option>
+                    <option value="it">it - Italiano</option>
+                    <option value="nl">nl - Nederlands</option>
+                    <option value="pl">pl - Polski</option>
+                    <option value="pt">pt - Portugues</option>
+                    <option value="ru">ru - Russian</option>
+                    <option value="tr">tr - Turkish</option>
+                    <option value="uk">uk - Ukrainian</option>
+                    <option value="ja">ja - Japanese</option>
+                    <option value="ko">ko - Korean</option>
+                    <option value="zh">zh - Chinese</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="cfg-label" for="cfgTranslateMaxTextLength" style="font-size:12px;margin-bottom:4px">Max. Textlaenge</label>
+                  <input class="cfg-input" id="cfgTranslateMaxTextLength" type="number" min="64" max="4000" step="1" placeholder="1800">
+                </div>
+              </div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+                <input class="cfg-input" id="cfgTranslateAllowedGuildIds" type="text" autocomplete="off" style="min-width:260px;flex:1"
+                       placeholder="Optional: Guild-Whitelist IDs (Komma/Semikolon)">
+              </div>
+              <div class="cfg-hint">Leer bei Guild-Whitelist = in allen Servern und DMs nutzbar, in denen der Bot verfuegbar ist.</div>
+              <div style="border-top:1px solid var(--border);margin-top:12px;padding-top:12px">
+                <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;margin-bottom:8px">
+                  <input type="checkbox" id="cfgUseDeepL" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
+                  <span>DeepL als primaerer Uebersetzer nutzen (falls API-Key gesetzt)</span>
+                </label>
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px;margin-bottom:8px">
+                  <div>
+                    <label class="cfg-label" for="cfgDeepLApiKey" style="font-size:12px;margin-bottom:4px">DeepL API Key</label>
+                    <input class="cfg-input" id="cfgDeepLApiKey" type="password" autocomplete="off" placeholder="Leer = nicht genutzt">
+                  </div>
+                  <div>
+                    <label class="cfg-label" for="cfgDeepLApiUrl" style="font-size:12px;margin-bottom:4px">DeepL API URL</label>
+                    <select class="cfg-input" id="cfgDeepLApiUrl">
+                      <option value="https://api-free.deepl.com">api-free.deepl.com (Free)</option>
+                      <option value="https://api.deepl.com">api.deepl.com (Pro)</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="cfg-hint">DeepL bietet hoehere Qualitaet. Fallback: LibreTranslate. API-Key unter https://www.deepl.com/pro-account/summary erhältlich.</div>
+              </div>
+              <div style="border-top:1px solid var(--border);margin-top:12px;padding-top:12px">
+                <label class="cfg-label" style="font-size:12px;margin-bottom:4px">Fallback: LibreTranslate</label>
+                <label class="cfg-label" for="cfgTranslateApiUrl" style="font-size:12px;margin-bottom:4px;margin-top:8px">API URL</label>
+                <input class="cfg-input" id="cfgTranslateApiUrl" type="text" autocomplete="off"
+                       placeholder="http://localhost:5000/translate">
+                <label class="cfg-label" for="cfgTranslateApiKey" style="font-size:12px;margin-bottom:4px;margin-top:8px">API Key (optional)</label>
+                <input class="cfg-input" id="cfgTranslateApiKey" type="password" autocomplete="off"
+                       placeholder="Leer = nicht noetig">
+                <div class="cfg-hint" style="margin-bottom:0">Wird als Fallback genutzt, wenn DeepL nicht verfuegbar oder deaktiviert ist.</div>
               </div>
             </div>
-            <div class="cfg-hint">DeepL bietet hoehere Qualitaet. Fallback: LibreTranslate. API-Key unter https://www.deepl.com/pro-account/summary erhältlich.</div>
-          </div>
-          <div style="border-top:1px solid var(--border);margin-top:12px;padding-top:12px">
-            <label class="cfg-label" style="font-size:12px;margin-bottom:4px">Fallback: LibreTranslate</label>
-            <label class="cfg-label" for="cfgTranslateApiUrl" style="font-size:12px;margin-bottom:4px">API URL</label>
-            <input class="cfg-input" id="cfgTranslateApiUrl" type="text" autocomplete="off"
-                   placeholder="http://localhost:5000/translate">
-            <label class="cfg-label" for="cfgTranslateApiKey" style="font-size:12px;margin-bottom:4px;margin-top:8px">API Key (optional)</label>
-            <input class="cfg-input" id="cfgTranslateApiKey" type="password" autocomplete="off"
-                   placeholder="Leer = nicht noetig">
-            <div class="cfg-hint">Wird als Fallback genutzt, wenn DeepL nicht verfuegbar oder deaktiviert ist.</div>
           </div>
         </div>
-        <div class="cfg-field">
-          <label class="cfg-label" for="cfgStatusCh">Status-Channel ID</label>
-          <input class="cfg-input" id="cfgStatusCh" type="text" autocomplete="off"
-                 placeholder="z. B. 123456789012345678">
-        </div>
-        <div class="cfg-field">
-          <label class="cfg-label" for="cfgNotifCh">Benachrichtigungs-Channel ID</label>
-          <input class="cfg-input" id="cfgNotifCh" type="text" autocomplete="off"
-                 placeholder="z. B. 123456789012345678">
-        </div>
-        <div class="cfg-field" style="border:1px solid var(--border);border-radius:8px;padding:12px;background:rgba(255,255,255,.01)">
-          <label class="cfg-label">Nachrichten-Cleanup (z. B. Bot_Info)</label>
-          <div style="display:flex;align-items:center;gap:12px;margin-top:2px;flex-wrap:wrap">
-            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px">
-              <input type="checkbox" id="cfgMsgCleanupEnabled" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
-              <span>Auto-Cleanup aktivieren</span>
-            </label>
-            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px">
-              <input type="checkbox" id="cfgMsgCleanupOnlyBot" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
-              <span>Nur Bot-Nachrichten löschen</span>
-            </label>
-          </div>
-          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:8px">
-            <div>
-              <label class="cfg-label" for="cfgMsgCleanupMaxMessages" style="font-size:12px;margin-bottom:4px">Standard: Max. Nachrichten</label>
-              <select class="cfg-input" id="cfgMsgCleanupMaxMessages">
-                <option value="0">Deaktiviert (0)</option>
-                <option value="1">1</option>
-                <option value="2">2</option>
-                <option value="3">3</option>
-                <option value="4">4</option>
-                <option value="5">5</option>
-                <option value="6">6</option>
-                <option value="8">8</option>
-                <option value="10">10</option>
-                <option value="15">15</option>
-                <option value="20">20</option>
-                <option value="25">25</option>
-                <option value="50">50</option>
-                <option value="100">100</option>
-              </select>
-            </div>
-            <div>
-              <label class="cfg-label" for="cfgMsgCleanupMaxAgeHours" style="font-size:12px;margin-bottom:4px">Standard: Max. Alter</label>
-              <select class="cfg-input" id="cfgMsgCleanupMaxAgeHours">
-                <option value="0">Deaktiviert (0h)</option>
-                <option value="1">1 Std</option>
-                <option value="2">2 Std</option>
-                <option value="3">3 Std</option>
-                <option value="6">6 Std</option>
-                <option value="12">12 Std</option>
-                <option value="18">18 Std</option>
-                <option value="24">1 Tag</option>
-                <option value="36">36 Std</option>
-                <option value="48">2 Tage</option>
-                <option value="72">3 Tage</option>
-                <option value="96">4 Tage</option>
-                <option value="120">5 Tage</option>
-                <option value="168">1 Woche</option>
-              </select>
-            </div>
-            <div>
-              <label class="cfg-label" for="cfgMsgCleanupIntervalMs" style="font-size:12px;margin-bottom:4px">Standard: Intervall</label>
-              <select class="cfg-input" id="cfgMsgCleanupIntervalMs">
-                <option value="60000">1 Min</option>
-                <option value="300000">5 Min</option>
-                <option value="600000">10 Min</option>
-                <option value="900000">15 Min</option>
-                <option value="1800000">30 Min</option>
-                <option value="3600000">1 Std</option>
-                <option value="7200000">2 Std</option>
-                <option value="21600000">6 Std</option>
-                <option value="43200000">12 Std</option>
-                <option value="86400000">24 Std</option>
-              </select>
+        <!-- Nachrichten-Cleanup Section -->
+        <div class="cfg-section">
+          <div class="cfg-section-header" onclick="toggleConfigSection(this)">
+            <div class="cfg-section-header-title">
+              <span class="cfg-section-toggle">▾</span>
+              <span>🧹 Nachrichten-Cleanup</span>
             </div>
           </div>
-          <div style="margin-top:10px">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">
-              <span class="cfg-label" style="font-size:12px;margin:0">Kanäle &amp; Cleanup-Regeln</span>
-              <button type="button" id="btnAddCleanupChannel" style="padding:3px 10px;font-size:12px;border-radius:5px;border:1px solid var(--border);background:var(--surface);color:var(--text);cursor:pointer">+ Kanal hinzufügen</button>
+          <div class="cfg-section-content">
+            <div class="cfg-section-body">
+              <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;flex-wrap:wrap">
+                <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px">
+                  <input type="checkbox" id="cfgMsgCleanupEnabled" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
+                  <span>Auto-Cleanup aktivieren</span>
+                </label>
+                <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px">
+                  <input type="checkbox" id="cfgMsgCleanupOnlyBot" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
+                  <span>Nur Bot-Nachrichten löschen</span>
+                </label>
+              </div>
+              <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px">
+                <div>
+                  <label class="cfg-label" for="cfgMsgCleanupMaxMessages" style="font-size:12px;margin-bottom:4px">Standard: Max. Nachrichten</label>
+                  <select class="cfg-input" id="cfgMsgCleanupMaxMessages">
+                    <option value="0">Deaktiviert (0)</option>
+                    <option value="1">1</option>
+                    <option value="2">2</option>
+                    <option value="3">3</option>
+                    <option value="4">4</option>
+                    <option value="5">5</option>
+                    <option value="6">6</option>
+                    <option value="8">8</option>
+                    <option value="10">10</option>
+                    <option value="15">15</option>
+                    <option value="20">20</option>
+                    <option value="25">25</option>
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="cfg-label" for="cfgMsgCleanupMaxAgeHours" style="font-size:12px;margin-bottom:4px">Standard: Max. Alter</label>
+                  <select class="cfg-input" id="cfgMsgCleanupMaxAgeHours">
+                    <option value="0">Deaktiviert (0h)</option>
+                    <option value="1">1 Std</option>
+                    <option value="2">2 Std</option>
+                    <option value="3">3 Std</option>
+                    <option value="6">6 Std</option>
+                    <option value="12">12 Std</option>
+                    <option value="18">18 Std</option>
+                    <option value="24">1 Tag</option>
+                    <option value="36">36 Std</option>
+                    <option value="48">2 Tage</option>
+                    <option value="72">3 Tage</option>
+                    <option value="96">4 Tage</option>
+                    <option value="120">5 Tage</option>
+                    <option value="168">1 Woche</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="cfg-label" for="cfgMsgCleanupIntervalMs" style="font-size:12px;margin-bottom:4px">Standard: Intervall</label>
+                  <select class="cfg-input" id="cfgMsgCleanupIntervalMs">
+                    <option value="60000">1 Min</option>
+                    <option value="300000">5 Min</option>
+                    <option value="600000">10 Min</option>
+                    <option value="900000">15 Min</option>
+                    <option value="1800000">30 Min</option>
+                    <option value="3600000">1 Std</option>
+                    <option value="7200000">2 Std</option>
+                    <option value="21600000">6 Std</option>
+                    <option value="43200000">12 Std</option>
+                    <option value="86400000">24 Std</option>
+                  </select>
+                </div>
+              </div>
+              <div>
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">
+                  <span class="cfg-label" style="font-size:12px;margin:0">Kanäle &amp; Cleanup-Regeln</span>
+                  <button type="button" id="btnAddCleanupChannel" style="padding:3px 10px;font-size:12px;border-radius:5px;border:1px solid var(--border);background:var(--surface);color:var(--text);cursor:pointer">+ Kanal hinzufügen</button>
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 110px 110px 110px 28px;gap:5px;padding:0 2px;margin-bottom:3px">
+                  <span style="font-size:11px;color:var(--muted)">Channel-ID</span>
+                  <span style="font-size:11px;color:var(--muted)">Max. Nachrichten</span>
+                  <span style="font-size:11px;color:var(--muted)">Max. Alter</span>
+                  <span style="font-size:11px;color:var(--muted)">Intervall</span>
+                  <span></span>
+                </div>
+                <div id="cleanupChannelRows" style="display:flex;flex-direction:column;gap:5px"></div>
+                <input type="hidden" id="cfgMsgCleanupChannelIds">
+              </div>
+              <div class="cfg-hint" style="margin-bottom:0">
+                Leer = nutzt automatisch <code>DISCORD_NOTIFICATION_CHANNEL</code>. <strong>Standard</strong> in einem Dropdown = nutzt den globalen Standardwert oben. Kein Eintrag in der Tabelle = Standardwerte gelten für alle Kanäle.
+              </div>
             </div>
-            <div style="display:grid;grid-template-columns:1fr 110px 110px 110px 28px;gap:5px;padding:0 2px;margin-bottom:3px">
-              <span style="font-size:11px;color:var(--muted)">Channel-ID</span>
-              <span style="font-size:11px;color:var(--muted)">Max. Nachrichten</span>
-              <span style="font-size:11px;color:var(--muted)">Max. Alter</span>
-              <span style="font-size:11px;color:var(--muted)">Intervall</span>
-              <span></span>
-            </div>
-            <div id="cleanupChannelRows" style="display:flex;flex-direction:column;gap:5px"></div>
-            <input type="hidden" id="cfgMsgCleanupChannelIds">
           </div>
-          <div class="cfg-hint">
-            Leer = nutzt automatisch <code>DISCORD_NOTIFICATION_CHANNEL</code>. <strong>Standard</strong> in einem Dropdown = nutzt den globalen Standardwert oben. Kein Eintrag in der Tabelle = Standardwerte gelten für alle Kanäle.
-          </div>
-        </div>
-        <div class="cfg-field">
-          <label class="cfg-label" for="cfgGuildId">Guild ID</label>
-          <input class="cfg-input" id="cfgGuildId" type="text" autocomplete="off"
-                 placeholder="z. B. 123456789012345678">
         </div>
       </div>
 
       <div class="cfg-pane-card hidden" data-cfg-pane="channels">
         <div class="cfg-pane-title">🧩 Dienst-Kanäle</div>
-        <div class="cfg-field">
-          <label class="cfg-label" for="cfgServiceGuildId">Server/Guild ID für Dienst-Kanäle</label>
+        <!-- Guild & Kategorie Section -->
+        <div class="cfg-section open">
+          <div class="cfg-section-header" onclick="toggleConfigSection(this)">
+            <div class="cfg-section-header-title">
+              <span class="cfg-section-toggle">▾</span>
+              <span>🏢 Guild & Kategorie</span>
+            </div>
+          </div>
+          <div class="cfg-section-content">
+            <div class="cfg-section-body">
+              <div class="cfg-field">
+                <label class="cfg-label" for="cfgServiceGuildId">Server/Guild ID für Dienst-Kanäle</label>
           <input class="cfg-input" id="cfgServiceGuildId" type="text" autocomplete="off"
                  placeholder="z. B. 123456789012345678 (leer = Guild ID aus Bot & IDs)">
           <div class="cfg-hint">Diese Guild wird für Kategorie- und Kanalerstellung verwendet. Leer = <code>GUILD_ID</code> aus Bot &amp; IDs.</div>
@@ -1166,9 +1256,22 @@
           <input class="cfg-input" id="cfgServiceCategoryId" type="text" autocomplete="off"
                  placeholder="z. B. 123456789012345678">
              <div class="cfg-hint">Nur für eine bereits vorhandene Discord-Kategorie. Wenn leer, kann der Bot die Kategorie stattdessen per Namen selbst erstellen.</div>
+              </div>
+            </div>
+          </div>
         </div>
-        <div class="cfg-field">
-          <label class="cfg-label" for="cfgMonitoredServices">Monitored Services</label>
+        <!-- Service-Kanäle & Mapping Section -->
+        <div class="cfg-section">
+          <div class="cfg-section-header" onclick="toggleConfigSection(this)">
+            <div class="cfg-section-header-title">
+              <span class="cfg-section-toggle">▾</span>
+              <span>📝 Service-Kanäle & Mapping</span>
+            </div>
+          </div>
+          <div class="cfg-section-content">
+            <div class="cfg-section-body">
+              <div class="cfg-field">
+                <label class="cfg-label" for="cfgMonitoredServices">Überwachte Services</label>
           <input class="cfg-input" id="cfgMonitoredServices" type="text" autocomplete="off"
                  placeholder="Kommagetrennt, z. B. website,api,database">
           <div class="cfg-hint">Kommagetrennte Whitelist. Wenn leer, werden Einträge aus Kanal-Mapping verwendet.</div>
@@ -1178,8 +1281,8 @@
           <input class="cfg-input" id="cfgServiceChannelMap" type="text" autocomplete="off"
                  placeholder="Next-Cloud=123456789012345678;Pi-VPN=234567890123456789">
           <div class="cfg-hint">Format: <code>Monitorname=ChannelID;Anderer Monitor=ChannelID</code>. Die Channel-ID muss zu einem bereits vorhandenen Kanal gehören. Wenn leer, kann der Bot fehlende Kanäle automatisch selbst erstellen.</div>
-        </div>
-        <div class="cfg-field" style="border:1px solid var(--border);border-radius:8px;padding:12px;background:rgba(255,255,255,.01)">
+              </div>
+              <div class="cfg-field" style="border:1px solid var(--border);border-radius:8px;padding:12px;background:rgba(255,255,255,.01)">
           <label class="cfg-label">Bestehende Kategorien &amp; Kanäle übernehmen</label>
           <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">
             <button class="btn" id="btnLoadExistingChannels" onclick="loadExistingGuildChannels()">🔎 Aus Discord laden</button>
@@ -1239,7 +1342,20 @@
           </select>
           <div class="cfg-hint">Bei <code>pretty</code> und <code>mono</code> bleibt der Name so lesbar wie möglich. Wichtig: Discord normalisiert Textkanalnamen oft selbst auf Kleinbuchstaben oder lehnt bestimmte Unicode-Zeichen ab. Bei Ablehnung wird automatisch auf den sicheren Slug zurückgefallen.</div>
           <div class="cfg-hint" id="cfgChannelNamePreview" style="margin-top:6px"></div>
+              </div>
+            </div>
+          </div>
         </div>
+        <!-- Unicode Text Converter Section -->
+        <div class="cfg-section">
+          <div class="cfg-section-header" onclick="toggleConfigSection(this)">
+            <div class="cfg-section-header-title">
+              <span class="cfg-section-toggle">▾</span>
+              <span>🎨 Unicode-Text Konverter</span>
+            </div>
+          </div>
+          <div class="cfg-section-content">
+            <div class="cfg-section-body">
         <div class="cfg-field" style="border:1px solid var(--border);border-radius:8px;padding:12px;background:rgba(255,255,255,.01)">
           <label class="cfg-label" for="cfgUnicodeInput">Unicode-Schrift Konverter (Copy &amp; Paste)</label>
           <div class="cfg-inline-action">
@@ -1307,17 +1423,44 @@
             <button class="btn" type="button" onclick="copyUnicodeStyledText()">📋 Ergebnis kopieren</button>
           </div>
           <div class="cfg-hint">Nur ein Hilfswerkzeug für manuelles Copy/Paste in Discord. Nicht jede Unicode-Schrift wird in jedem Client gleich dargestellt.</div>
+              </div>
+            </div>
+          </div>
         </div>
+        <!-- Update Interval Section -->
+        <div class="cfg-section">
+          <div class="cfg-section-header" onclick="toggleConfigSection(this)">
+            <div class="cfg-section-header-title">
+              <span class="cfg-section-toggle">▾</span>
+              <span>⏱ Update-Intervall</span>
+            </div>
+          </div>
+          <div class="cfg-section-content">
+            <div class="cfg-section-body">
         <div class="cfg-field" style="margin-bottom:0">
-          <label class="cfg-label" for="cfgUpdateInterval">Update Intervall (ms)</label>
+          <label class="cfg-label" for="cfgUpdateInterval">Update-Intervall (ms)</label>
           <input class="cfg-input" id="cfgUpdateInterval" type="number" min="10000" step="1000"
                  placeholder="300000">
+          <div class="cfg-hint">Wie oft die Service-Kanäle mit aktuellem Status synchronisiert werden. Standard: 300000 ms (5 Minuten).</div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
       <div class="cfg-pane-card hidden" data-cfg-pane="commands">
         <div class="cfg-pane-title">⌨️ Bot-Kommandos</div>
-        <div class="cfg-field">
+        <!-- Aktive Commands Section -->
+        <div class="cfg-section open">
+          <div class="cfg-section-header" onclick="toggleConfigSection(this)">
+            <div class="cfg-section-header-title">
+              <span class="cfg-section-toggle">▾</span>
+              <span>✅ Aktive Slash-Commands</span>
+            </div>
+          </div>
+          <div class="cfg-section-content">
+            <div class="cfg-section-body">
+              <div class="cfg-field" style="margin-bottom:0">
           <label class="cfg-label">Aktive Slash-Commands</label>
           <div style="display:grid;gap:8px;margin-top:4px">
             <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px">
@@ -1359,12 +1502,25 @@
           </div>
           <input type="hidden" id="cfgEnabledCommands" value="status,uptime,refresh,help,coinflip,dice,eightball,cleanup,translate">
           <div class="cfg-hint">Mindestens ein Kommando muss aktiv bleiben. Änderungen werden beim Neustart neu registriert.</div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
       <div class="cfg-pane-card hidden" data-cfg-pane="renderer">
         <div class="cfg-pane-title">📡 Discord-Status-Renderer</div>
-        <div class="cfg-field">
+        <!-- Rendering Mode Section -->
+        <div class="cfg-section open">
+          <div class="cfg-section-header" onclick="toggleConfigSection(this)">
+            <div class="cfg-section-header-title">
+              <span class="cfg-section-toggle">▾</span>
+              <span>🎬 Rendering-Modus</span>
+            </div>
+          </div>
+          <div class="cfg-section-content">
+            <div class="cfg-section-body">
+              <div class="cfg-field">
           <label class="cfg-label" for="cfgRenderMode">Discord Status Renderer</label>
           <div style="display:flex;gap:8px;align-items:end;">
             <select class="cfg-input" id="cfgRenderMode" style="flex:1;">
@@ -1379,8 +1535,21 @@
             <button class="btn btn-small" id="btnTestRender" onclick="testRendering()" style="padding:8px 12px;font-size:12px;white-space:nowrap;">🧪 Jetzt testen</button>
           </div>
           <div class="cfg-hint">Renderer wählen und mit "Jetzt testen" sofort einen Discord-Status-Update auslösen.</div>
+              </div>
+            </div>
+          </div>
         </div>
-        <div class="cfg-field">
+        <!-- SVG & URLs Section -->
+        <div class="cfg-section">
+          <div class="cfg-section-header" onclick="toggleConfigSection(this)">
+            <div class="cfg-section-header-title">
+              <span class="cfg-section-toggle">▾</span>
+              <span>🖼 SVG & URLs</span>
+            </div>
+          </div>
+          <div class="cfg-section-content">
+            <div class="cfg-section-body">
+              <div class="cfg-field">
           <label class="cfg-label" for="cfgStatusTitle">SVG Modus: Titel oberhalb der Grafik</label>
           <input class="cfg-input" id="cfgStatusTitle" type="text" autocomplete="off"
                  placeholder="Leer lassen = keine zweite Überschrift">
@@ -1412,12 +1581,25 @@
           <label class="cfg-label" for="cfgWebhookUrl">Discord Status Webhook URL</label>
           <input class="cfg-input" id="cfgWebhookUrl" type="password" autocomplete="off"
                  placeholder="Nur für webhook_ascii (leer lassen = unverändert)">
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
       <div class="cfg-pane-card hidden" data-cfg-pane="security">
-        <div class="cfg-pane-title">🗂 .env / Sicherheit</div>
-        <div class="cfg-field">
+        <div class="cfg-pane-title">🗂 Sicherheit & API</div>
+        <!-- Uptime Kuma Section -->
+        <div class="cfg-section open">
+          <div class="cfg-section-header" onclick="toggleConfigSection(this)">
+            <div class="cfg-section-header-title">
+              <span class="cfg-section-toggle">▾</span>
+              <span>📊 Uptime Kuma</span>
+            </div>
+          </div>
+          <div class="cfg-section-content">
+            <div class="cfg-section-body">
+              <div class="cfg-field">
           <label class="cfg-label" for="cfgKumaUrl">Uptime Kuma URL</label>
           <input class="cfg-input" id="cfgKumaUrl" type="text" autocomplete="off"
                  placeholder="http://192.168.x.x:3001">
@@ -1426,15 +1608,28 @@
           <label class="cfg-label" for="cfgApiKey">Uptime Kuma API Key</label>
           <input class="cfg-input" id="cfgApiKey" type="password" autocomplete="off"
                  placeholder="Neuen API Key eingeben (leer lassen = unverändert)">
+              </div>
+            </div>
+          </div>
         </div>
-        <div class="cfg-field">
-          <label class="cfg-label" for="cfgTranslateApiUrl">Uebersetzer API URL (LibreTranslate kompatibel)</label>
-          <input class="cfg-input" id="cfgTranslateApiUrl" type="text" autocomplete="off"
+        <!-- Translator & Dashboard Section -->
+        <div class="cfg-section">
+          <div class="cfg-section-header" onclick="toggleConfigSection(this)">
+            <div class="cfg-section-header-title">
+              <span class="cfg-section-toggle">▾</span>
+              <span>🌐 Übersetzer & Dashboard</span>
+            </div>
+          </div>
+          <div class="cfg-section-content">
+            <div class="cfg-section-body">
+              <div class="cfg-field">
+          <label class="cfg-label" for="cfgTranslateApiUrlSecurity">Uebersetzer API URL (LibreTranslate kompatibel)</label>
+          <input class="cfg-input" id="cfgTranslateApiUrlSecurity" type="text" autocomplete="off"
                  placeholder="https://libretranslate.com/translate">
         </div>
         <div class="cfg-field">
-          <label class="cfg-label" for="cfgTranslateApiKey">Uebersetzer API Key (optional)</label>
-          <input class="cfg-input" id="cfgTranslateApiKey" type="password" autocomplete="off"
+          <label class="cfg-label" for="cfgTranslateApiKeySecurity">Uebersetzer API Key (optional)</label>
+          <input class="cfg-input" id="cfgTranslateApiKeySecurity" type="password" autocomplete="off"
                  placeholder="Neuen API Key eingeben (leer lassen = unverändert)">
         </div>
         <div class="cfg-field">
@@ -1443,20 +1638,46 @@
                  placeholder="Neues Passwort eingeben (leer lassen = unverändert)">
         </div>
         <div class="cfg-field" style="margin-bottom:0">
-          <label class="cfg-label" for="cfgDbStorage">DB Storage Pfad</label>
+          <label class="cfg-label" for="cfgDbStorage">Datenbank-Pfad</label>
           <input class="cfg-input" id="cfgDbStorage" type="text" autocomplete="off"
                  placeholder="./data/status.db">
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
       <div class="cfg-pane-card hidden" data-cfg-pane="raspi">
         <div class="cfg-pane-title">🍓 Raspi / Web</div>
-        <div class="cfg-field">
+        <!-- Web Server Section -->
+        <div class="cfg-section open">
+          <div class="cfg-section-header" onclick="toggleConfigSection(this)">
+            <div class="cfg-section-header-title">
+              <span class="cfg-section-toggle">▾</span>
+              <span>🌐 Web Server</span>
+            </div>
+          </div>
+          <div class="cfg-section-content">
+            <div class="cfg-section-body">
+              <div class="cfg-field" style="margin-bottom:0">
           <label class="cfg-label" for="cfgWebPort">Web Port</label>
           <input class="cfg-input" id="cfgWebPort" type="number" min="1" max="65535"
                  placeholder="3000">
+              </div>
+            </div>
+          </div>
         </div>
-        <div class="cfg-field">
+        <!-- Time & Language Section -->
+        <div class="cfg-section open">
+          <div class="cfg-section-header" onclick="toggleConfigSection(this)">
+            <div class="cfg-section-header-title">
+              <span class="cfg-section-toggle">▾</span>
+              <span>🕒 Zeit & Sprache</span>
+            </div>
+          </div>
+          <div class="cfg-section-content">
+            <div class="cfg-section-body">
+              <div class="cfg-field">
           <label class="cfg-label" for="cfgTimezone">Zeitzone (Raspberry Pi)</label>
           <select class="cfg-input" id="cfgTimezone">
             <option value="">Bitte wählen…</option>
@@ -1509,8 +1730,21 @@
           <button class="btn" id="btnLocaleReload" onclick="loadSystemLocalization()">↺ Werte laden</button>
           <button class="btn" id="btnLocaleSave" onclick="saveSystemLocalization()">🕒 System übernehmen</button>
           <span id="cfgLocaleStatus" class="muted" style="font-size:12px"></span>
+              </div>
+            </div>
+          </div>
         </div>
-        <div class="cfg-field" style="margin-bottom:0">
+        <!-- Status Indicator Section -->
+        <div class="cfg-section">
+          <div class="cfg-section-header" onclick="toggleConfigSection(this)">
+            <div class="cfg-section-header-title">
+              <span class="cfg-section-toggle">▾</span>
+              <span>🟢 Status-Indikator</span>
+            </div>
+          </div>
+          <div class="cfg-section-content">
+            <div class="cfg-section-body">
+              <div class="cfg-field" style="margin-bottom:0">
           <label class="cfg-label">Channel-Status-Indikator</label>
           <div style="display:flex;align-items:center;gap:12px;margin-top:2px">
             <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px">
@@ -1519,6 +1753,263 @@
             </label>
           </div>
           <div class="cfg-hint">Bei Statuswechsel wird z.B. aus <code>dienste-status</code> → <code>🟢dienste-status</code> (max. 2× / 10 min)</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── PANE: WILLKOMMEN & AUTO-REPLY ─────────────── -->
+      <div class="cfg-pane-card hidden" data-cfg-pane="welcome">
+        <div class="cfg-pane-title">👋 Willkommens-Nachrichten</div>
+        <!-- Welcome Messages Section -->
+        <div class="cfg-section open">
+          <div class="cfg-section-header" onclick="toggleConfigSection(this)">
+            <div class="cfg-section-header-title">
+              <span class="cfg-section-toggle">▾</span>
+              <span>👋 Willkommensnachrichten</span>
+            </div>
+          </div>
+          <div class="cfg-section-content">
+            <div class="cfg-section-body">
+              <div class="cfg-field" style="border:1px solid var(--border);border-radius:8px;padding:12px;background:rgba(255,255,255,.01)">
+          <label class="cfg-label">Willkommensnachrichten aktivieren</label>
+          <div style="display:flex;align-items:center;gap:12px;margin-top:2px">
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px">
+              <input type="checkbox" id="cfgWelcomeEnabled" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
+              <span>Neues Mitglied beim Beitritt automatisch begrüßen</span>
+            </label>
+          </div>
+          <div class="cfg-hint">Benötigt den Privileged Intent <strong>Server Members Intent</strong> im Discord Developer Portal.</div>
+        </div>
+        <div class="cfg-field">
+          <label class="cfg-label" for="cfgWelcomeChannelId">Willkommens-Kanal ID</label>
+          <input class="cfg-input" id="cfgWelcomeChannelId" type="text" autocomplete="off" placeholder="z. B. 123456789012345678">
+          <div class="cfg-hint">Rechtsklick auf den Kanal → „ID kopieren" (Entwicklermodus muss aktiv sein).</div>
+        </div>
+        <div class="cfg-field">
+          <label class="cfg-label" for="cfgWelcomeMessageTemplate">Willkommens-Nachricht</label>
+          <input class="cfg-input" id="cfgWelcomeMessageTemplate" type="text" autocomplete="off"
+                 placeholder="Willkommen {user} auf **{server}**! 👋">
+          <div class="cfg-hint">Platzhalter: <code>{user}</code> = Mention, <code>{username}</code> = Name ohne @, <code>{server}</code> = Servername, <code>{channel}</code> = Kanal.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <!-- Auto-Reply Section -->
+        <div class="cfg-section">
+          <div class="cfg-section-header" onclick="toggleConfigSection(this)">
+            <div class="cfg-section-header-title">
+              <span class="cfg-section-toggle">▾</span>
+              <span>🤖 Auto-Reply</span>
+            </div>
+          </div>
+          <div class="cfg-section-content">
+            <div class="cfg-section-body">
+        <div class="cfg-field" style="border:1px solid var(--border);border-radius:8px;padding:12px;background:rgba(255,255,255,.01)">
+          <label class="cfg-label">Auto-Reply aktivieren</label>
+          <div style="display:flex;align-items:center;gap:12px;margin-top:2px;flex-wrap:wrap">
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px">
+              <input type="checkbox" id="cfgAutoReplyEnabled" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
+              <span>Auf Nachrichten automatisch antworten (Regeln aus JSON-Datei)</span>
+            </label>
+          </div>
+          <div style="display:flex;align-items:center;gap:12px;margin-top:10px">
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px">
+              <input type="checkbox" id="cfgAutoReplyMentionOnly" style="width:16px;height:16px;cursor:pointer;accent-color:var(--yellow)">
+              <span>Nur bei direkter @-Erwähnung des Bots antworten</span>
+            </label>
+          </div>
+          <div class="cfg-hint">Benötigt den Privileged Intent <strong>Message Content Intent</strong> im Discord Developer Portal.</div>
+        </div>
+        <div class="cfg-field">
+          <label class="cfg-label" for="cfgAutoReplyChannelIds">Kanal-Filter (optional)</label>
+          <input class="cfg-input" id="cfgAutoReplyChannelIds" type="text" autocomplete="off" placeholder="123456789;987654321 (leer = alle Kanäle)">
+          <div class="cfg-hint">Channel-IDs mit <code>;</code> oder <code>,</code> trennen. Leer lassen um in allen Kanälen zu antworten.</div>
+        </div>
+        <div class="cfg-field">
+          <label class="cfg-label" for="cfgAutoReplyCooldownMs">Cooldown zwischen Antworten (ms)</label>
+          <input class="cfg-input" id="cfgAutoReplyCooldownMs" type="number" min="0" max="3600000" step="1000" placeholder="30000">
+          <div class="cfg-hint">Mindestabstand in Millisekunden pro Kanal (0 = kein Cooldown, Standard: 30000 = 30 Sek).</div>
+        </div>
+        <div class="cfg-field">
+          <label class="cfg-label" for="cfgAutoReplyRulesFile">Pfad zur Regeldatei</label>
+          <input class="cfg-input" id="cfgAutoReplyRulesFile" type="text" autocomplete="off" placeholder="./auto-replies.json">
+          <div class="cfg-hint">JSON-Array mit Regeln (Felder: <code>id</code>, <code>trigger</code>, <code>mode</code>, <code>reply</code>). Modus: <code>contains</code>, <code>exact</code>, <code>regex</code>.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <!-- Rules Editor Section -->
+        <div class="cfg-section">
+          <div class="cfg-section-header" onclick="toggleConfigSection(this)">
+            <div class="cfg-section-header-title">
+              <span class="cfg-section-toggle">▾</span>
+              <span>📋 Regeln bearbeiten</span>
+            </div>
+          </div>
+          <div class="cfg-section-content">
+            <div class="cfg-section-body">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px">
+          <span class="muted" id="arRulesCount" style="font-size:12px">– Regeln geladen</span>
+          <div style="display:flex;gap:8px">
+            <button class="btn" onclick="arShowTutorial()" style="background:var(--surface2);border-color:var(--border);color:var(--blue)" title="Tutorial: Wie man Regeln erstellt">? Hilfe</button>
+            <button class="btn" onclick="arLoadRules()">↺ Laden</button>
+            <button class="btn btn-green" onclick="arAddRule()">+ Neue Regel</button>
+            <button class="btn btn-green" id="btnArSave" onclick="arSaveRules()">💾 Speichern</button>
+          </div>
+        </div>
+        <span id="arStatus" class="muted" style="font-size:12px;display:block;margin-bottom:8px"></span>
+        <div style="overflow-x:auto">
+          <table style="width:100%;border-collapse:collapse;font-size:13px" id="arTable">
+            <thead>
+              <tr style="border-bottom:1px solid var(--border);color:var(--muted)">
+                <th style="text-align:left;padding:4px 6px;width:100px">ID</th>
+                <th style="text-align:left;padding:4px 6px;width:90px">Modus</th>
+                <th style="text-align:left;padding:4px 6px">Trigger</th>
+                <th style="text-align:left;padding:4px 6px">Antwort</th>
+                <th style="text-align:center;padding:4px 6px;width:60px">Groß/Klein</th>
+                <th style="text-align:center;padding:4px 6px;width:40px"></th>
+              </tr>
+            </thead>
+            <tbody id="arTableBody">
+              <tr><td colspan="6" style="text-align:center;padding:12px;color:var(--muted)">← Auf „Laden" klicken um Regeln zu laden</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- ── TUTORIAL-MODAL ────────────────────────────── -->
+        <div id="arTutorialModal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);z-index:9999;overflow-y:auto" onclick="if(event.target===this)arHideTutorial()">
+          <div style="background:var(--surface1);border:1px solid var(--border);border-radius:12px;max-width:700px;margin:40px auto;padding:20px;box-shadow:0 10px 40px rgba(0,0,0,0.3)">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+              <h3 style="margin:0;font-size:18px;color:var(--text)">📋 Auto-Reply Regeln erstellen</h3>
+              <button style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--muted);padding:0;width:32px;height:32px" onclick="arHideTutorial()">✕</button>
+            </div>
+
+            <div style="color:var(--text);line-height:1.6;font-size:13px">
+              <p><strong>Was ist eine Regel?</strong></p>
+              <p>Eine Regel bestimmt, wann der Bot automatisch antwortet. Jede Regel besteht aus:</p>
+              <ul style="margin:8px 0;padding-left:20px">
+                <li><strong>ID</strong> — Eindeutige Kennung (z.B. "hello", "status"). Nur Buchstaben, Zahlen, - und _.</li>
+                <li><strong>Trigger</strong> — Das Wort oder der Text, auf den reagiert wird.</li>
+                <li><strong>Modus</strong> — Wie der Text verglichen wird (siehe unten).</li>
+                <li><strong>Antwort</strong> — Was der Bot antworten soll.</li>
+                <li><strong>Groß/Klein</strong> — Soll Groß-/Kleinschreibung beachtet werden?</li>
+              </ul>
+
+              <hr style="border:none;border-top:1px solid var(--border);margin:15px 0">
+              <p style="margin-top:15px"><strong>Die 3 Modi erklärt:</strong></p>
+
+              <div style="background:rgba(100,200,100,0.1);border-left:3px solid var(--green);padding:12px;margin:10px 0;border-radius:4px">
+                <p style="margin:0 0 6px 0;font-weight:bold;color:var(--green)">📌 contains (enthält)</p>
+                <p style="margin:0"><strong>Trigger:</strong> "hallo"<br><strong>Beispiele die reagieren:</strong> "Hallo Bot!", "wie geht hallo dir?", "HALLO"<br><strong>Tipp:</strong> Der flexible Modus — reagiert überall im Text.</p>
+              </div>
+
+              <div style="background:rgba(100,180,255,0.1);border-left:3px solid var(--blue);padding:12px;margin:10px 0;border-radius:4px">
+                <p style="margin:0 0 6px 0;font-weight:bold;color:var(--blue)">🎯 exact (genau)</p>
+                <p style="margin:0"><strong>Trigger:</strong> "status?"<br><strong>Beispiele die reagieren:</strong> Nur die Nachricht "status?" exakt<br><strong>Tipp:</strong> Für Fragen oder spezifische Kommandos, die genau so eingegeben werden müssen.</p>
+              </div>
+
+              <div style="background:rgba(255,200,100,0.1);border-left:3px solid var(--yellow);padding:12px;margin:10px 0;border-radius:4px">
+                <p style="margin:0 0 6px 0;font-weight:bold;color:var(--yellow)">⚙️ regex (regulärer Ausdruck)</p>
+                <p style="margin:0"><strong>Trigger:</strong> "^(hilfe|help|\\?)$"<br><strong>Beispiele die reagieren:</strong> "hilfe", "help", "?"<br><strong>Tipp:</strong> Der mächtigste Modus für komplexe Muster. Erfordert Regex-Kenntnisse!</p>
+              </div>
+
+              <hr style="border:none;border-top:1px solid var(--border);margin:15px 0">
+              <p style="margin-top:15px"><strong>✅ Beispiele zum Kopieren:</strong></p>
+              <table style="width:100%;border-collapse:collapse;font-size:12px;background:var(--surface2);border-radius:4px;overflow:hidden">
+                <tr style="background:rgba(255,255,255,0.05)">
+                  <td style="padding:8px;border-right:1px solid var(--border);font-weight:bold">Willkommensnachricht</td>
+                  <td style="padding:8px"><code style="background:var(--surface1);padding:2px 4px;border-radius:2px;color:var(--blue)">ID: welcome | Modus: contains | Trigger: willkommen | Antwort: Herzlich Willkommen! 🎉</code></td>
+                </tr>
+                <tr style="border-top:1px solid var(--border)">
+                  <td style="padding:8px;border-right:1px solid var(--border);font-weight:bold">Hilfeanfrage</td>
+                  <td style="padding:8px"><code style="background:var(--surface1);padding:2px 4px;border-radius:2px;color:var(--blue)">ID: help | Modus: exact | Trigger: help | Antwort: Schreib /help für mehr Infos!</code></td>
+                </tr>
+                <tr style="border-top:1px solid var(--border)">
+                  <td style="padding:8px;border-right:1px solid var(--border);font-weight:bold">Zeitkontrolle</td>
+                  <td style="padding:8px"><code style="background:var(--surface1);padding:2px 4px;border-radius:2px;color:var(--blue)">ID: time | Modus: regex | Trigger: (zeit|uhrzeit|time) | Antwort: Aktuelle Zeit findest du oben ⏰</code></td>
+                </tr>
+              </table>
+
+              <hr style="border:none;border-top:1px solid var(--border);margin:15px 0">
+              <p style="margin-top:15px;color:var(--yellow)">⚡ <strong>Wichtig:</strong></p>
+              <ul style="margin:8px 0;padding-left:20px;color:var(--muted)">
+                <li>Regeln werden sofort aktiv, ohne Bot-Neustart!</li>
+                <li>Nur gültige IDs erlaubt (nur Buchstaben, Zahlen, -, _).</li>
+                <li>Antworten max. 2000 Zeichen (Discord-Limit).</li>
+                <li>Mehrere Regeln können auf die gleiche Nachricht reagieren.</li>
+              </ul>
+            </div>
+
+            <div style="text-align:right;margin-top:20px">
+              <button class="btn" onclick="arHideTutorial()">Schließen</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── PANE: GITHUB-WATCHER ───────────────────────── -->
+      <div class="cfg-pane-card hidden" data-cfg-pane="github">
+        <div class="cfg-pane-title">🐙 GitHub-Update-Watcher</div>
+        <!-- GitHub Update Monitoring Section -->
+        <div class="cfg-section open">
+          <div class="cfg-section-header" onclick="toggleConfigSection(this)">
+            <div class="cfg-section-header-title">
+              <span class="cfg-section-toggle">▾</span>
+              <span>👀 Update-Überwachung</span>
+            </div>
+          </div>
+          <div class="cfg-section-content">
+            <div class="cfg-section-body">
+              <div class="cfg-field" style="border:1px solid var(--border);border-radius:8px;padding:12px;background:rgba(255,255,255,.01)">
+          <label class="cfg-label">GitHub-Watcher aktivieren</label>
+          <div style="display:flex;align-items:center;gap:12px;margin-top:2px">
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px">
+              <input type="checkbox" id="cfgGithubWatchEnabled" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
+              <span>Neue Releases &amp; Commits von GitHub in einen Discord-Kanal posten</span>
+            </label>
+          </div>
+        </div>
+        <div class="cfg-field">
+          <label class="cfg-label" for="cfgGithubChannelId">Info-Kanal ID</label>
+          <input class="cfg-input" id="cfgGithubChannelId" type="text" autocomplete="off" placeholder="z. B. 123456789012345678">
+          <div class="cfg-hint">Channel-ID des Discord-Kanals, in dem GitHub-Updates gepostet werden sollen.</div>
+        </div>
+        <div class="cfg-field">
+          <label class="cfg-label" for="cfgGithubRepos">Repos (Format: owner/repo)</label>
+          <input class="cfg-input" id="cfgGithubRepos" type="text" autocomplete="off" placeholder="ReXx09/Bockis_Discord-Bot;anderer/repo">
+          <div class="cfg-hint">Mehrere Repos mit <code>;</code> oder <code>,</code> trennen. Maximal 20. Nur öffentliche Repos ohne Token.</div>
+        </div>
+        <div class="cfg-field">
+          <label class="cfg-label" for="cfgGithubMode">Überwachungs-Modus</label>
+          <select class="cfg-input" id="cfgGithubMode">
+            <option value="both">Beides (Releases + Commits)</option>
+            <option value="releases">Nur Releases</option>
+            <option value="commits">Nur Commits</option>
+          </select>
+        </div>
+        <div class="cfg-field">
+          <label class="cfg-label" for="cfgGithubPollIntervalMs">Poll-Intervall</label>
+          <select class="cfg-input" id="cfgGithubPollIntervalMs">
+            <option value="60000">1 Minute</option>
+            <option value="300000">5 Minuten</option>
+            <option value="600000" selected>10 Minuten (Standard)</option>
+            <option value="900000">15 Minuten</option>
+            <option value="1800000">30 Minuten</option>
+            <option value="3600000">1 Stunde</option>
+            <option value="21600000">6 Stunden</option>
+          </select>
+          <div class="cfg-hint">Ohne GitHub-Token: max. 60 Anfragen/Stunde (ca. 5 Repos × 2 Checks alle 10 Min).</div>
+        </div>
+        <div class="cfg-field">
+          <label class="cfg-label" for="cfgGithubToken">GitHub Personal Access Token (optional)</label>
+          <input class="cfg-input" id="cfgGithubToken" type="password" autocomplete="off"
+                 placeholder="Leer lassen = unverändert">
+          <div class="cfg-hint">Erhöht das Rate-Limit von 60 auf 5000 Anfragen/Stunde. Scope: <code>public_repo</code> reicht aus.</div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -1605,6 +2096,19 @@
   <div class="diag-hints" id="diagHints"></div>
 </div>
 
+<!-- ── DIAGNOSE: REPARATUR ─────────────────────────── -->
+<div class="card" id="repairDiagCard" data-span="12" data-pane="diagnostics">
+  <div class="card-title">🔧 Reparatur (Schnellzugriff)</div>
+  <div class="mb12" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px">
+    <button class="btn btn-red" id="btnRepairDiagFull"        onclick="runRepair('full', 'btnRepairDiagFull', 'diag')">🔧 Vollreparatur</button>
+    <button class="btn"         id="btnRepairDiagNodeSymlink" onclick="runRepair('node-symlink', 'btnRepairDiagNodeSymlink', 'diag')">⛓ Node-Symlink</button>
+    <button class="btn"         id="btnRepairDiagAptFix"      onclick="runRepair('apt-fix', 'btnRepairDiagAptFix', 'diag')">📦 apt reparieren</button>
+    <button class="btn"         id="btnRepairDiagNpm"         onclick="runRepair('npm-reinstall', 'btnRepairDiagNpm', 'diag')">🔄 npm neu installieren</button>
+    <button class="btn"         id="btnRepairDiagRestart"     onclick="runRepair('restart', 'btnRepairDiagRestart', 'diag')">↺ Service neustarten</button>
+  </div>
+  <div id="repairLogDiag" style="display:none;margin-top:12px"></div>
+</div>
+
 <!-- ── UPDATES KACHEL ────────────────────────────────── -->
 <div class="card" id="updateCard" data-span="12" data-pane="updates">
   <div class="card-title">Neue Commits auf GitHub</div>
@@ -1630,6 +2134,7 @@
   <div class="card-title">📦 npm Pakete</div>
   <div class="mb12" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px">
     <button class="btn" id="btnDepsCheck" onclick="checkDeps(true)">🔎 npm prüfen</button>
+    <button class="btn btn-green" id="btnDepsUpdate" onclick="runUpdate(null, 'npm', 'btnDepsUpdate')">📦 npm updaten</button>
     <span class="muted" id="depsState">Noch nicht geprüft</span>
   </div>
   <div id="depsList"></div>
@@ -1640,11 +2145,27 @@
   <div class="card-title">🖥️ System-Abhängigkeiten</div>
   <div class="mb12" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px">
     <button class="btn" id="btnSysDepsCheck" onclick="checkDeps(true)">🔎 System prüfen</button>
-    <button class="btn btn-green" id="btnInstallAllMissing" onclick="installAllMissingSysDeps()" style="display:none">⬇ Alle fehlenden installieren</button>
+    <button class="btn btn-green" id="btnInstallAllMissing" onclick="installAllMissingSysDeps()">⬇ System updaten</button>
     <span class="muted" id="sysDepState">Noch nicht geprüft</span>
   </div>
   <div id="sysDepsList"></div>
   <div id="sysInstallLog" style="display:none;margin-top:12px"></div>
+</div>
+
+<!-- ── REPARATUR KACHEL ──────────────────────────────── -->
+<div class="card" id="repairCard" data-span="12" data-pane="updates">
+  <div class="card-title">🔧 Reparatur</div>
+  <div class="mb12" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px">
+    <button class="btn btn-red" id="btnRepairFull"        onclick="runRepair('full',           'btnRepairFull')"       >🔧 Vollreparatur</button>
+    <button class="btn"         id="btnRepairNodeSymlink" onclick="runRepair('node-symlink',    'btnRepairNodeSymlink')" >⛓ Node-Symlink</button>
+    <button class="btn"         id="btnRepairAptFix"      onclick="runRepair('apt-fix',         'btnRepairAptFix')"     >📦 apt reparieren</button>
+    <button class="btn"         id="btnRepairNpm"         onclick="runRepair('npm-reinstall',   'btnRepairNpm')"        >🔄 npm neu installieren</button>
+    <button class="btn"         id="btnRepairRestart"     onclick="runRepair('restart',         'btnRepairRestart')"    >↺ Service neustarten</button>
+  </div>
+  <div class="muted" style="font-size:12px;margin-bottom:8px">
+    Vollreparatur: Node-Symlink prüfen → apt-Fehler beheben → npm neu installieren → Service neustarten
+  </div>
+  <div id="repairLog" style="display:none;margin-top:12px"></div>
 </div>
 
 </div><!-- /.dashboard-grid -->
@@ -2361,7 +2882,8 @@
     const local = _updateData?.local || '–';
     const remote = _updateData?.remote || '–';
 
-    const npmOutdated = Number(_depsBannerData?.outdatedCount || 0);
+    const npmOutdated = Number(_depsBannerData?.compatibleUpdateCount || 0);
+    const npmMajorOnly = Number(_depsBannerData?.majorOnlyCount || 0);
     const npmTotal = Number(_depsBannerData?.total || 0);
     const hasNpmUpdates = npmOutdated > 0;
 
@@ -2385,13 +2907,16 @@
       titleEl.textContent = 'Git-Update verfügbar';
     } else if (hasNpmUpdates) {
       titleEl.textContent = 'npm-Updates verfügbar';
+    } else if (npmMajorOnly > 0) {
+      titleEl.textContent = 'Major-Upgrades verfügbar';
     } else {
       titleEl.textContent = 'Pflicht-Abhängigkeiten fehlen';
     }
 
     const details = [];
     if (hasGitUpdate) details.push(`${behind} Commit${behind > 1 ? 's' : ''} verfügbar · lokal: ${local} · remote: ${remote}`);
-    if (hasNpmUpdates) details.push(`${npmOutdated} von ${npmTotal} npm-Paket(en) veraltet`);
+    if (hasNpmUpdates) details.push(`${npmOutdated} kompatible npm-Update${npmOutdated > 1 ? 's' : ''} verfügbar`);
+    if (npmMajorOnly > 0) details.push(`${npmMajorOnly} nur als Major-Upgrade`);
     if (hasRequiredSysMissing) details.push(`${sysRequiredMissing} Pflicht-System-Abhängigkeit(en) fehlen`);
     subEl.textContent = details.join(' · ');
   }
@@ -2500,9 +3025,11 @@
       const rows = d.packages.map(p => {
         const badge = !p.outdated
           ? `<span class="dep-badge dep-ok-badge">✓ aktuell</span>`
+          : p.compatibleUpdate
+            ? `<span class="dep-badge dep-warn-badge">↟ Kompatibel ${escapeHtml(p.wanted || p.latest || 'neu')}</span>`
           : p.majorBump
             ? `<span class="dep-badge dep-crit-badge">↑ Major ${escapeHtml(p.latest)}</span>`
-            : `<span class="dep-badge dep-warn-badge">↑ Minor ${escapeHtml(p.latest)}</span>`;
+            : `<span class="dep-badge dep-warn-badge">↟ Update ${escapeHtml(p.latest || p.wanted || 'neu')}</span>`;
         return `<tr>
           <td><span class="dep-name">${escapeHtml(p.name)}</span>${p.type === 'devDependency' ? '<span class="dep-dev">dev</span>' : ''}</td>
           <td class="dep-ver">${escapeHtml(p.required)}</td>
@@ -2521,23 +3048,35 @@
           <tbody>${rows || '<tr><td colspan="6" class="muted">Keine npm-Pakete gefunden.</td></tr>'}</tbody>
         </table>`;
 
-      const npmTxt = d.outdatedCount > 0
-        ? `${d.outdatedCount} von ${d.total} Paket(en) veraltet`
-        : `Alles aktuell (${d.total} Pakete)`;
+      const compatibleCount = Number(d.compatibleUpdateCount || 0);
+      const majorOnlyCount = Number(d.majorOnlyCount || 0);
+      const npmTxt = compatibleCount > 0
+        ? `${compatibleCount} kompatibel updatbar${majorOnlyCount > 0 ? ` · ${majorOnlyCount} nur Major` : ''}`
+        : majorOnlyCount > 0
+          ? `Keine kompatiblen Updates · ${majorOnlyCount} nur Major`
+          : `Alles aktuell (${d.total} Pakete)`;
       if (state) state.textContent = npmTxt;
 
       // ── System-Tabelle ──────────────────────────────────────────────────────
       _pendingSysInstalls = [];
 
       const systemRows = (d.systemDeps || []).map(dep => {
-        const badge = dep.installed
+        const badge = dep.updateAvailable
+          ? `<span class="dep-badge dep-crit-badge">↟ Update verfügbar${dep.availableVersion ? ` (>= ${escapeHtml(dep.availableVersion)})` : ''}</span>`
+          : dep.installed
           ? `<span class="dep-badge dep-ok-badge">✓ installiert</span>`
           : dep.required
             ? `<span class="dep-badge dep-crit-badge">✗ fehlt (Pflicht)</span>`
             : `<span class="dep-badge dep-warn-badge">○ optional</span>`;
 
         let installCell;
-        if (dep.installed) {
+        if (dep.updateAvailable && dep.installable) {
+          _pendingSysInstalls.push(dep.key);
+          installCell = `<button class="btn btn-green" style="padding:2px 10px;font-size:12px"
+            onclick="installSysDep('${escapeHtml(dep.key)}', this)">↟ Updaten</button>`;
+        } else if (dep.updateAvailable) {
+          installCell = `<code style="font-size:11px">${escapeHtml(dep.updateCommand || 'manuell aktualisieren')}</code>`;
+        } else if (dep.installed) {
           installCell = '<span class="muted">–</span>';
         } else if (dep.installable) {
           _pendingSysInstalls.push(dep.key);
@@ -2569,18 +3108,29 @@
           <tbody>${systemRows || '<tr><td colspan="6" class="muted">Keine System-Abhängigkeiten definiert.</td></tr>'}</tbody>
         </table>${aptHint}`;
 
-      // "Alle installieren" Button nur zeigen wenn mindestens eine Dep installierbar ist
-      if (btnInstAll) btnInstAll.style.display = _pendingSysInstalls.length > 0 ? '' : 'none';
+      // System-Update-Button bleibt immer sichtbar, wird aber nur aktiv wenn etwas installierbar ist.
+      if (btnInstAll) {
+        const hasInstallable = _pendingSysInstalls.length > 0;
+        btnInstAll.disabled = !hasInstallable;
+        btnInstAll.textContent = hasInstallable
+          ? `↟ Installieren/Updaten (${_pendingSysInstalls.length})`
+          : '⬇ System updaten';
+      }
 
       const sysMissing         = d.systemMissingCount || 0;
       const sysRequiredMissing = d.systemRequiredMissingCount || 0;
+      const sysUpdates         = d.systemUpdateCount || 0;
       const sysTxt = sysMissing > 0
         ? `${sysMissing} fehlend${sysRequiredMissing > 0 ? `, ${sysRequiredMissing} Pflicht` : ''}`
-        : 'Alle vorhanden';
+        : sysUpdates > 0
+          ? `${sysUpdates} Update${sysUpdates > 1 ? 's' : ''} verfügbar`
+          : 'Alle vorhanden';
       if (sysState) sysState.textContent = sysTxt;
 
       _depsBannerData = {
         outdatedCount: d.outdatedCount || 0,
+        compatibleUpdateCount: d.compatibleUpdateCount || 0,
+        majorOnlyCount: d.majorOnlyCount || 0,
         total: d.total || 0,
         systemMissingCount: d.systemMissingCount || 0,
         systemRequiredMissingCount: d.systemRequiredMissingCount || 0,
@@ -2588,7 +3138,7 @@
       refreshUpdateBanner();
 
       if (showToast) {
-        const allOk = d.outdatedCount === 0 && sysRequiredMissing === 0;
+        const allOk = compatibleCount === 0 && sysRequiredMissing === 0;
         toast(`npm: ${npmTxt} · System: ${sysTxt}`, allOk ? 'ok' : 'err');
       }
     } catch (e) {
@@ -2684,8 +3234,138 @@
   }
 
   async function installAllMissingSysDeps() {
+    if (!_pendingSysInstalls.length) {
+      toast('Keine fehlenden, installierbaren System-Abhängigkeiten gefunden', 'ok');
+      return;
+    }
     for (const key of [..._pendingSysInstalls]) {
       await installSysDep(key, null);
+    }
+  }
+
+  // ── Reparatur-Funktion ────────────────────────────────────────────────────
+
+  const REPAIR_LABELS = {
+    'full':          '🔧 Vollreparatur',
+    'node-symlink':  '⛓ Node-Symlink',
+    'apt-fix':       '📦 apt reparieren',
+    'npm-reinstall': '🔄 npm neu installieren',
+    'restart':       '↺ Service neustarten',
+  };
+
+  const REPAIR_UI_GROUPS = {
+    updates: {
+      logId: 'repairLog',
+      buttons: ['btnRepairFull', 'btnRepairNodeSymlink', 'btnRepairAptFix', 'btnRepairNpm', 'btnRepairRestart'],
+      keyMap: {
+        btnRepairFull: 'full',
+        btnRepairNodeSymlink: 'node-symlink',
+        btnRepairAptFix: 'apt-fix',
+        btnRepairNpm: 'npm-reinstall',
+        btnRepairRestart: 'restart',
+      },
+    },
+    diag: {
+      logId: 'repairLogDiag',
+      buttons: ['btnRepairDiagFull', 'btnRepairDiagNodeSymlink', 'btnRepairDiagAptFix', 'btnRepairDiagNpm', 'btnRepairDiagRestart'],
+      keyMap: {
+        btnRepairDiagFull: 'full',
+        btnRepairDiagNodeSymlink: 'node-symlink',
+        btnRepairDiagAptFix: 'apt-fix',
+        btnRepairDiagNpm: 'npm-reinstall',
+        btnRepairDiagRestart: 'restart',
+      },
+    },
+  };
+
+  async function runRepair(action, sourceBtnId, group = 'updates') {
+    const ui = REPAIR_UI_GROUPS[group] || REPAIR_UI_GROUPS.updates;
+    const allBtns = ui.buttons.map(id => document.getElementById(id)).filter(Boolean);
+    const btn     = document.getElementById(sourceBtnId);
+    const logEl   = document.getElementById(ui.logId);
+    if (!logEl) {
+      toast('Reparatur-Log nicht gefunden', 'err');
+      return;
+    }
+
+    allBtns.forEach(b => { b.disabled = true; });
+    if (btn) { btn.textContent = '⏳…'; }
+    logEl.style.display = 'block';
+    logEl.className     = 'update-log visible';
+    logEl.innerHTML     = '';
+
+    const addLine = (text, cls = '') => {
+      const el = document.createElement('div');
+      el.className = 'ul-line ' + cls;
+      el.textContent = text.replace(/\x1b\[[0-9;]*m/g, '');
+      logEl.appendChild(el);
+      logEl.scrollTop = logEl.scrollHeight;
+    };
+
+    try {
+      const res = await fetch('/api/repair', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: res.statusText }));
+        addLine('Fehler: ' + (err.error || res.statusText), 'ul-err');
+        toast('Reparatur fehlgeschlagen: ' + (err.error || ''), 'err');
+        return;
+      }
+
+      const reader = res.body.getReader();
+      const dec    = new TextDecoder();
+      let buf = '';
+      let willRestart = false;
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        const parts = buf.split('\n\n');
+        buf = parts.pop();
+        for (const part of parts) {
+          if (!part.startsWith('data:')) continue;
+          const line = part.slice(5).trim();
+          if (line.startsWith('__EXIT__:')) {
+            const code = line.split(':')[1];
+            if (code === '0') {
+              addLine('✓ ' + (REPAIR_LABELS[action] || action) + ' erfolgreich!', 'ul-ok');
+              toast('✓ Reparatur abgeschlossen', 'ok');
+            } else {
+              addLine('✗ Reparatur fehlgeschlagen (Exit-Code ' + code + ')', 'ul-err');
+              toast('Reparatur fehlgeschlagen (Code ' + code + ')', 'err');
+            }
+          } else {
+            const clean = line.replace(/\x1b\[[0-9;]*m/g, '');
+            if (/starte.*service.*neu|restarting/i.test(clean)) willRestart = true;
+            let cls = 'ul-line';
+            if (/error|fehler|fail|✗/i.test(line))        cls = 'ul-err';
+            else if (/warn|⚠/i.test(line))                cls = 'ul-warn';
+            else if (/✓|success|erfolgreich/i.test(line)) cls = 'ul-ok';
+            else if (/^===/.test(line))                    cls = 'ul-ok';
+            addLine(line, cls);
+          }
+        }
+      }
+    } catch (e) {
+      if (e.name === 'TypeError' && allBtns.some(b => b.id.endsWith('Restart') && b.disabled)) {
+        addLine('→ Verbindung getrennt — Service wurde neugestartet', 'ul-warn');
+        toast('Service neugestartet', 'ok');
+      } else {
+        addLine('Verbindungsfehler: ' + e.message, 'ul-err');
+        toast('Fehler: ' + e.message, 'err');
+      }
+    } finally {
+      allBtns.forEach(b => {
+        b.disabled = false;
+        const actionKey = ui.keyMap[b.id];
+        b.textContent = REPAIR_LABELS[actionKey] || b.textContent;
+      });
+      if (btn) btn.textContent = REPAIR_LABELS[action] || action;
     }
   }
 
@@ -2702,6 +3382,7 @@
       document.getElementById('btnUpdateGitPane'),
       document.getElementById('btnUpdateNpmPane'),
       document.getElementById('btnUpdateFullPane'),
+      document.getElementById('btnDepsUpdate'),
     ].filter(Boolean);
     const modeSelect = document.getElementById('updateMode');
     const selectedMode = modeOverride || (modeSelect ? modeSelect.value : 'auto');
@@ -2804,6 +3485,7 @@
         if (paneBtn.id === 'btnUpdateGitPane') paneBtn.textContent = getUpdateButtonLabel('git');
         if (paneBtn.id === 'btnUpdateNpmPane') paneBtn.textContent = getUpdateButtonLabel('npm');
         if (paneBtn.id === 'btnUpdateFullPane') paneBtn.textContent = getUpdateButtonLabel('full');
+        if (paneBtn.id === 'btnDepsUpdate') paneBtn.textContent = '📦 npm updaten';
       });
       // Update-Check nur ausführen wenn kein Neustart läuft (der Reconnect-Poller macht es dann)
       if (!handledByRestart) checkUpdate(false);
@@ -3123,6 +3805,19 @@
     body[key] = value;
   }
 
+  function maybeSetChangedAny(body, key, ids, { allowEmpty = false } = {}) {
+    for (const id of ids) {
+      const el = document.getElementById(id);
+      if (!el) continue;
+      const value = el.value.trim();
+      const initial = (el.dataset.initialValue || '').trim();
+      if (value === initial) continue;
+      if (!allowEmpty && !value) continue;
+      body[key] = value;
+      return;
+    }
+  }
+
   function appendAutoReactionEmoji() {
     const presetEl = document.getElementById('cfgAutoReactionPreset');
     const inputEl = document.getElementById('cfgAutoReactionEmojis');
@@ -3315,18 +4010,6 @@
     });
   }
 
-  async function loadBuildInfo() {
-    const sub = document.getElementById('headerSub');
-    if (!sub) return;
-    try {
-      const data = await fetch('/api/build-info', { cache: 'no-store' }).then((r) => r.json());
-      if (!data?.ok) return;
-      sub.textContent = `Service Monitor · Live-Ansicht · Build ${data.buildId || 'unknown'} · Quelle ${data.rootBase || 'unknown'}`;
-    } catch {
-      // Fallback bleibt bei serverseitig gerendertem Text
-    }
-  }
-
   async function loadSystemLocalization() {
     const statusEl = document.getElementById('cfgLocaleStatus');
     const btn = document.getElementById('btnLocaleReload');
@@ -3419,6 +4102,110 @@
     }
   }
 
+  // ── Auto-Reply Regeleditor ───────────────────────────
+  let _arRules = [];
+
+  function arShowTutorial() {
+    const modal = document.getElementById('arTutorialModal');
+    if (modal) modal.style.display = 'flex';
+  }
+
+  function arHideTutorial() {
+    const modal = document.getElementById('arTutorialModal');
+    if (modal) modal.style.display = 'none';
+  }
+
+  function arEsc(str) {
+    return String(str ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function arRenderTable() {
+    const tbody = document.getElementById('arTableBody');
+    const count = document.getElementById('arRulesCount');
+    if (!_arRules.length) {
+      tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:12px;color:var(--muted)">Keine Regeln vorhanden. Neue Regel hinzufügen →</td></tr>';
+      count.textContent = '0 Regeln';
+      return;
+    }
+    count.textContent = `${_arRules.length} Regel${_arRules.length !== 1 ? 'n' : ''}`;
+    tbody.innerHTML = _arRules.map((r, i) => `
+      <tr data-ar-idx="${i}" style="border-bottom:1px solid var(--border)">
+        <td style="padding:4px 6px"><input class="cfg-input" style="padding:3px 6px;font-size:12px;min-width:80px" value="${arEsc(r.id)}" data-ar-field="id" data-ar-idx="${i}" oninput="arFieldChanged(${i},'id',this.value)"></td>
+        <td style="padding:4px 6px">
+          <select class="cfg-input" style="padding:3px 6px;font-size:12px" data-ar-idx="${i}" onchange="arFieldChanged(${i},'mode',this.value)">
+            <option value="contains"${r.mode==='contains'?' selected':''}>contains</option>
+            <option value="exact"${r.mode==='exact'?' selected':''}>exact</option>
+            <option value="regex"${r.mode==='regex'?' selected':''}>regex</option>
+          </select>
+        </td>
+        <td style="padding:4px 6px"><input class="cfg-input" style="padding:3px 6px;font-size:12px;min-width:140px;width:100%" value="${arEsc(r.trigger)}" data-ar-idx="${i}" oninput="arFieldChanged(${i},'trigger',this.value)"></td>
+        <td style="padding:4px 6px"><input class="cfg-input" style="padding:3px 6px;font-size:12px;min-width:160px;width:100%" value="${arEsc(r.reply)}" data-ar-idx="${i}" oninput="arFieldChanged(${i},'reply',this.value)"></td>
+        <td style="text-align:center;padding:4px 6px">
+          <input type="checkbox" style="width:16px;height:16px;accent-color:var(--green)" ${r.caseSensitive?'checked':''} data-ar-idx="${i}" onchange="arFieldChanged(${i},'caseSensitive',this.checked)">
+        </td>
+        <td style="text-align:center;padding:4px 6px">
+          <button class="btn" style="padding:2px 8px;font-size:12px;color:var(--red);border-color:var(--red)" onclick="arDeleteRule(${i})" title="Regel löschen">✕</button>
+        </td>
+      </tr>`).join('');
+  }
+
+  function arFieldChanged(idx, field, value) {
+    if (_arRules[idx]) _arRules[idx][field] = value;
+  }
+
+  function arAddRule() {
+    const newId = `regel-${Date.now()}`;
+    _arRules.push({ id: newId, trigger: '', mode: 'contains', reply: '', caseSensitive: false });
+    arRenderTable();
+    // Zur neuen Zeile scrollen
+    const tbody = document.getElementById('arTableBody');
+    const lastRow = tbody.querySelector(`tr[data-ar-idx="${_arRules.length - 1}"]`);
+    if (lastRow) lastRow.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    // ID-Feld der neuen Zeile fokussieren
+    const idInput = tbody.querySelector(`tr[data-ar-idx="${_arRules.length - 1}"] input[data-ar-field="id"]`);
+    if (idInput) { idInput.value = ''; idInput.focus(); arFieldChanged(_arRules.length - 1, 'id', ''); }
+  }
+
+  function arDeleteRule(idx) {
+    _arRules.splice(idx, 1);
+    arRenderTable();
+  }
+
+  async function arLoadRules() {
+    const st = document.getElementById('arStatus');
+    st.textContent = '⏳ Laden…'; st.className = 'muted';
+    try {
+      const d = await fetch('/api/auto-replies').then(r => r.json());
+      if (!d.ok) { st.textContent = '✗ ' + d.error; st.className = 'err'; return; }
+      _arRules = d.rules;
+      arRenderTable();
+      st.textContent = `✓ ${_arRules.length} Regel${_arRules.length !== 1 ? 'n' : ''} geladen`;
+      st.className = 'ok';
+    } catch (e) {
+      st.textContent = '✗ Fehler: ' + e.message; st.className = 'err';
+    }
+  }
+
+  async function arSaveRules() {
+    const st = document.getElementById('arStatus');
+    const btn = document.getElementById('btnArSave');
+    btn.disabled = true;
+    st.textContent = '⏳ Speichern…'; st.className = 'muted';
+    try {
+      const d = await fetch('/api/auto-replies', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rules: _arRules })
+      }).then(r => r.json());
+      if (!d.ok) { st.textContent = '✗ ' + d.error; st.className = 'err'; }
+      else { st.textContent = `✓ ${d.count} Regel${d.count !== 1 ? 'n' : ''} gespeichert`; st.className = 'ok'; }
+    } catch (e) {
+      st.textContent = '✗ Fehler: ' + e.message; st.className = 'err';
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
   // ── Config laden ─────────────────────────────────────
   async function loadConfig({ force = false } = {}) {
     try {
@@ -3443,6 +4230,7 @@
       setCfg('cfgApiKey', '');
       setCfg('cfgDeepLApiKey', '');
       setCfg('cfgTranslateApiKey', '');
+      setCfg('cfgTranslateApiKeySecurity', '');
       setCfg('cfgWebhookUrl', '');
       setCfg('cfgDashPassword', '');
 
@@ -3450,6 +4238,7 @@
       document.getElementById('cfgApiKey').dataset.initialValue = d.UPTIME_KUMA_API_KEY ? '__MASKED__' : '';
       document.getElementById('cfgDeepLApiKey').dataset.initialValue = d.DISCORD_DEEPL_API_KEY ? '__MASKED__' : '';
       document.getElementById('cfgTranslateApiKey').dataset.initialValue = d.DISCORD_TRANSLATE_API_KEY ? '__MASKED__' : '';
+      document.getElementById('cfgTranslateApiKeySecurity').dataset.initialValue = d.DISCORD_TRANSLATE_API_KEY ? '__MASKED__' : '';
       document.getElementById('cfgWebhookUrl').dataset.initialValue = d.DISCORD_STATUS_WEBHOOK_URL ? '__MASKED__' : '';
       document.getElementById('cfgDashPassword').dataset.initialValue = d.DASHBOARD_PASSWORD ? '__MASKED__' : '';
 
@@ -3468,6 +4257,7 @@
       setCheckboxValue('cfgUseDeepL', d.DISCORD_USE_DEEPL || false);
       setCfg('cfgDeepLApiUrl', d.DISCORD_DEEPL_API_URL || 'https://api-free.deepl.com');
       setCfg('cfgTranslateApiUrl', d.DISCORD_TRANSLATE_API_URL || 'http://localhost:5000/translate');
+      setCfg('cfgTranslateApiUrlSecurity', d.DISCORD_TRANSLATE_API_URL || 'http://localhost:5000/translate');
       setCfg('cfgTranslateAllowedGuildIds', d.DISCORD_TRANSLATE_ALLOWED_GUILD_IDS || '');
       setCfg('cfgTranslateMaxTextLength', d.DISCORD_TRANSLATE_MAX_TEXT_LENGTH || '1800');
       setCfg('cfgNotifCh', d.DISCORD_NOTIFICATION_CHANNEL || '');
@@ -3508,6 +4298,9 @@
       document.getElementById('cfgTranslateApiKey').placeholder = d.DISCORD_TRANSLATE_API_KEY
         ? `Aktuell: ${d.DISCORD_TRANSLATE_API_KEY} — leer lassen = unverändert`
         : 'Neuen API Key eingeben (optional)';
+      document.getElementById('cfgTranslateApiKeySecurity').placeholder = d.DISCORD_TRANSLATE_API_KEY
+        ? `Aktuell: ${d.DISCORD_TRANSLATE_API_KEY} — leer lassen = unverändert`
+        : 'Neuen API Key eingeben (optional)';
       document.getElementById('cfgWebhookUrl').placeholder = d.DISCORD_STATUS_WEBHOOK_URL
         ? `Aktuell: ${d.DISCORD_STATUS_WEBHOOK_URL} — leer lassen = unverändert`
         : 'Webhook URL (optional)';
@@ -3523,6 +4316,28 @@
       setCheckboxValue('cfgServiceChannelDebug', (d.SERVICE_CHANNEL_DEBUG || 'false') === 'true', { force });
       setCheckboxValue('cfgAutoReactionEnabled', (d.DISCORD_AUTO_REACTION_ENABLED || 'false') === 'true', { force });
       setCheckboxValue('cfgTranslateEnabled', (d.DISCORD_TRANSLATE_ENABLED || 'false') === 'true', { force });
+
+      // Willkommen & Auto-Reply
+      setCheckboxValue('cfgWelcomeEnabled', (d.DISCORD_WELCOME_ENABLED || 'false') === 'true', { force });
+      setCfg('cfgWelcomeChannelId', d.DISCORD_WELCOME_CHANNEL_ID || '');
+      setCfg('cfgWelcomeMessageTemplate', d.DISCORD_WELCOME_MESSAGE_TEMPLATE || 'Willkommen {user} auf **{server}**! 👋');
+      setCheckboxValue('cfgAutoReplyEnabled', (d.DISCORD_AUTO_REPLY_ENABLED || 'false') === 'true', { force });
+      setCheckboxValue('cfgAutoReplyMentionOnly', (d.DISCORD_AUTO_REPLY_MENTION_ONLY || 'false') === 'true', { force });
+      setCfg('cfgAutoReplyChannelIds', d.DISCORD_AUTO_REPLY_CHANNEL_IDS || '');
+      setCfg('cfgAutoReplyCooldownMs', d.DISCORD_AUTO_REPLY_COOLDOWN_MS || '30000');
+      setCfg('cfgAutoReplyRulesFile', d.DISCORD_AUTO_REPLY_RULES_FILE || './auto-replies.json');
+
+      // GitHub-Watcher
+      setCheckboxValue('cfgGithubWatchEnabled', (d.DISCORD_GITHUB_WATCH_ENABLED || 'false') === 'true', { force });
+      setCfg('cfgGithubChannelId', d.DISCORD_GITHUB_CHANNEL_ID || '');
+      setCfg('cfgGithubRepos', d.DISCORD_GITHUB_REPOS || '');
+      setCfg('cfgGithubMode', d.DISCORD_GITHUB_MODE || 'both');
+      setCfg('cfgGithubPollIntervalMs', d.DISCORD_GITHUB_POLL_INTERVAL_MS || '600000');
+      setCfg('cfgGithubToken', '');
+      document.getElementById('cfgGithubToken').dataset.initialValue = d.GITHUB_TOKEN ? '__MASKED__' : '';
+      document.getElementById('cfgGithubToken').placeholder = d.GITHUB_TOKEN
+        ? `Aktuell: ${d.GITHUB_TOKEN} — leer lassen = unverändert`
+        : 'Token eingeben (optional)';
 
       if (force) clearConfigDirtyTracking();
     } catch (e) {
@@ -3635,8 +4450,8 @@
     maybeSetChanged(body, 'DISCORD_USE_DEEPL', 'cfgUseDeepL');
     maybeSetChanged(body, 'DISCORD_DEEPL_API_KEY', 'cfgDeepLApiKey', { allowEmpty: true });
     maybeSetChanged(body, 'DISCORD_DEEPL_API_URL', 'cfgDeepLApiUrl');
-    maybeSetChanged(body, 'DISCORD_TRANSLATE_API_URL', 'cfgTranslateApiUrl');
-    maybeSetChanged(body, 'DISCORD_TRANSLATE_API_KEY', 'cfgTranslateApiKey', { allowEmpty: true });
+    maybeSetChangedAny(body, 'DISCORD_TRANSLATE_API_URL', ['cfgTranslateApiUrl', 'cfgTranslateApiUrlSecurity']);
+    maybeSetChangedAny(body, 'DISCORD_TRANSLATE_API_KEY', ['cfgTranslateApiKey', 'cfgTranslateApiKeySecurity'], { allowEmpty: true });
     maybeSetChanged(body, 'DISCORD_TRANSLATE_ALLOWED_GUILD_IDS', 'cfgTranslateAllowedGuildIds', { allowEmpty: true });
     maybeSetChanged(body, 'DISCORD_TRANSLATE_MAX_TEXT_LENGTH', 'cfgTranslateMaxTextLength');
     maybeSetChanged(body, 'STATUS_CHANNEL_ID', 'cfgStatusCh');
@@ -3666,6 +4481,34 @@
     maybeSetChanged(body, 'WEB_PORT', 'cfgWebPort');
     maybeSetChanged(body, 'DASHBOARD_PASSWORD', 'cfgDashPassword', { allowEmpty: true });
     maybeSetChanged(body, 'DB_STORAGE', 'cfgDbStorage');
+
+    // Willkommen
+    maybeSetChanged(body, 'DISCORD_WELCOME_CHANNEL_ID', 'cfgWelcomeChannelId', { allowEmpty: true });
+    maybeSetChanged(body, 'DISCORD_WELCOME_MESSAGE_TEMPLATE', 'cfgWelcomeMessageTemplate', { allowEmpty: true });
+    const welcomeEl = document.getElementById('cfgWelcomeEnabled');
+    const curWelcome = welcomeEl.checked ? 'true' : 'false';
+    if (curWelcome !== (welcomeEl.dataset.initialValue || 'false')) body.DISCORD_WELCOME_ENABLED = curWelcome;
+
+    // Auto-Reply
+    maybeSetChanged(body, 'DISCORD_AUTO_REPLY_CHANNEL_IDS', 'cfgAutoReplyChannelIds', { allowEmpty: true });
+    maybeSetChanged(body, 'DISCORD_AUTO_REPLY_COOLDOWN_MS', 'cfgAutoReplyCooldownMs');
+    maybeSetChanged(body, 'DISCORD_AUTO_REPLY_RULES_FILE', 'cfgAutoReplyRulesFile', { allowEmpty: true });
+    const autoReplyEl = document.getElementById('cfgAutoReplyEnabled');
+    const curAutoReply = autoReplyEl.checked ? 'true' : 'false';
+    if (curAutoReply !== (autoReplyEl.dataset.initialValue || 'false')) body.DISCORD_AUTO_REPLY_ENABLED = curAutoReply;
+    const autoReplyMentionEl = document.getElementById('cfgAutoReplyMentionOnly');
+    const curAutoReplyMention = autoReplyMentionEl.checked ? 'true' : 'false';
+    if (curAutoReplyMention !== (autoReplyMentionEl.dataset.initialValue || 'false')) body.DISCORD_AUTO_REPLY_MENTION_ONLY = curAutoReplyMention;
+
+    // GitHub-Watcher
+    maybeSetChanged(body, 'DISCORD_GITHUB_CHANNEL_ID', 'cfgGithubChannelId', { allowEmpty: true });
+    maybeSetChanged(body, 'DISCORD_GITHUB_REPOS', 'cfgGithubRepos', { allowEmpty: true });
+    maybeSetChanged(body, 'DISCORD_GITHUB_MODE', 'cfgGithubMode');
+    maybeSetChanged(body, 'DISCORD_GITHUB_POLL_INTERVAL_MS', 'cfgGithubPollIntervalMs');
+    maybeSetChanged(body, 'GITHUB_TOKEN', 'cfgGithubToken', { allowEmpty: true });
+    const githubWatchEl = document.getElementById('cfgGithubWatchEnabled');
+    const curGithubWatch = githubWatchEl.checked ? 'true' : 'false';
+    if (curGithubWatch !== (githubWatchEl.dataset.initialValue || 'false')) body.DISCORD_GITHUB_WATCH_ENABLED = curGithubWatch;
 
     const indicatorEl = document.getElementById('cfgChannelIndicator');
     const currentIndicator = indicatorEl.checked ? 'true' : 'false';
@@ -3833,7 +4676,6 @@
   initConfigDirtyTracking();
   loadConfig();
   loadSystemLocalization();
-  loadBuildInfo();
   setActiveSettingsPane('bot');
 
   // Live-Vorschau für den Dienst-Kanalnamen
@@ -3850,22 +4692,6 @@
   const STORAGE_KEY_COLLAPSE = 'dashboard-collapsed';
   const STORAGE_KEY_ORDER    = 'dashboard-card-order';
   const STORAGE_KEY_SPAN     = 'dashboard-card-span';
-
-  function readStorageJson(key, fallbackValue) {
-    try {
-      const raw = localStorage.getItem(key);
-      if (!raw) return fallbackValue;
-      const parsed = JSON.parse(raw);
-      return parsed ?? fallbackValue;
-    } catch {
-      localStorage.removeItem(key);
-      return fallbackValue;
-    }
-  }
-
-  function writeStorageJson(key, value) {
-    localStorage.setItem(key, JSON.stringify(value));
-  }
 
   let dropPlaceholder = null;
   let dragSrc = null;
@@ -4087,9 +4913,9 @@
       e.stopPropagation();
       const span = sizeSelect.value;
       card.dataset.span = span;
-      const s = readStorageJson(STORAGE_KEY_SPAN, {});
+      const s = JSON.parse(localStorage.getItem(STORAGE_KEY_SPAN) || '{}');
       s[card.dataset.cardId] = span;
-      writeStorageJson(STORAGE_KEY_SPAN, s);
+      localStorage.setItem(STORAGE_KEY_SPAN, JSON.stringify(s));
     });
 
     const collapseBtn = document.createElement('button');
@@ -4102,9 +4928,9 @@
       if (!content) return;
       const collapsed = content.classList.toggle('collapsed');
       collapseBtn.innerHTML = collapsed ? '+' : '−';
-      const s = readStorageJson(STORAGE_KEY_COLLAPSE, {});
+      const s = JSON.parse(localStorage.getItem(STORAGE_KEY_COLLAPSE) || '{}');
       s[card.dataset.cardId] = collapsed;
-      writeStorageJson(STORAGE_KEY_COLLAPSE, s);
+      localStorage.setItem(STORAGE_KEY_COLLAPSE, JSON.stringify(s));
     });
 
     const controls = document.createElement('div');
@@ -4121,7 +4947,7 @@
   }
 
   function restoreCollapseStates() {
-    const s = readStorageJson(STORAGE_KEY_COLLAPSE, {});
+    const s = JSON.parse(localStorage.getItem(STORAGE_KEY_COLLAPSE) || '{}');
     document.querySelectorAll('#dashboardGrid > .card').forEach(card => {
       if (s[card.dataset.cardId]) {
         card.querySelector('.card-content')?.classList.add('collapsed');
@@ -4132,7 +4958,7 @@
   }
 
   function restoreSpanStates() {
-    const s = readStorageJson(STORAGE_KEY_SPAN, {});
+    const s = JSON.parse(localStorage.getItem(STORAGE_KEY_SPAN) || '{}');
     document.querySelectorAll('#dashboardGrid > .card').forEach(card => {
       const span = normalizeCardSpan(s[card.dataset.cardId]);
       if (!span) return;
@@ -4145,12 +4971,12 @@
       const select = card.querySelector('.card-size-select');
       if (select) select.value = safeSpan;
     });
-    writeStorageJson(STORAGE_KEY_SPAN, s);
+    localStorage.setItem(STORAGE_KEY_SPAN, JSON.stringify(s));
   }
 
   function restoreCardOrder() {
     const grid = document.getElementById('dashboardGrid');
-    const saved = readStorageJson(STORAGE_KEY_ORDER, null);
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY_ORDER) || 'null');
     if (!saved?.length) return;
     saved.forEach(cid => {
       const el = grid.querySelector(`[data-card-id="${cid}"]`);
@@ -4161,12 +4987,46 @@
   function saveCardOrder() {
     const grid = document.getElementById('dashboardGrid');
     const order = Array.from(grid.querySelectorAll(':scope > .card')).map(c => c.dataset.cardId);
-    writeStorageJson(STORAGE_KEY_ORDER, order);
+    localStorage.setItem(STORAGE_KEY_ORDER, JSON.stringify(order));
+  }
+
+  // ── Collapsible Sections Toggle ──────────────────────────────────────────
+  function toggleConfigSection(header) {
+    const section = header.closest('.cfg-section');
+    if (!section) return;
+    section.classList.toggle('open');
+    // Optionally, persist the state to localStorage
+    const sectionTitle = header.querySelector('.cfg-section-header-title span:last-child')?.textContent || 'unknown';
+    const state = section.classList.contains('open') ? 'open' : 'closed';
+    localStorage.setItem(`cfg-section-${sectionTitle}`, state);
+  }
+
+  // Restore section states on page load
+  function restoreSectionStates() {
+    document.querySelectorAll('.cfg-section').forEach(section => {
+      const title = section.querySelector('.cfg-section-header-title span:last-child')?.textContent || 'unknown';
+      const state = localStorage.getItem(`cfg-section-${title}`);
+      if (state === 'closed') {
+        section.classList.remove('open');
+      } else if (state === 'open') {
+        section.classList.add('open');
+      }
+      // Default: Token & IDs and Präsenz & Status are open, others are closed
+      if (!state) {
+        if (title === '🔑 Token & IDs' || title === '😎 Präsenz & Status') {
+          section.classList.add('open');
+        }
+      }
+    });
   }
 
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initCardSystem);
+    document.addEventListener('DOMContentLoaded', () => {
+      restoreSectionStates();
+      initCardSystem();
+    });
   } else {
+    restoreSectionStates();
     initCardSystem();
   }
 
