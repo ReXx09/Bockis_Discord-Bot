@@ -1959,7 +1959,7 @@ module.exports = function startWebServer({
       } catch { /* ignore */ }
       
       // Entferne alte Template-Regeln (erkannt an bestimmten IDs)
-      const templateIds = new Set(['good-evening', 'good-day', 'hello', 'greeting', 'weekend']);
+      const templateIds = new Set(['good-evening', 'good-day', 'greeting', 'weekend']);
       existingRules = existingRules.filter(r => !templateIds.has(r.id));
       
       // Definierte Templates
@@ -1978,18 +1978,11 @@ module.exports = function startWebServer({
           reply: 'Schönen Tag noch! ☀️',
           caseSensitive: false
         },
-        hello: {
-          id: 'hello',
-          trigger: 'hallo',
-          mode: 'contains',
-          reply: 'Hallo! 👋',
-          caseSensitive: false
-        },
         greeting: {
           id: 'greeting',
-          trigger: 'hallöchen',
-          mode: 'contains',
-          reply: 'Hallöchen! 😊',
+          trigger: '^\\s*(hallo|huhu|hallöchen|hey|hi|hello|winke|servus|tach|moin)\\s*$',
+          mode: 'regex',
+          reply: 'Hallo! 👋',
           caseSensitive: false
         },
         weekend: {
