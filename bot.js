@@ -3682,6 +3682,8 @@ client.on('messageCreate', async (message) => {
   if (!config.get('openai.enabled')) return;
 
   const isDM = message.channel?.type === ChannelType.DM;
+  // Never auto-answer mass mentions in guild channels.
+  if (!isDM && message.mentions?.everyone) return;
   const isMention = message.mentions.has(client.user);
 
   if (!isDM && !isMention) return;
