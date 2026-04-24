@@ -724,7 +724,7 @@
 <div class="header">
   <div>
     <h1>🤖 Bockis Bot · Dashboard</h1>
-    <div class="sub" id="headerSub">Service Monitor · Live-Ansicht · Build <%= buildId || 'unknown' %> · Quelle <%= rootBase || 'unknown' %></div>
+    <div class="sub" id="headerSub">Service Monitor · Live-Ansicht · Build <%= (typeof buildId !== 'undefined' && buildId) ? buildId : 'unknown' %> · Quelle <%= (typeof rootBase !== 'undefined' && rootBase) ? rootBase : 'unknown' %></div>
   </div>
   
   <!-- ── SUBNAV IN HEADER ─────────────────────────────── -->
