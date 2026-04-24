@@ -292,11 +292,90 @@ const config = convict({
       default: false,
       env: 'SERVICE_CHANNEL_DEBUG'
     },
-    serviceChannelDebugFilter: {
-      doc: 'Optionale Komma-Liste fuer Service-Debug-Filter (Monitornamen), leer = alle',
+    autoReplyEnabled: {
+      doc: 'Automatische Antworten auf bestimmte Nachrichten aktivieren',
+      format: Boolean,
+      default: false,
+      env: 'DISCORD_AUTO_REPLY_ENABLED'
+    },
+    autoReplyMentionOnly: {
+      doc: 'Auto-Reply nur bei Bot-Erwähnungen aktivieren (nicht bei allen Nachrichten)',
+      format: Boolean,
+      default: false,
+      env: 'DISCORD_AUTO_REPLY_MENTION_ONLY'
+    },
+    autoReplyChannelIds: {
+      doc: 'Optionale Channel-IDs für Auto-Replies, getrennt mit , oder ; (leer = alle)',
       format: String,
       default: '',
-      env: 'SERVICE_CHANNEL_DEBUG_FILTER'
+      env: 'DISCORD_AUTO_REPLY_CHANNEL_IDS'
+    },
+    autoReplyCooldownMs: {
+      doc: 'Cooldown in ms zwischen Auto-Replies pro Nutzer (min. 1000)',
+      format: 'int',
+      default: 30000,
+      env: 'DISCORD_AUTO_REPLY_COOLDOWN_MS'
+    },
+    autoReplyRulesFile: {
+      doc: 'Pfad zur Auto-Reply-Regeln Datei (JSON)',
+      format: String,
+      default: './auto-replies.json',
+      env: 'DISCORD_AUTO_REPLY_RULES_FILE'
+    },
+    welcomeEnabled: {
+      doc: 'Willkommensnachrichten für neue Nutzer aktivieren',
+      format: Boolean,
+      default: false,
+      env: 'DISCORD_WELCOME_ENABLED'
+    },
+    welcomeChannelId: {
+      doc: 'Channel-ID für Willkommensnachrichten',
+      format: String,
+      default: '',
+      env: 'DISCORD_WELCOME_CHANNEL_ID'
+    },
+    welcomeMessageTemplate: {
+      doc: 'Template für Willkommensnachrichten ({{user}} wird durch Nutzer ersetzt)',
+      format: String,
+      default: 'Willkommen {{user}}! Schön, dass du hier bist.',
+      env: 'DISCORD_WELCOME_MESSAGE_TEMPLATE'
+    },
+    githubWatchEnabled: {
+      doc: 'GitHub Repository Watcher aktivieren',
+      format: Boolean,
+      default: false,
+      env: 'DISCORD_GITHUB_WATCH_ENABLED'
+    },
+    githubChannelId: {
+      doc: 'Channel-ID für GitHub-Benachrichtigungen',
+      format: String,
+      default: '',
+      env: 'DISCORD_GITHUB_CHANNEL_ID'
+    },
+    githubRepos: {
+      doc: 'GitHub Repositories zum Beobachten, Format: owner/repo, getrennt mit , oder ; (z.B. torvalds/linux,nodejs/node)',
+      format: String,
+      default: '',
+      env: 'DISCORD_GITHUB_REPOS'
+    },
+    githubMode: {
+      doc: 'GitHub Watcher Modus: releases (nur Releases), commits (nur Commits) oder both (beides)',
+      format: ['releases', 'commits', 'both'],
+      default: 'releases',
+      env: 'DISCORD_GITHUB_MODE'
+    },
+    githubPollIntervalMs: {
+      doc: 'Intervall in ms für GitHub Poll (min. 60000 = 1 Minute)',
+      format: 'int',
+      default: 300000,
+      env: 'DISCORD_GITHUB_POLL_INTERVAL_MS'
+    },
+    githubToken: {
+      doc: 'Optionaler GitHub Token für höhere Rate-Limits (ghp_... oder github_pat_...)',
+      format: String,
+      default: '',
+      env: 'GITHUB_TOKEN',
+      sensitive: true
     }
   },
   cloudflare: {
