@@ -3649,6 +3649,82 @@ client.on('messageCreate', async (message) => {
 });
 // #endregion
 
+// #region 21.6 AUTO-REPLY
+const _autoReplyCooldownMap = new Map();
+
+function _loadAutoReplyRules() {
+  try {
+    const filePath = path.join(__dirname, config.get('discord.autoReplyRulesFile') || './auto-replies.json');
+    if (!fs.existsSync(filePath)) return [];
+    const content = fs.readFileSync(filePath, 'utf8');
+    const rules = JSON.parse(content);
+    return Array.isArray(rules) ? rules : [];
+  } catch {
+    return [];
+  }
+}
+
+client.on('messageCreate', async (message) => {
+  if (!config.get('discord.autoReplyEnabled')) return;
+  if (message.author?.bot) return;
+  if (message.system) return;
+  if (!message.inGuild()) return;
+
+  // Kanal-Filter
+  const rawChannelIds = config.get('discord.autoReplyChannelIds') || '';
+  const allowedChannelIds = rawChannelIds.split(/[,;]/).map(s => s.trim()).filter(Boolean);
+  if (allowedChannelIds.length && !allowedChannelIds.includes(message.channelId)) return;
+
+  // Mention-Only Modus
+  if (config.get('discord.autoReplyMentionOnly') && !message.mentions.has(client.user)) return;
+
+  // Cooldown-Prüfung pro Nutzer+Kanal
+  const cooldownMs = Math.max(0, config.get('discord.autoReplyCooldownMs') || 30000);
+  const cooldownKey = `${message.author.id}:${message.channelId}`;
+  const lastReply = _autoReplyCooldownMap.get(cooldownKey) || 0;
+  if (cooldownMs > 0 && Date.now() - lastReply < cooldownMs) return;
+
+  const rules = _loadAutoReplyRules();
+  if (!rules.length) return;
+
+  const content = message.content;
+
+  for (const rule of rules) {
+    if (!rule.trigger || !rule.reply) continue;
+    let matched = false;
+
+    try {
+      if (rule.mode === 'exact') {
+        const a = rule.caseSensitive ? content : content.toLowerCase();
+        const b = rule.caseSensitive ? rule.trigger : rule.trigger.toLowerCase();
+        matched = a === b;
+      } else if (rule.mode === 'contains') {
+        const a = rule.caseSensitive ? content : content.toLowerCase();
+        const b = rule.caseSensitive ? rule.trigger : rule.trigger.toLowerCase();
+        matched = a.includes(b);
+      } else if (rule.mode === 'regex') {
+        const flags = rule.caseSensitive ? '' : 'i';
+        const regex = new RegExp(rule.trigger, flags);
+        matched = regex.test(content);
+      }
+    } catch (err) {
+      logger.warn(`Auto-Reply Regex-Fehler (Regel ${rule.id}): ${err.message}`);
+      continue;
+    }
+
+    if (matched) {
+      try {
+        _autoReplyCooldownMap.set(cooldownKey, Date.now());
+        await message.reply({ content: rule.reply });
+      } catch (err) {
+        logger.warn(`Auto-Reply fehlgeschlagen (Regel ${rule.id}): ${err.message}`);
+      }
+      break; // nur erste passende Regel anwenden
+    }
+  }
+});
+// #endregion
+
 client.on('messageCreate', async (message) => {
   if (!isAutoReactionEnabled()) return;
   if (!message.inGuild()) return;
