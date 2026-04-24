@@ -3550,6 +3550,19 @@ client.on('interactionCreate', async interaction => {
       return interaction.reply({ content: '❌ Bitte eine Testnachricht angeben.', ephemeral: true });
     }
 
+    const gateHints = [];
+    if (!config.get('discord.autoReplyEnabled')) {
+      gateHints.push('Auto-Reply ist aktuell deaktiviert (`DISCORD_AUTO_REPLY_ENABLED=false`).');
+    }
+    if (config.get('discord.autoReplyMentionOnly')) {
+      gateHints.push('Mention-Only ist aktiv: normale Antworten nur bei @Bot-Erwähnung.');
+    }
+    const rawAutoReplyChannelIds = String(config.get('discord.autoReplyChannelIds') || '');
+    const autoReplyChannelIds = rawAutoReplyChannelIds.split(/[,;]/).map(s => s.trim()).filter(Boolean);
+    if (autoReplyChannelIds.length && !autoReplyChannelIds.includes(interaction.channelId)) {
+      gateHints.push(`Kanal-Filter aktiv: dieser Kanal (${interaction.channelId}) ist nicht freigegeben.`);
+    }
+
     const rules = typeof _loadAutoReplyRules === 'function' ? _loadAutoReplyRules() : [];
     if (!rules.length) {
       return interaction.reply({ content: '⚠️ Keine Auto-Reply-Regeln konfiguriert.', ephemeral: true });
@@ -3573,14 +3586,21 @@ client.on('interactionCreate', async interaction => {
       const hint = nearMiss
         ? `\n\n💡 Hinweis: Regel \`${nearMiss.id || 'ohne-id'}\` würde bei deaktivierter Groß/Klein-Prüfung matchen.`
         : '';
+      const gateHintText = gateHints.length
+        ? `\n\n⚙️ Live-Blocker:\n- ${gateHints.join('\n- ')}`
+        : '';
       return interaction.reply({
-        content: `🔍 **Testreply** – kein Treffer\n\n> \`${testText.slice(0, 200)}\`\n\nKeine der ${rules.length} Regel(n) matcht diesen Text.${hint}`,
+        content: `🔍 **Testreply** – kein Treffer\n\n> \`${testText.slice(0, 200)}\`\n\nKeine der ${rules.length} Regel(n) matcht diesen Text.${hint}${gateHintText}`,
         ephemeral: true,
       });
     }
 
     const modeLabel = matchedRule.mode === 'contains' ? 'Enthält' : matchedRule.mode === 'exact' ? 'Exakt' : 'Regex';
+    const gateHintText = gateHints.length
+      ? `\n\n⚙️ Live-Blocker:\n- ${gateHints.join('\n- ')}`
+      : '';
     return interaction.reply({
+      content: gateHintText || undefined,
       embeds: [{
         color: 0x2ECC71,
         title: '✅ Testreply – Treffer gefunden',
