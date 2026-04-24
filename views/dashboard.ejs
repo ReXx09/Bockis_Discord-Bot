@@ -2041,8 +2041,13 @@
         </div>
         <div class="cfg-field">
           <label class="cfg-label" for="cfgOpenaiBaseUrl">API-Base-URL (OpenAI-kompatibel)</label>
-          <input class="cfg-input" id="cfgOpenaiBaseUrl" type="text" autocomplete="off" placeholder="https://api.openai.com/v1">
-          <div class="cfg-hint">Beispiele: OpenAI <code>https://api.openai.com/v1</code>, Groq <code>https://api.groq.com/openai/v1</code>, OpenRouter <code>https://openrouter.ai/api/v1</code>.</div>
+          <select class="cfg-input" id="cfgOpenaiBaseUrl">
+            <option value="https://api.openai.com/v1">OpenAI - https://api.openai.com/v1</option>
+            <option value="https://api.groq.com/openai/v1">Groq - https://api.groq.com/openai/v1</option>
+            <option value="https://openrouter.ai/api/v1">OpenRouter - https://openrouter.ai/api/v1</option>
+            <option value="https://models.inference.ai.azure.com">GitHub Models - https://models.inference.ai.azure.com</option>
+          </select>
+          <div class="cfg-hint">Wähle deinen Provider. Falls in deiner .env bereits eine andere URL steht, wird sie automatisch als zusätzliche Option geladen.</div>
         </div>
         <div class="cfg-field">
           <label class="cfg-label" for="cfgOpenaiApiKey">API-Key</label>
@@ -4450,7 +4455,17 @@
 
         // KI-Chat (OpenAI)
         setCheckboxValue('cfgOpenaiEnabled', (d.OPENAI_ENABLED || 'false') === 'true', { force });
-        setCfg('cfgOpenaiBaseUrl', d.OPENAI_BASE_URL || 'https://api.openai.com/v1');
+        const openaiBaseUrl = d.OPENAI_BASE_URL || 'https://api.openai.com/v1';
+        const openaiBaseUrlSelect = document.getElementById('cfgOpenaiBaseUrl');
+        Array.from(openaiBaseUrlSelect.querySelectorAll('option[data-dynamic="1"]')).forEach((opt) => opt.remove());
+        if (!Array.from(openaiBaseUrlSelect.options).some((opt) => opt.value === openaiBaseUrl)) {
+          const dynamicOption = document.createElement('option');
+          dynamicOption.value = openaiBaseUrl;
+          dynamicOption.textContent = `Custom - ${openaiBaseUrl}`;
+          dynamicOption.setAttribute('data-dynamic', '1');
+          openaiBaseUrlSelect.appendChild(dynamicOption);
+        }
+        setCfg('cfgOpenaiBaseUrl', openaiBaseUrl);
         setCfg('cfgOpenaiApiKey', '');
         document.getElementById('cfgOpenaiApiKey').placeholder = d.OPENAI_API_KEY
           ? 'sk-… (gesetzt – leer lassen = unverändert)'
