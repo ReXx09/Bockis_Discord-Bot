@@ -292,6 +292,12 @@ const config = convict({
       default: false,
       env: 'SERVICE_CHANNEL_DEBUG'
     },
+    serviceChannelDebugFilter: {
+      doc: 'Optionaler Filter fuer Service-Kanal-Debuglogs (z.B. monitor/name/channel-id)',
+      format: String,
+      default: '',
+      env: 'SERVICE_CHANNEL_DEBUG_FILTER'
+    },
     autoReplyEnabled: {
       doc: 'Automatische Antworten auf bestimmte Nachrichten aktivieren',
       format: Boolean,
