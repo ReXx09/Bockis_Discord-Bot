@@ -631,6 +631,8 @@
       .cfg-layout { grid-template-columns: 1fr; }
       .cfg-sidebar { position: static; }
       .cfg-nav { flex-direction: row; flex-wrap: wrap; }
+      .cfg-header { flex-direction: column; align-items: flex-start; }
+      #cfgStatus { margin-left: 0; margin-top: 6px; }
     }
     .cfg-field { margin-bottom: 14px; }
     /* ── Collapsible Sections ─────────────────────────────────────────────── */
@@ -718,8 +720,22 @@
     }
     .cfg-inline-action .cfg-input { flex: 1; min-width: 220px; }
     .cfg-inline-action .btn { white-space: nowrap; }
-    .cfg-actions { display: flex; gap: 10px; align-items: center; margin-top: 6px; }
-    #cfgStatus { font-size: 12px; }
+    .cfg-header {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      margin-bottom: 12px;
+      padding: 10px 12px;
+      background: linear-gradient(180deg, rgba(17,23,33,.95), rgba(17,23,33,.85));
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      flex-wrap: wrap;
+    }
+    .cfg-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; flex: 1; }
+    #cfgStatus { font-size: 12px; margin-left: auto; white-space: nowrap; }
     #cfgStatus.ok  { color: var(--green); }
     #cfgStatus.err { color: var(--red); }
     #cfgStatus.warn { color: var(--yellow, #d4b60d); }
@@ -906,6 +922,14 @@
       </div>
 
       <div class="cfg-panels">
+        <div class="cfg-header">
+          <div class="cfg-actions">
+            <button class="btn btn-green" id="btnCfgSave" onclick="saveConfig()">💾 Speichern &amp; Neu starten</button>
+            <button class="btn" onclick="confirmResetConfig()" title="Lädt alle Eingaben aus der gespeicherten Konfiguration neu">↺ Zurücksetzen</button>
+            <span id="cfgDirtyState" title="Ungespeicherte lokale Änderungen in den Einstellungen">● Ungespeicherte Änderungen</span>
+          </div>
+          <span id="cfgStatus"></span>
+        </div>
       <div class="cfg-pane-card" data-cfg-pane="bot">
         <div class="cfg-pane-title">🤖 Bot & IDs</div>
         <!-- Token & IDs Section -->
@@ -2202,13 +2226,6 @@
       </div>
 
       </div>
-    </div>
-
-    <div class="cfg-actions">
-      <button class="btn btn-green" id="btnCfgSave" onclick="saveConfig()">💾 Speichern &amp; Neu starten</button>
-      <button class="btn" onclick="confirmResetConfig()" title="Lädt alle Eingaben aus der gespeicherten Konfiguration neu">↺ Zurücksetzen</button>
-      <span id="cfgDirtyState" title="Ungespeicherte lokale Änderungen in den Einstellungen">● Ungespeicherte Änderungen</span>
-      <span id="cfgStatus"></span>
     </div>
   </div>
 </div>
