@@ -1568,8 +1568,12 @@
               <input type="checkbox" id="cfgCmdUserinfo" data-cmd="userinfo" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
               <span><code>/userinfo</code> - Nutzerinformationen anzeigen</span>
             </label>
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px">
+              <input type="checkbox" id="cfgCmdTestreply" data-cmd="testreply" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
+              <span><code>/testreply</code> - Auto-Reply-Regeln testen (nur Admins, ephemeral)</span>
+            </label>
           </div>
-          <input type="hidden" id="cfgEnabledCommands" value="status,uptime,refresh,help,coinflip,dice,eightball,cleanup,translate,ping,botinfo,serverstatus,ki,wetter,subscribe,remind,quote,poll,avatar,userinfo">
+          <input type="hidden" id="cfgEnabledCommands" value="status,uptime,refresh,help,coinflip,dice,eightball,cleanup,translate,ping,botinfo,serverstatus,ki,wetter,subscribe,remind,quote,poll,avatar,userinfo,testreply">
           <div class="cfg-hint">Mindestens ein Kommando muss aktiv bleiben. Änderungen werden beim Neustart neu registriert.</div>
               </div>
             </div>
@@ -4059,7 +4063,7 @@
   }
 
   function _parseEnabledCommands(value) {
-    const allowed = ['status', 'uptime', 'refresh', 'help', 'coinflip', 'dice', 'eightball', 'cleanup', 'translate', 'ping', 'botinfo', 'serverstatus', 'ki', 'wetter', 'subscribe', 'remind', 'quote', 'poll', 'avatar', 'userinfo'];
+    const allowed = ['status', 'uptime', 'refresh', 'help', 'coinflip', 'dice', 'eightball', 'cleanup', 'translate', 'ping', 'botinfo', 'serverstatus', 'ki', 'wetter', 'subscribe', 'remind', 'quote', 'poll', 'avatar', 'userinfo', 'testreply'];
     const entries = String(value || '')
       .split(',')
       .map(s => s.trim().toLowerCase())
@@ -4493,8 +4497,8 @@
       setCfg('cfgPresenceRotateMs', d.DISCORD_PRESENCE_ROTATE_MS || '90000');
       setCfg('cfgAutoReactionEmojis', d.DISCORD_AUTO_REACTION_EMOJIS || '👍');
       setCfg('cfgAutoReactionChannelIds', d.DISCORD_AUTO_REACTION_CHANNEL_IDS || '');
-      setCfg('cfgEnabledCommands', d.DISCORD_ENABLED_COMMANDS || 'status,uptime,refresh,help,coinflip,dice,eightball,cleanup,translate,ping,botinfo,serverstatus,ki,wetter,subscribe,remind,quote,poll,avatar,userinfo');
-      applyEnabledCommandsToCheckboxes(d.DISCORD_ENABLED_COMMANDS || 'status,uptime,refresh,help,coinflip,dice,eightball,cleanup,translate,ping,botinfo,serverstatus,ki,wetter,subscribe,remind,quote,poll,avatar,userinfo');
+      setCfg('cfgEnabledCommands', d.DISCORD_ENABLED_COMMANDS || 'status,uptime,refresh,help,coinflip,dice,eightball,cleanup,translate,ping,botinfo,serverstatus,ki,wetter,subscribe,remind,quote,poll,avatar,userinfo,testreply');
+      applyEnabledCommandsToCheckboxes(d.DISCORD_ENABLED_COMMANDS || 'status,uptime,refresh,help,coinflip,dice,eightball,cleanup,translate,ping,botinfo,serverstatus,ki,wetter,subscribe,remind,quote,poll,avatar,userinfo,testreply');
       ensureSelectOption('cfgTranslateDefaultTarget', d.DISCORD_TRANSLATE_DEFAULT_TARGET || 'de');
       ensureSelectOption('cfgTranslateDefaultSource', d.DISCORD_TRANSLATE_DEFAULT_SOURCE || 'auto');
       setCfg('cfgTranslateDefaultTarget', d.DISCORD_TRANSLATE_DEFAULT_TARGET || 'de');

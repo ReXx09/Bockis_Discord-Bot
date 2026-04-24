@@ -1509,7 +1509,7 @@ module.exports = function startWebServer({
         if (invalid.length) return res.json({ ok: false, error: `DISCORD_AUTO_REACTION_CHANNEL_IDS ungueltig: ${invalid.join(', ')}` });
       }
       if (key === 'DISCORD_ENABLED_COMMANDS') {
-        const allowedCommands = new Set(['status', 'uptime', 'refresh', 'help', 'coinflip', 'dice', 'eightball', 'cleanup', 'translate', 'ping', 'botinfo', 'serverstatus', 'ki', 'wetter', 'subscribe', 'remind', 'quote', 'poll', 'avatar', 'userinfo']);
+        const allowedCommands = new Set(['status', 'uptime', 'refresh', 'help', 'coinflip', 'dice', 'eightball', 'cleanup', 'translate', 'ping', 'botinfo', 'serverstatus', 'ki', 'wetter', 'subscribe', 'remind', 'quote', 'poll', 'avatar', 'userinfo', 'testreply']);
         const entries = val.split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
         const uniqueEntries = Array.from(new Set(entries));
         if (!uniqueEntries.length) {

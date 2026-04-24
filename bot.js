@@ -1998,7 +1998,7 @@ async function calculateUptimeMetrics() {
 // #endregion
 
 // #region 20. SLASH-COMMANDS REGISTRIEREN
-const AVAILABLE_SLASH_COMMANDS = ['status', 'uptime', 'refresh', 'help', 'coinflip', 'dice', 'eightball', 'cleanup', 'translate', 'ping', 'botinfo', 'serverstatus', 'ki', 'wetter', 'subscribe', 'remind', 'quote', 'poll', 'avatar', 'userinfo'];
+const AVAILABLE_SLASH_COMMANDS = ['status', 'uptime', 'refresh', 'help', 'coinflip', 'dice', 'eightball', 'cleanup', 'translate', 'ping', 'botinfo', 'serverstatus', 'ki', 'wetter', 'subscribe', 'remind', 'quote', 'poll', 'avatar', 'userinfo', 'testreply'];
 const SLASH_COMMAND_I18N = {
   status: {
     names: { de: 'status' },
@@ -2719,6 +2719,28 @@ async function registerSlashCommands() {
             })
         )
         , 'userinfo')
+        .toJSON()
+    );
+  }
+
+  if (enabled.has('testreply')) {
+    commands.push(
+      applySlashCommandI18n(new SlashCommandBuilder()
+        .setName('testreply')
+        .setDescription('Testet eine Nachricht gegen Auto-Reply-Regeln (nur Admins, ephemeral)')
+        .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+        .addStringOption(opt =>
+          applySlashOptionI18n(opt.setName('nachricht')
+            .setDescription('Der Text, den du testen möchtest')
+            .setRequired(true), {
+              names: { 'en-US': 'message', 'en-GB': 'message' },
+              descriptions: {
+                'en-US': 'The text you want to test against auto-reply rules',
+                'en-GB': 'The text you want to test against auto-reply rules',
+              },
+            })
+        )
+        , 'testreply')
         .toJSON()
     );
   }
@@ -3517,6 +3539,66 @@ client.on('interactionCreate', async interaction => {
       logger.error(`/cleanup Fehler: ${err.message}`);
       await interaction.editReply('❌ Cleanup fehlgeschlagen. Details im Bot-Log.');
     }
+  }
+
+  if (commandName === 'testreply') {
+    if (!interaction.memberPermissions?.has('ManageGuild')) {
+      return interaction.reply({ content: '❌ Keine Berechtigung (ManageGuild erforderlich).', ephemeral: true });
+    }
+    const testText = String(getSlashStringOption(interaction, 'testreply', 'nachricht') || '').trim();
+    if (!testText) {
+      return interaction.reply({ content: '❌ Bitte eine Testnachricht angeben.', ephemeral: true });
+    }
+
+    const rules = typeof _loadAutoReplyRules === 'function' ? _loadAutoReplyRules() : [];
+    if (!rules.length) {
+      return interaction.reply({ content: '⚠️ Keine Auto-Reply-Regeln konfiguriert.', ephemeral: true });
+    }
+
+    let matchedRule = null;
+    for (const rule of rules) {
+      if (!rule.trigger || !rule.reply) continue;
+      let matched = false;
+      try {
+        if (rule.mode === 'exact') {
+          const a = rule.caseSensitive ? testText : testText.toLowerCase();
+          const b = rule.caseSensitive ? rule.trigger : rule.trigger.toLowerCase();
+          matched = a === b;
+        } else if (rule.mode === 'contains') {
+          const a = rule.caseSensitive ? testText : testText.toLowerCase();
+          const b = rule.caseSensitive ? rule.trigger : rule.trigger.toLowerCase();
+          matched = a.includes(b);
+        } else if (rule.mode === 'regex') {
+          const flags = rule.caseSensitive ? '' : 'i';
+          matched = new RegExp(rule.trigger, flags).test(testText);
+        }
+      } catch { continue; }
+      if (matched) { matchedRule = rule; break; }
+    }
+
+    if (!matchedRule) {
+      return interaction.reply({
+        content: `🔍 **Testreply** – kein Treffer\n\n> \`${testText.slice(0, 200)}\`\n\nKeine der ${rules.length} Regel(n) matcht diesen Text.`,
+        ephemeral: true,
+      });
+    }
+
+    const modeLabel = matchedRule.mode === 'contains' ? 'Enthält' : matchedRule.mode === 'exact' ? 'Exakt' : 'Regex';
+    return interaction.reply({
+      embeds: [{
+        color: 0x2ECC71,
+        title: '✅ Testreply – Treffer gefunden',
+        fields: [
+          { name: 'Testnachricht', value: `\`${testText.slice(0, 1024)}\`` },
+          { name: 'Regel-ID', value: String(matchedRule.id || '–'), inline: true },
+          { name: 'Modus', value: `${modeLabel} | ${matchedRule.caseSensitive ? 'Groß/Klein' : 'Case-insensitiv'}`, inline: true },
+          { name: 'Trigger', value: `\`${String(matchedRule.trigger).slice(0, 500)}\`` },
+          { name: 'Bot-Antwort', value: String(matchedRule.reply).slice(0, 1024) },
+        ],
+        footer: { text: 'Nur du siehst diese Antwort (ephemeral)' },
+      }],
+      ephemeral: true,
+    });
   }
 });
 // #endregion
