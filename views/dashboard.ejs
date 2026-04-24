@@ -4481,6 +4481,21 @@
     arRenderTable();
   }
 
+  function arSyncTemplateCheckboxesFromRules(rules = []) {
+    const ids = new Set((Array.isArray(rules) ? rules : []).map(r => String(r?.id || '').trim()));
+    const mapping = [
+      ['cfgTemplateGoodEvening', 'good-evening'],
+      ['cfgTemplateGoodDay', 'good-day'],
+      ['cfgTemplateGreeting', 'greeting'],
+      ['cfgTemplateWeekend', 'weekend'],
+      ['cfgTemplateWeekdays', 'weekdays'],
+    ];
+    mapping.forEach(([checkboxId, ruleId]) => {
+      const el = document.getElementById(checkboxId);
+      if (el) el.checked = ids.has(ruleId);
+    });
+  }
+
   async function arLoadRules() {
     const st = document.getElementById('arStatus');
     st.textContent = '⏳ Laden…'; st.className = 'muted';
@@ -4489,6 +4504,7 @@
       if (!d.ok) { st.textContent = '✗ ' + d.error; st.className = 'err'; return; }
       _arRules = d.rules;
       arRenderTable();
+      arSyncTemplateCheckboxesFromRules(_arRules);
       st.textContent = `✓ ${_arRules.length} Regel${_arRules.length !== 1 ? 'n' : ''} geladen`;
       st.className = 'ok';
     } catch (e) {
