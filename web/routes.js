@@ -1888,6 +1888,143 @@ module.exports = function startWebServer({
   });
 
   // ── HTTP-Server starten ─────────────────────────────────────────────────────
+  
+  // ── API: Auto-Reply Templates ────────────────────────────────────────────────
+  
+  app.get('/api/auto-replies', dashboardAuth, (req, res) => {
+    try {
+      const autoRepliesFile = path.join(rootDir, config.get('discord.autoReplyRulesFile') || './auto-replies.json');
+      if (!fs.existsSync(autoRepliesFile)) {
+        return res.json({ ok: true, rules: [] });
+      }
+      const content = fs.readFileSync(autoRepliesFile, 'utf8');
+      const rules = JSON.parse(content);
+      res.json({ ok: true, rules: Array.isArray(rules) ? rules : [] });
+    } catch (err) {
+      logger.error(`/api/auto-replies GET Fehler: ${err.message}`);
+      res.json({ ok: false, error: err.message, rules: [] });
+    }
+  });
+
+  app.post('/api/auto-replies', dashboardAuth, (req, res) => {
+    try {
+      const rules = req.body?.rules || [];
+      if (!Array.isArray(rules)) {
+        return res.status(400).json({ ok: false, error: 'rules muss ein Array sein' });
+      }
+      
+      // Validierung
+      for (const rule of rules) {
+        if (!rule.id || !/^[a-z0-9_-]+$/i.test(rule.id)) {
+          return res.status(400).json({ ok: false, error: `Regel-ID ungültig: ${rule.id}` });
+        }
+        if (!['contains', 'exact', 'regex'].includes(rule.mode)) {
+          return res.status(400).json({ ok: false, error: `Modus ungültig: ${rule.mode}` });
+        }
+        if (!rule.trigger || typeof rule.trigger !== 'string') {
+          return res.status(400).json({ ok: false, error: 'Trigger erforderlich' });
+        }
+        if (!rule.reply || typeof rule.reply !== 'string') {
+          return res.status(400).json({ ok: false, error: 'Antwort erforderlich' });
+        }
+        if (rule.reply.length > 2000) {
+          return res.status(400).json({ ok: false, error: 'Antwort darf max. 2000 Zeichen sein' });
+        }
+      }
+      
+      const autoRepliesFile = path.join(rootDir, config.get('discord.autoReplyRulesFile') || './auto-replies.json');
+      fs.writeFileSync(autoRepliesFile, JSON.stringify(rules, null, 2), 'utf8');
+      
+      logger.info(`Auto-Reply Regeln gespeichert: ${rules.length} Regeln`);
+      res.json({ ok: true, count: rules.length });
+    } catch (err) {
+      logger.error(`/api/auto-replies POST Fehler: ${err.message}`);
+      res.json({ ok: false, error: err.message });
+    }
+  });
+
+  app.post('/api/auto-reply-templates', dashboardAuth, (req, res) => {
+    try {
+      const templates = req.body?.templates || {};
+      const autoRepliesFile = path.join(rootDir, config.get('discord.autoReplyRulesFile') || './auto-replies.json');
+      
+      // Lade existierende Regeln
+      let existingRules = [];
+      try {
+        if (fs.existsSync(autoRepliesFile)) {
+          const content = fs.readFileSync(autoRepliesFile, 'utf8');
+          existingRules = JSON.parse(content);
+          if (!Array.isArray(existingRules)) existingRules = [];
+        }
+      } catch { /* ignore */ }
+      
+      // Entferne alte Template-Regeln (erkannt an bestimmten IDs)
+      const templateIds = new Set(['good-evening', 'good-day', 'hello', 'greeting', 'weekend']);
+      existingRules = existingRules.filter(r => !templateIds.has(r.id));
+      
+      // Definierte Templates
+      const templateDefs = {
+        goodEvening: {
+          id: 'good-evening',
+          trigger: 'schönen abend',
+          mode: 'contains',
+          reply: 'Schönen Abend! 🌙',
+          caseSensitive: false
+        },
+        goodDay: {
+          id: 'good-day',
+          trigger: 'schönen tag',
+          mode: 'contains',
+          reply: 'Schönen Tag noch! ☀️',
+          caseSensitive: false
+        },
+        hello: {
+          id: 'hello',
+          trigger: 'hallo',
+          mode: 'contains',
+          reply: 'Hallo! 👋',
+          caseSensitive: false
+        },
+        greeting: {
+          id: 'greeting',
+          trigger: 'hallöchen',
+          mode: 'contains',
+          reply: 'Hallöchen! 😊',
+          caseSensitive: false
+        },
+        weekend: {
+          id: 'weekend',
+          trigger: 'schönes wochenende',
+          mode: 'contains',
+          reply: 'Dir auch ein schönes Wochenende! 🎉',
+          caseSensitive: false
+        }
+      };
+      
+      // Füge aktivierte Templates hinzu
+      for (const [key, templateDef] of Object.entries(templateDefs)) {
+        if (templates[key]) {
+          existingRules.push(templateDef);
+        }
+      }
+      
+      // Schreibe zurück
+      fs.writeFileSync(autoRepliesFile, JSON.stringify(existingRules, null, 2), 'utf8');
+      
+      logger.info(`Auto-Reply Templates aktualisiert: ${Object.entries(templates).filter(([, v]) => v).map(([k]) => k).join(', ')}`);
+      
+      res.json({
+        ok: true,
+        count: existingRules.length,
+        activated: Object.entries(templates).filter(([, v]) => v).length
+      });
+    } catch (err) {
+      logger.error(`/api/auto-reply-templates Fehler: ${err.message}`);
+      res.json({ ok: false, error: err.message });
+    }
+  });
+
+
   const port   = config.get('webPort');
   const ifaces = os.networkInterfaces();
   let localIp  = 'localhost';
@@ -1903,3 +2040,4 @@ module.exports = function startWebServer({
   });
   return server;
 };
+

@@ -1993,6 +1993,43 @@
           </div>
         </div>
       </div>
+        <!-- Standard-Templates Section -->
+        <div class="cfg-section">
+          <div class="cfg-section-header" onclick="toggleConfigSection(this)">
+            <div class="cfg-section-header-title">
+              <span class="cfg-section-toggle">▾</span>
+              <span>✨ Standard-Templates</span>
+            </div>
+          </div>
+          <div class="cfg-section-content">
+            <div class="cfg-section-body">
+        <div class="cfg-hint" style="margin-bottom:12px">Aktiviere vordefinierte Auto-Reply-Vorlagen. Beim Speichern werden sie automatisch zu den Regeln hinzugefügt.</div>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;padding:8px;background:rgba(255,255,255,.02);border-radius:6px;border:1px solid var(--border)">
+            <input type="checkbox" id="cfgTemplateGoodEvening" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
+            <span><strong>🌙 Schönen Abend</strong></span>
+          </label>
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;padding:8px;background:rgba(255,255,255,.02);border-radius:6px;border:1px solid var(--border)">
+            <input type="checkbox" id="cfgTemplateGoodDay" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
+            <span><strong>☀️ Schönen Tag</strong></span>
+          </label>
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;padding:8px;background:rgba(255,255,255,.02);border-radius:6px;border:1px solid var(--border)">
+            <input type="checkbox" id="cfgTemplateHello" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
+            <span><strong>👋 Hallo</strong></span>
+          </label>
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;padding:8px;background:rgba(255,255,255,.02);border-radius:6px;border:1px solid var(--border)">
+            <input type="checkbox" id="cfgTemplateGreeting" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
+            <span><strong>😊 Hallöchen</strong></span>
+          </label>
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;padding:8px;background:rgba(255,255,255,.02);border-radius:6px;border:1px solid var(--border)">
+            <input type="checkbox" id="cfgTemplateWeekend" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
+            <span><strong>🎉 Schönes Wochenende</strong></span>
+          </label>
+        </div>
+        <button class="btn btn-green" onclick="saveAutoReplyTemplates()" style="margin-top:12px;width:100%;background:var(--green);border-color:var(--green)">💾 Templates speichern</button>
+            </div>
+          </div>
+        </div>
           </div>
         </div>
       </div>
@@ -4358,6 +4395,34 @@
       st.textContent = '✗ Fehler: ' + e.message; st.className = 'err';
     } finally {
       btn.disabled = false;
+    }
+  }
+
+  async function saveAutoReplyTemplates() {
+    const templates = {
+      goodEvening: document.getElementById('cfgTemplateGoodEvening').checked,
+      goodDay: document.getElementById('cfgTemplateGoodDay').checked,
+      hello: document.getElementById('cfgTemplateHello').checked,
+      greeting: document.getElementById('cfgTemplateGreeting').checked,
+      weekend: document.getElementById('cfgTemplateWeekend').checked
+    };
+    
+    try {
+      const response = await fetch('/api/auto-reply-templates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ templates })
+      });
+      const result = await response.json();
+      if (result.ok) {
+        showAlert('✓ Templates gespeichert! Auto-Replies aktualisiert.', 'success');
+        // Regeln neu laden um die Updates zu sehen
+        setTimeout(() => arLoadRules(), 500);
+      } else {
+        showAlert('✗ Fehler: ' + result.error, 'error');
+      }
+    } catch (e) {
+      showAlert('✗ Fehler: ' + e.message, 'error');
     }
   }
 
