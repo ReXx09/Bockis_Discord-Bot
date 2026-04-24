@@ -2056,12 +2056,16 @@
         </div>
         <div class="cfg-field">
           <label class="cfg-label" for="cfgOpenaiModel">KI-Modell</label>
-          <select class="cfg-input" id="cfgOpenaiModel">
-            <option value="gpt-4o-mini">gpt-4o-mini (günstig &amp; schnell – empfohlen)</option>
-            <option value="gpt-4o">gpt-4o (leistungsstark)</option>
-            <option value="gpt-3.5-turbo">gpt-3.5-turbo (legacy)</option>
-          </select>
-          <div class="cfg-hint">gpt-4o-mini ist die günstigste Option und für Discord-Chats völlig ausreichend.</div>
+          <input class="cfg-input" id="cfgOpenaiModel" type="text" list="cfgOpenaiModelList" autocomplete="off" placeholder="openai/gpt-4o-mini">
+          <datalist id="cfgOpenaiModelList">
+            <option value="openai/gpt-4o-mini"></option>
+            <option value="openai/gpt-4o"></option>
+            <option value="meta-llama/llama-3.1-8b-instruct:free"></option>
+            <option value="meta-llama/llama-3.1-70b-instruct"></option>
+            <option value="google/gemini-2.0-flash-001"></option>
+            <option value="anthropic/claude-3.5-sonnet"></option>
+          </datalist>
+          <div class="cfg-hint">Für OpenRouter Modell-ID direkt eintragen (z. B. <code>openai/gpt-4o-mini</code> oder <code>meta-llama/llama-3.1-8b-instruct:free</code>).</div>
         </div>
         <div class="cfg-field">
           <label class="cfg-label" for="cfgOpenaiPersonaName">Bot-Name / Persönlichkeit</label>
