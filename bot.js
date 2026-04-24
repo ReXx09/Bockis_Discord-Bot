@@ -3092,7 +3092,6 @@ client.on('interactionCreate', async interaction => {
     const infoLines = enabledCommands.filter((cmd) => (commandMeta[cmd]?.cat || 'info') === 'info').map(formatCommandLine);
     const funLines = enabledCommands.filter((cmd) => commandMeta[cmd]?.cat === 'fun').map(formatCommandLine);
     const adminLines = enabledCommands.filter((cmd) => commandMeta[cmd]?.cat === 'admin').map(formatCommandLine);
-    const enabledLine = enabledCommands.map(cmd => `/${getSlashCommandDisplayName(cmd, interactionLocale)}`).join(', ');
 
     const description = germanLocale
       ? [
@@ -3110,8 +3109,6 @@ client.on('interactionCreate', async interaction => {
           '',
           '**Admin / Debug**',
           ...(adminLines.length ? adminLines : ['Keine Admin-Kommandos aktiv.']),
-          '',
-          `**Aktiv:** ${enabledLine}`,
         ].join('\n')
       : [
           '**How To Talk To Me**',
@@ -3128,8 +3125,6 @@ client.on('interactionCreate', async interaction => {
           '',
           '**Admin / Debug**',
           ...(adminLines.length ? adminLines : ['No admin commands enabled.']),
-          '',
-          `**Enabled:** ${enabledLine}`,
         ].join('\n');
     return interaction.reply({
       ephemeral: true,
