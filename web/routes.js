@@ -1994,7 +1994,7 @@ module.exports = function startWebServer({
       } catch { /* ignore */ }
       
       // Entferne alte Template-Regeln (erkannt an bestimmten IDs)
-      const templateIds = new Set(['good-evening', 'good-day', 'greeting', 'weekend']);
+      const templateIds = new Set(['good-evening', 'good-day', 'greeting', 'weekend', 'weekdays']);
       existingRules = existingRules.filter(r => !templateIds.has(r.id));
       
       // Definierte Templates
@@ -2025,6 +2025,13 @@ module.exports = function startWebServer({
           trigger: 'schönes wochenende',
           mode: 'contains',
           reply: 'Dir auch ein schönes Wochenende! 🎉',
+          caseSensitive: false
+        },
+        weekdays: {
+          id: 'weekdays',
+          trigger: 'schönen\\s+(montag|dienstag|mittwoch|donnerstag|freitag|samstag|sonntag)',
+          mode: 'regex',
+          reply: 'Dir auch einen schönen Tag! ✨',
           caseSensitive: false
         }
       };

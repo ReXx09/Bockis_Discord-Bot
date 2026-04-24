@@ -2045,6 +2045,10 @@
             <input type="checkbox" id="cfgTemplateWeekend" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
             <span><strong>🎉 Schönes Wochenende</strong></span>
           </label>
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;padding:8px;background:rgba(255,255,255,.02);border-radius:6px;border:1px solid var(--border)">
+            <input type="checkbox" id="cfgTemplateWeekdays" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
+            <span><strong>📅 Wochentage</strong> (Schönen Montag, Freitag, etc.)</span>
+          </label>
         </div>
         <button class="btn btn-green" id="btnSaveAutoReplyTemplates" onclick="saveAutoReplyTemplates()" style="margin-top:12px;width:100%;background:var(--green);border-color:var(--green)">💾 Templates speichern</button>
             </div>
@@ -4421,7 +4425,8 @@
       goodEvening: document.getElementById('cfgTemplateGoodEvening').checked,
       goodDay: document.getElementById('cfgTemplateGoodDay').checked,
       greeting: document.getElementById('cfgTemplateGreeting').checked,
-      weekend: document.getElementById('cfgTemplateWeekend').checked
+      weekend: document.getElementById('cfgTemplateWeekend').checked,
+      weekdays: document.getElementById('cfgTemplateWeekdays').checked
     };
     
     try {
