@@ -6,7 +6,7 @@
 [![Platform](https://img.shields.io/badge/platform-Raspberry%20Pi%20%7C%20Linux-lightgrey.svg)](https://www.raspberrypi.org)
 [![Uptime Kuma](https://img.shields.io/badge/powered%20by-Uptime%20Kuma-blueviolet.svg)](https://github.com/louislam/uptime-kuma)
 
-> **Echtzeit-Monitoring für deinen Discord-Server — powered by Uptime Kuma.**
+> **Echtzeit-Monitoring, KI-Chat, Auto-Reply und mehr — alles in einem Discord-Bot.**
 
 Bockis Discord Bot verbindet deine **Uptime Kuma**-Instanz mit Discord und hält deinen Server immer auf dem Laufenden: Er postet eine automatisch aktualisierte Live-Status-Nachricht, sendet Alerts bei Ausfällen und stellt Slash-Commands, ein Web-Dashboard sowie Prometheus-Metriken bereit.
 
@@ -20,12 +20,17 @@ Optimiert für den Betrieb auf dem **Raspberry Pi** — mit interaktivem Install
 |---|---|
 | 📡 Live-Status | Automatisch aktualisierte Embed-Nachricht mit Status aller überwachten Services |
 | 🔔 Benachrichtigungen | Sofort-Alerts in Discord bei Service-Ausfall und Wiederherstellung |
-| 💬 Slash-Commands | `/status`, `/uptime`, `/refresh`, `/cleanup`, `/help`, `/coinflip`, `/dice`, `/eightball`, `/translate` |
-| 🌍 Übersetzer | Optionaler Discord-Übersetzer via `/translate` (z. B. EN → DE), inkl. API-URL/API-Key-Konfiguration |
-| 😀 Auto-Reactions | Optional automatische Emoji-Reaktionen auf neue Nachrichten (globale oder Channel-begrenzte IDs) |
+| 💬 Slash-Commands | 20+ konfigurierbare Befehle – von `/status` bis `/poll` (siehe Tabelle unten) |
+| 🤖 Auto-Reply | Regelbasierte automatische Antworten auf Chat-Nachrichten (Stichwörter, Regex, Enthält-Prüfung) |
+| 🧠 KI-Chat | OpenAI-Integration: Bot beantwortet @-Erwähnungen oder `/ki`-Fragen per KI, inkl. Wetterfunktion |
+| 🌤️ Wetter | Wetterabfrage per `/wetter` oder via KI-Chat erkannt (beliebige Stadt/Region) |
+| 📅 Geplante Nachrichten | Zeitgesteuerte Nachrichten über das Dashboard konfigurierbar |
+| 👋 Willkommensnachricht | Automatische Begrüßung neuer Mitglieder in einem konfigurierbaren Kanal |
+| 😀 Auto-Reactions | Optionale automatische Emoji-Reaktionen auf neue Nachrichten (globale oder Channel-begrenzte IDs) |
 | 🧹 Nachrichten-Cleanup | Regelbasiertes Auto-Cleanup + manueller `/cleanup` Command mit Dry-Run |
+| 🌍 Übersetzer | Optionaler Discord-Übersetzer via `/translate` (z. B. EN → DE), inkl. API-URL/API-Key-Konfiguration |
 | 🧩 Command-Management | Aktivierbare Slash-Commands über `DISCORD_ENABLED_COMMANDS` oder Web-UI |
-| 📈 Web-Dashboard | Statusübersicht aller Checks unter `http://localhost:3000/dashboard` (passwortgeschützt) |
+| 📈 Web-Dashboard | Konfiguration & Statusübersicht unter `http://localhost:3000/dashboard` (passwortgeschützt) |
 | 📊 Prometheus-Metriken | Metriken unter `/metrics` für Grafana, Prometheus & Co. |
 | 🗄️ SQLite-Datenbank | Speichert Checks lokal, automatisches Cleanup nach 30 Tagen |
 | 🔄 Log-Rotation | Tägliche Log-Rotation, automatische Löschung nach 14 Tagen |
@@ -52,10 +57,15 @@ Optimiert für den Betrieb auf dem **Raspberry Pi** — mit interaktivem Install
 ├── Dockerfile              # Container-Build für Docker-Deployment
 ├── config/
 │   └── config.js           # Konfigurationsschema (convict)
+├── data/
+│   ├── auto-replies.json   # Auto-Reply-Regeln (Dashboard-Editor)
+│   └── scheduled-messages.json  # Geplante Nachrichten
 ├── models/
 │   └── MonitorStatus.js    # SQLite-Datenbankmodell
 ├── views/
 │   └── dashboard.ejs       # Web-Dashboard Template
+├── web/
+│   └── routes.js           # API-Routen des Web-Dashboards
 ├── tests/
 │   └── integration.test.js
 ├── .env.example            # Vorlage für die Konfiguration
@@ -137,7 +147,7 @@ Das Menü bietet:
 
 ### Manuelle Installation (Schritt für Schritt)
 
-### Voraussetzungen
+#### Voraussetzungen
 
 - Raspberry Pi mit **Raspberry Pi OS** (Lite oder Desktop, 64-bit empfohlen)
 - Internetverbindung
@@ -145,7 +155,7 @@ Das Menü bietet:
 
 ---
 
-### Schritt 1 – Node.js installieren
+#### Schritt 1 – Node.js installieren
 
 Raspberry Pi OS enthält oft eine veraltete Node.js-Version. Wir installieren die aktuellste LTS-Version via **NodeSource**:
 
@@ -163,7 +173,7 @@ npm --version
 
 ---
 
-### Schritt 2 – Git installieren & Repo klonen
+#### Schritt 2 – Git installieren & Repo klonen
 
 ```bash
 # Git installieren (falls noch nicht vorhanden)
@@ -192,7 +202,7 @@ cd Bockis_Discord-Bot
 
 ---
 
-### Schritt 3 – Bot einrichten
+#### Schritt 3 – Bot einrichten
 
 ```bash
 # Ins Bot-Verzeichnis wechseln
@@ -206,7 +216,7 @@ Der Installer führt dich automatisch durch die gesamte Konfiguration.
 
 ---
 
-### Schritt 4 – Bot dauerhaft laufen lassen (systemd)
+#### Schritt 4 – Bot dauerhaft laufen lassen (systemd)
 
 > **Tipp:** Bei Nutzung von `start-bot.sh` wird der systemd-Service automatisch eingerichtet — Schritt 4 kann übersprungen werden.
 
@@ -397,35 +407,94 @@ bash ~/bockis-bot/start-bot.sh
 
 ## ⚙️ Konfiguration (.env)
 
+### Basis
+
 | Variable | Pflicht | Beschreibung |
 |----------|---------|-------------|
 | `DISCORD_TOKEN` | ✅ | Bot-Token aus dem [Discord Developer Portal](https://discord.com/developers/applications) |
-| `DISCORD_ENABLED_COMMANDS` | ❌ | Komma-Liste aktiver Slash-Commands (inkl. `translate`) |
+| `DISCORD_ENABLED_COMMANDS` | ❌ | Komma-Liste aktiver Slash-Commands (leer = Standard-Set) |
 | `STATUS_CHANNEL_ID` | ✅ | Channel-ID für die Live-Status-Nachricht |
 | `DISCORD_NOTIFICATION_CHANNEL` | ✅ | Channel-ID für Statusänderungs-Alerts |
+| `WEB_PORT` | ❌ | Port für das Dashboard (Standard: `3000`) |
+| `DASHBOARD_PASSWORD` | ❌ | Passwort für `/dashboard` (leer = kein Schutz) |
+| `UPDATE_INTERVAL` | ❌ | Update-Intervall in ms (Standard: `300000` = 5 Min) |
+| `DB_STORAGE` | ❌ | Pfad zur SQLite-Datei (Standard: `./data/status.db`) |
+
+### Uptime Kuma
+
+| Variable | Pflicht | Beschreibung |
+|----------|---------|-------------|
+| `UPTIME_KUMA_URL` | ✅ | Basis-URL der Uptime Kuma Instanz |
+| `UPTIME_KUMA_API_KEY` | ❌ | API-Key (nur bei passwortgeschützter Status-Seite) |
+| `STATUS_PAGE_SLUG` | ❌ | Slug der Status-Seite (Standard: `dienste`) |
+
+### Auto-Reply
+
+| Variable | Pflicht | Beschreibung |
+|----------|---------|-------------|
+| `DISCORD_AUTO_REPLY_ENABLED` | ❌ | Auto-Reply aktivieren (`true`/`false`) |
+| `DISCORD_AUTO_REPLY_MENTION_ONLY` | ❌ | Nur reagieren wenn der Bot @erwähnt wird (`true`/`false`) |
+| `DISCORD_AUTO_REPLY_CHANNEL_IDS` | ❌ | Komma-Liste erlaubter Channel-IDs (leer = alle) |
+| `DISCORD_AUTO_REPLY_COOLDOWN_MS` | ❌ | Cooldown pro Nutzer+Kanal in ms (Standard: `10000`) |
+| `DISCORD_AUTO_REPLY_RULES_FILE` | ❌ | Pfad zur Regeldatei (Standard: `./data/auto-replies.json`) |
+
+> Regeln werden über das **Web-Dashboard** verwaltet und in `data/auto-replies.json` gespeichert. Vorgefertigte Templates (Begrüßung, Gute Nacht, Wochenende, etc.) lassen sich per Klick aktivieren.
+
+### KI-Chat (OpenAI)
+
+| Variable | Pflicht | Beschreibung |
+|----------|---------|-------------|
+| `OPENAI_ENABLED` | ❌ | KI-Chat aktivieren (`true`/`false`) |
+| `OPENAI_API_KEY` | ❌ | API-Key (OpenAI oder kompatibler Provider) |
+| `OPENAI_BASE_URL` | ❌ | API-Basis-URL (Standard: `https://api.openai.com/v1`) |
+| `OPENAI_MODEL` | ❌ | Modellname (Standard: `gpt-4o-mini`) |
+| `OPENAI_PERSONA_NAME` | ❌ | Bot-Name in der KI-Persönlichkeit (Standard: `Bockis`) |
+| `OPENAI_SYSTEM_PROMPT` | ❌ | Eigener System-Prompt (leer = automatisch inkl. aktiver Features) |
+| `OPENAI_CHANNEL_IDS` | ❌ | Komma-Liste erlaubter Kanäle für @-Mention-Chat (leer = alle) |
+| `OPENAI_MAX_TOKENS` | ❌ | Max. Antwortlänge in Tokens (Standard: `600`) |
+| `OPENAI_ALLOW_DMS` | ❌ | Direkte KI-Antworten in DMs erlauben (`true`/`false`) |
+| `OPENAI_RATE_LIMIT_PER_MINUTE` | ❌ | Max. Anfragen pro Nutzer/Minute (Standard: `5`) |
+
+> **Tipp:** Wenn `OPENAI_SYSTEM_PROMPT` leer bleibt, generiert der Bot automatisch einen Prompt der alle aktiven Slash-Commands und Features enthält — so kann die KI Fragen wie „Was kannst du?" korrekt beantworten.
+
+### Willkommensnachricht
+
+| Variable | Pflicht | Beschreibung |
+|----------|---------|-------------|
+| `DISCORD_WELCOME_ENABLED` | ❌ | Willkommensnachrichten aktivieren (`true`/`false`) |
+| `DISCORD_WELCOME_CHANNEL_ID` | ❌ | Channel-ID für Begrüßungen |
+| `DISCORD_WELCOME_MESSAGE_TEMPLATE` | ❌ | Nachrichtenvorlage (`{user}`, `{server}` als Platzhalter) |
+
+### Auto-Reactions
+
+| Variable | Pflicht | Beschreibung |
+|----------|---------|-------------|
 | `DISCORD_AUTO_REACTION_ENABLED` | ❌ | Auto-Reactions aktivieren (`true`/`false`) |
 | `DISCORD_AUTO_REACTION_EMOJIS` | ❌ | Emoji-Liste für Auto-Reactions (`;`/`,` getrennt) |
 | `DISCORD_AUTO_REACTION_CHANNEL_IDS` | ❌ | Optionale Channel-ID-Whitelist für Auto-Reactions |
+
+### Übersetzer
+
+| Variable | Pflicht | Beschreibung |
+|----------|---------|-------------|
+| `DISCORD_TRANSLATE_ENABLED` | ❌ | Übersetzer-Command `/translate` aktivieren |
+| `DISCORD_TRANSLATE_DEFAULT_TARGET` | ❌ | Standard-Zielsprache (z. B. `de`) |
+| `DISCORD_TRANSLATE_DEFAULT_SOURCE` | ❌ | Standard-Quellsprache (`auto` oder z. B. `en`) |
+| `DISCORD_TRANSLATE_API_URL` | ❌ | Übersetzungs-API-Endpoint (LibreTranslate-kompatibel) |
+| `DISCORD_TRANSLATE_API_KEY` | ❌ | Optionaler API-Key für die Übersetzungs-API |
+| `DISCORD_TRANSLATE_ALLOWED_GUILD_IDS` | ❌ | Optionale Guild-Whitelist für `/translate` (leer = alle) |
+| `DISCORD_TRANSLATE_MAX_TEXT_LENGTH` | ❌ | Maximal erlaubte Zeichenlänge pro Übersetzung |
+
+### Nachrichten-Cleanup
+
+| Variable | Pflicht | Beschreibung |
+|----------|---------|-------------|
 | `MESSAGE_CLEANUP_ENABLED` | ❌ | Automatisches Nachrichten-Cleanup aktivieren |
 | `MESSAGE_CLEANUP_CHANNEL_IDS` | ❌ | Zielkanäle für Cleanup (leer = Notification-Channel) |
 | `MESSAGE_CLEANUP_MAX_MESSAGES` | ❌ | Maximal erlaubte Nachrichten pro Kanal |
 | `MESSAGE_CLEANUP_MAX_AGE_HOURS` | ❌ | Nachrichten älter als X Stunden löschen |
 | `MESSAGE_CLEANUP_ONLY_BOT_MESSAGES` | ❌ | Nur Bot-Nachrichten bereinigen (`true` empfohlen) |
 | `MESSAGE_CLEANUP_INTERVAL_MS` | ❌ | Cleanup-Intervall in Millisekunden |
-| `DISCORD_TRANSLATE_ENABLED` | ❌ | Übersetzer-Command `/translate` aktivieren |
-| `DISCORD_TRANSLATE_DEFAULT_TARGET` | ❌ | Standard-Zielsprache (z. B. `de`) |
-| `DISCORD_TRANSLATE_DEFAULT_SOURCE` | ❌ | Standard-Quellsprache (`auto` oder z. B. `en`) |
-| `DISCORD_TRANSLATE_API_URL` | ❌ | Übersetzungs-API-Endpoint (LibreTranslate-kompatibel) |
-| `DISCORD_TRANSLATE_API_KEY` | ❌ | Optionaler API-Key für die Übersetzungs-API |
-| `DISCORD_TRANSLATE_ALLOWED_GUILD_IDS` | ❌ | Optionale Guild-Whitelist für `/translate` (leer = alle Guilds/DMs) |
-| `DISCORD_TRANSLATE_MAX_TEXT_LENGTH` | ❌ | Maximal erlaubte Zeichenlänge pro Übersetzung |
-| `UPTIME_KUMA_URL` | ✅ | Basis-URL der Uptime Kuma Instanz |
-| `UPTIME_KUMA_API_KEY` | ❌ | API-Key (nur bei passwortgeschützter Status-Seite) |
-| `STATUS_PAGE_SLUG` | ❌ | Slug der Status-Seite (Standard: `dienste`) |
-| `UPDATE_INTERVAL` | ❌ | Update-Intervall in ms (Standard: `300000` = 5 Min) |
-| `WEB_PORT` | ❌ | Port für das Dashboard (Standard: `3000`) |
-| `DASHBOARD_PASSWORD` | ❌ | Passwort für `/dashboard` (leer = kein Schutz) |
-| `DB_STORAGE` | ❌ | Pfad zur SQLite-Datei (Standard: `./data/status.db`) |
 
 ---
 
@@ -434,25 +503,55 @@ bash ~/bockis-bot/start-bot.sh
 | Befehl | Berechtigung | Beschreibung |
 |--------|-------------|-------------|
 | `/status` | Alle | Zeigt alle Services mit Uptime als Embed |
-| `/uptime` | Alle | Zeigt die Gesamt-Uptime aus der Datenbank |
-| `/refresh` | ManageGuild | Erzwingt sofortigen Status-Update |
-| `/cleanup` | ManageGuild | Bereinigt Kanalnachrichten anhand Cleanup-Regeln (inkl. Dry-Run) |
-| `/help` | Alle | Zeigt aktive Bot-Kommandos und Kurzbeschreibung |
-| `/coinflip` | Alle | Münzwurf (Kopf/Zahl) |
-| `/dice` | Alle | Würfel mit konfigurierbarer Seitenzahl |
-| `/eightball` | Alle | Magische 8-Ball-Antwort auf eine Frage |
-| `/translate` | Alle (konfigurierbar) | Übersetzt Text zwischen Sprachen; Quelle/Ziel optional übergebbar |
+| `/uptime` (`/betriebszeit`) | Alle | Zeigt die Gesamt-Uptime aus der Datenbank |
+| `/refresh` (`/aktualisieren`) | ManageGuild | Erzwingt sofortigen Status-Update |
+| `/hilfe` | Alle | Zeigt aktive Bot-Kommandos und Kurzbeschreibung |
+| `/ping` | Alle | Bot-Latenz und API-Roundtrip anzeigen |
+| `/botinfo` | Alle | Technische Bot-Informationen (Version, Uptime, RAM) |
+| `/serverstatus` (`/dienststatus`) | Alle | Einzelnen Dienst oder Gruppe abfragen |
+| `/ki` | Alle | Direkte KI-Frage ohne @-Erwähnung |
+| `/wetter` | Alle | Wetter für eine Stadt/Region abrufen |
+| `/subscribe` (`/abonnieren`) | Alle | Status-Benachrichtigungen abonnieren oder verwalten |
+| `/remind` (`/erinnern`) | Alle | Erinnerung setzen (Zeitangabe + Nachricht) |
+| `/quote` (`/zitat`) | Alle | Zitat speichern oder ein zufälliges anzeigen |
+| `/poll` (`/umfrage`) | Alle | Umfrage mit mehreren Antwortoptionen erstellen |
+| `/avatar` | Alle | Avatar eines Nutzers in voller Auflösung anzeigen |
+| `/userinfo` (`/nutzerinfo`) | Alle | Nutzerinfos anzeigen (Rollen, Beitrittsdatum, etc.) |
+| `/translate` (`/uebersetzen`) | Alle (konfigurierbar) | Text zwischen Sprachen übersetzen |
+| `/cleanup` (`/bereinigen`) | ManageGuild | Kanalnachrichten bereinigen (inkl. Dry-Run) |
+| `/coinflip` (`/muenzwurf`) | Alle | Münzwurf (Kopf/Zahl) |
+| `/dice` (`/wuerfeln`) | Alle | Würfel mit konfigurierbarer Seitenzahl |
+| `/eightball` (`/achtball`) | Alle | Magische 8-Ball-Antwort auf eine Frage |
+| `/testreply` | ManageGuild | Auto-Reply-Regeln live testen (ephemeral) |
+
+> Alle Befehle sind auf Deutsch lokalisiert. In Klammern steht der deutsche Anzeigename in Discord.  
+> Slash-Commands werden beim ersten Bot-Start automatisch registriert. Es kann bis zu **1 Stunde** dauern, bis sie in Discord erscheinen.
+
+### 🤖 Auto-Reply schnell einrichten
+
+1. `DISCORD_AUTO_REPLY_ENABLED=true` in `.env` oder über das Dashboard aktivieren
+2. Im Dashboard unter **Auto-Reply** Regeln anlegen oder fertige Templates auswählen
+3. Bot-Neustart ist nicht nötig — Regeln werden live geladen
+
+**Verfügbare Templates:** Begrüßung, Schönen Abend, Schönen Tag, Schönes Wochenende, Wochentage, Gute Nacht
+
+### 🧠 KI-Chat schnell einrichten
+
+1. `OPENAI_ENABLED=true` und `OPENAI_API_KEY=sk-...` in `.env` setzen
+2. Optional: Eigenes Modell (`OPENAI_MODEL=gpt-4o`) und Persona-Name (`OPENAI_PERSONA_NAME=Bockis`)
+3. Im Dashboard unter **KI / Persönlichkeit** ein Persönlichkeits-Template wählen oder eigenen System-Prompt schreiben
+4. Nutzer können jetzt `@BotName <Frage>` im erlaubten Kanal schreiben oder `/ki` nutzen
+
+**Persönlichkeits-Templates im Dashboard:** 😊 Freundlich · 💼 Professionell · 😄 Humorvoll · 🎓 Streng/Sachlich · 🎮 Gaming
+
+> Auch ohne KI antwortet der Bot bei @-Erwähnung mit einem Hinweis auf `/hilfe`.
 
 ### 🌍 Übersetzer schnell einrichten
 
-1. In `.env` oder im Dashboard den Übersetzer aktivieren: `DISCORD_TRANSLATE_ENABLED=true`
+1. `DISCORD_TRANSLATE_ENABLED=true` in `.env` oder im Dashboard aktivieren
 2. Übersetzungs-API setzen: `DISCORD_TRANSLATE_API_URL=...`
 3. Falls der Provider einen Key verlangt: `DISCORD_TRANSLATE_API_KEY=...`
 4. Optional eingrenzen: `DISCORD_TRANSLATE_ALLOWED_GUILD_IDS=...`
-5. Bot neu starten
-
-> Slash-Commands werden beim ersten Bot-Start automatisch registriert.  
-> Es kann bis zu **1 Stunde** dauern, bis sie in Discord erscheinen.
 
 ---
 
@@ -460,9 +559,24 @@ bash ~/bockis-bot/start-bot.sh
 
 | Endpoint | Zugriff | Beschreibung |
 |----------|---------|-------------|
-| `/dashboard` | Öffentlich (optionaler Passwortschutz) | Status-Übersicht der letzten 50 Checks |
+| `/dashboard` | Öffentlich (optionaler Passwortschutz) | Konfigurations-Dashboard und Statusübersicht |
 | `/health` | Nur lokal (127.0.0.1) | Systemstatus: DB + Discord-Verbindung |
 | `/metrics` | Nur lokal (127.0.0.1) | Prometheus-Metriken |
+
+---
+
+## 📋 Voraussetzungen
+
+- **Node.js** ≥ 18.0.0
+- **Uptime Kuma** Instanz mit einer öffentlichen Status-Seite
+- **Discord-Bot** mit folgenden Berechtigungen:
+  - `Send Messages`
+  - `Embed Links`
+  - `Read Message History`
+  - `Message Content` (Privileged Intent — für Auto-Reply und KI-Chat erforderlich)
+  - Slash-Commands: `applications.commands`
+
+> **Wichtig:** Der `Message Content`-Intent muss im [Discord Developer Portal](https://discord.com/developers/applications) unter **Bot → Privileged Gateway Intents** aktiviert werden, damit Auto-Reply und KI-Chat @-Erwähnungen lesen können.
 
 ---
 
@@ -475,18 +589,6 @@ npm run dev
 # Tests ausführen
 npm test
 ```
-
----
-
-## 📋 Voraussetzungen
-
-- **Node.js** ≥ 18.0.0
-- **Uptime Kuma** Instanz mit einer öffentlichen Status-Seite
-- **Discord-Bot** mit folgenden Berechtigungen:
-  - `Send Messages`
-  - `Embed Links`
-  - `Read Message History`
-  - Slash-Commands: `applications.commands`
 
 ---
 
