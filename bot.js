@@ -191,7 +191,8 @@ class NotificationManager {
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMessages
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent
   ]
 });
 const notificationManager = new NotificationManager();
@@ -3561,29 +3562,6 @@ client.on('interactionCreate', async interaction => {
     const autoReplyChannelIds = rawAutoReplyChannelIds.split(/[,;]/).map(s => s.trim()).filter(Boolean);
     if (autoReplyChannelIds.length && !autoReplyChannelIds.includes(interaction.channelId)) {
       gateHints.push(`Kanal-Filter aktiv: dieser Kanal (${interaction.channelId}) ist nicht freigegeben.`);
-    }
-
-    // Prüfe Bot-Rechte im aktuellen Kanal (wichtig: Slash-Reply kann gehen, normale Chat-Antwort aber scheitern)
-    try {
-      const me = interaction.guild?.members?.me || await interaction.guild?.members.fetchMe();
-      const perms = interaction.channel?.permissionsFor?.(me);
-      if (perms && !perms.has(PermissionFlagsBits.SendMessages)) {
-        gateHints.push('Bot fehlt die Berechtigung "Nachrichten senden" in diesem Kanal.');
-      }
-      if (perms && !perms.has(PermissionFlagsBits.ViewChannel)) {
-        gateHints.push('Bot fehlt die Berechtigung "Kanal ansehen" in diesem Kanal.');
-      }
-    } catch {
-      // Rechteprüfung optional - bei Fehler einfach ohne Hinweis fortfahren.
-    }
-
-    // Cooldown-Prüfung analog zur Live-Message-Logik
-    const cooldownMs = Math.max(0, config.get('discord.autoReplyCooldownMs') || 30000);
-    const cooldownKey = `${interaction.user.id}:${interaction.channelId}`;
-    const lastReplyTs = _autoReplyCooldownMap.get(cooldownKey) || 0;
-    const remainingMs = cooldownMs > 0 ? (cooldownMs - (Date.now() - lastReplyTs)) : 0;
-    if (remainingMs > 0) {
-      gateHints.push(`Cooldown aktiv: nächste Auto-Reply in ca. ${Math.ceil(remainingMs / 1000)}s.`);
     }
 
     const rules = typeof _loadAutoReplyRules === 'function' ? _loadAutoReplyRules() : [];
