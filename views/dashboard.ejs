@@ -1951,6 +1951,12 @@
           </table>
         </div>
 
+        <!-- ── EMOJI PICKER ────────────────────────────── -->
+        <div id="arEmojiPicker" style="display:none;position:fixed;z-index:10000;background:var(--surface1);border:1px solid var(--border);border-radius:10px;box-shadow:0 8px 32px rgba(0,0,0,0.4);padding:10px;width:320px;max-height:340px;overflow:hidden;flex-direction:column">
+          <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px;border-bottom:1px solid var(--border);padding-bottom:8px" id="arEmojiCatBtns"></div>
+          <div id="arEmojiGrid" style="display:flex;flex-wrap:wrap;gap:2px;overflow-y:auto;max-height:230px"></div>
+        </div>
+
         <!-- ── TUTORIAL-MODAL ────────────────────────────── -->
         <div id="arTutorialModal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);z-index:9999;overflow-y:auto" onclick="if(event.target===this)arHideTutorial()">
           <div style="background:var(--surface1);border:1px solid var(--border);border-radius:12px;max-width:700px;margin:40px auto;padding:20px;box-shadow:0 10px 40px rgba(0,0,0,0.3)">
@@ -4352,7 +4358,12 @@
           </select>
         </td>
         <td style="padding:4px 6px"><input class="cfg-input" style="padding:3px 6px;font-size:12px;min-width:140px;width:100%" value="${arEsc(r.trigger)}" data-ar-idx="${i}" oninput="arFieldChanged(${i},'trigger',this.value)"></td>
-        <td style="padding:4px 6px"><input class="cfg-input" style="padding:3px 6px;font-size:12px;min-width:160px;width:100%" value="${arEsc(r.reply)}" data-ar-idx="${i}" oninput="arFieldChanged(${i},'reply',this.value)"></td>
+        <td style="padding:4px 6px">
+          <div style="display:flex;align-items:center;gap:4px">
+            <input class="cfg-input" id="arReplyInput_${i}" style="padding:3px 6px;font-size:12px;min-width:140px;width:100%" value="${arEsc(r.reply)}" data-ar-idx="${i}" oninput="arFieldChanged(${i},'reply',this.value)">
+            <button type="button" title="Emoji einfügen" onclick="arOpenEmojiPicker(${i}, this)" style="flex-shrink:0;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:3px 7px;font-size:14px;cursor:pointer;line-height:1">😀</button>
+          </div>
+        </td>
         <td style="text-align:center;padding:4px 6px">
           <input type="checkbox" style="width:16px;height:16px;accent-color:var(--green)" ${r.caseSensitive?'checked':''} data-ar-idx="${i}" onchange="arFieldChanged(${i},'caseSensitive',this.checked)">
         </td>
@@ -4365,6 +4376,92 @@
   function arFieldChanged(idx, field, value) {
     if (_arRules[idx]) _arRules[idx][field] = value;
   }
+
+  // ── Emoji Picker ─────────────────────────────────────────
+  const _arEmojiCategories = [
+    { label: '😀 Smileys', emojis: ['😀','😁','😂','🤣','😃','😄','😅','😆','😇','😈','😉','😊','😋','😌','😍','🥰','😎','😏','😐','😑','😒','😓','😔','😕','😖','😗','😘','😙','😚','😛','😜','😝','😞','😟','😠','😡','😢','😣','😤','😥','😦','😧','😨','😩','😪','😫','😬','😭','😮','😯','😰','😱','😲','😳','😴','😵','😶','😷','🙂','🙃','🙄','🤐','🤑','🤒','🤓','🤔','🤕','🤗','🤠','🤡','🤢','🤣','🤤','🤥','🤦','🤧','🤨','🤩','🤪','🤫','🤭','🤮','🤯','🥳','🥴','🥵','🥶','🥺','🧐'] },
+    { label: '👍 Gesten', emojis: ['👋','🤚','🖐','✋','🖖','👌','🤌','🤏','✌️','🤞','🤟','🤘','🤙','👈','👉','👆','🖕','👇','☝️','👍','👎','✊','👊','🤛','🤜','👏','🙌','🫶','👐','🤲','🙏','✍️','💅','🤳','💪','🦵','🦶','👂','👃','👁','👀','🫀','🫁','🧠','🦷','🦴','👄','👅'] },
+    { label: '❤️ Herzen', emojis: ['❤️','🧡','💛','💚','💙','💜','🖤','🤍','🤎','💔','❣️','💕','💞','💓','💗','💖','💘','💝','💟','♥️','❤️‍🔥','❤️‍🩹','🫶'] },
+    { label: '🎉 Feiern', emojis: ['🎉','🎊','🥳','🎈','🎁','🎀','🎗','🎟','🎫','🏆','🥇','🥈','🥉','🏅','🎖','🏵','🎗','🎤','🎧','🎼','🎵','🎶','🎹','🥁','🎷','🎺','🎸','🎻','🪕','🎮','🕹','🎲','🎯','🎳','🎰','🃏','🀄','🎭','🎨','🖼','🎬','🎥','📽','🎞'] },
+    { label: '🐶 Tiere', emojis: ['🐶','🐱','🐭','🐹','🐰','🦊','🐻','🐼','🐨','🐯','🦁','🐮','🐷','🐸','🐵','🙈','🙉','🙊','🐔','🐧','🐦','🐤','🦆','🦅','🦉','🦇','🐺','🐗','🐴','🦄','🐝','🐛','🦋','🐌','🐞','🐜','🦟','🦗','🦂','🐢','🐍','🦎','🦖','🦕','🐙','🦑','🦐','🦞','🦀','🐡','🐠','🐟','🐬','🐳','🐋','🦈','🐊','🦭'] },
+    { label: '🍕 Essen', emojis: ['🍕','🍔','🍟','🌭','🌮','🌯','🥙','🧆','🥚','🍳','🥘','🍲','🥣','🥗','🍿','🧂','🥫','🍱','🍘','🍙','🍚','🍛','🍜','🍝','🍠','🍢','🍣','🍤','🍥','🥮','🍡','🥟','🥠','🥡','🦪','🍦','🍧','🍨','🍩','🍪','🎂','🍰','🧁','🥧','🍫','🍬','🍭','🍮','🍯','🍷','🍸','🍹','🍺','🍻','🥂','🥃','🧃','🧉','🧊','🥤','☕','🍵','🫖','🍶','🍾'] },
+    { label: '⚽ Sport', emojis: ['⚽','🏀','🏈','⚾','🥎','🎾','🏐','🏉','🥏','🎱','🏓','🏸','🏒','🏑','🥍','🏏','🪃','🥅','⛳','🪁','🏹','🎣','🤿','🥊','🥋','🎽','🛹','🛷','⛸','🥌','🎿','⛷','🏂','🏋️','🤼','🤸','⛹️','🤺','🏇','🧘','🏄','🏊','🚣','🧗','🚵','🚴','🏆','🥇'] },
+    { label: '🌍 Natur', emojis: ['🌍','🌎','🌏','🌐','🗺','🧭','🏔','⛰','🌋','🗻','🏕','🏖','🏜','🏝','🏞','🌅','🌄','🌠','🎇','🎆','🌇','🌆','🏙','🌃','🌌','🌉','🌁','🌤','⛅','🌥','☁️','🌦','🌧','⛈','🌩','🌨','❄️','☃️','⛄','🌬','💨','💧','💦','🌊','🌈','☀️','🌤','🌙','🌛','🌜','🌝','🌞','⭐','🌟','💫','✨','⚡','🔥','🌪','🌫'] },
+    { label: '💬 Symbole', emojis: ['✅','❌','⚠️','ℹ️','💡','🔔','🔕','📢','📣','💬','💭','🗨','🗯','📝','📋','📌','📍','🔗','🔒','🔓','🔑','🗝','🔧','🔨','⚙️','🛠','📊','📈','📉','🏷','🎯','🚀','💎','👑','🌟','⭐','🔥','💯','🆕','🆙','🆒','🆓','🔄','✔️','➕','➖','➗','✖️','💲','©️','®️','™️'] },
+  ];
+  let _arEmojiTargetIdx = null;
+  let _arEmojiActiveCat = 0;
+
+  function arOpenEmojiPicker(idx, btnEl) {
+    const picker = document.getElementById('arEmojiPicker');
+    if (picker.style.display !== 'none' && _arEmojiTargetIdx === idx) {
+      arCloseEmojiPicker(); return;
+    }
+    _arEmojiTargetIdx = idx;
+    _arEmojiActiveCat = 0;
+    arRenderEmojiPicker();
+    picker.style.display = 'flex';
+
+    // Picker unter/über dem Button positionieren
+    const rect = btnEl.getBoundingClientRect();
+    const pickerH = 340;
+    const spaceBelow = window.innerHeight - rect.bottom;
+    let top = spaceBelow >= pickerH ? rect.bottom + 4 : rect.top - pickerH - 4;
+    let left = Math.min(rect.left, window.innerWidth - 330);
+    picker.style.top = top + 'px';
+    picker.style.left = Math.max(4, left) + 'px';
+  }
+
+  function arCloseEmojiPicker() {
+    const picker = document.getElementById('arEmojiPicker');
+    if (picker) picker.style.display = 'none';
+    _arEmojiTargetIdx = null;
+  }
+
+  function arRenderEmojiPicker() {
+    const catBtns = document.getElementById('arEmojiCatBtns');
+    const grid    = document.getElementById('arEmojiGrid');
+    catBtns.innerHTML = _arEmojiCategories.map((cat, i) => {
+      const firstEmoji = cat.emojis[0];
+      const active = i === _arEmojiActiveCat ? 'background:var(--green);color:#fff;' : 'background:var(--surface2);';
+      return `<button type="button" title="${cat.label}" onclick="arSelectEmojiCat(${i})" style="${active}border:1px solid var(--border);border-radius:6px;padding:3px 7px;font-size:16px;cursor:pointer;line-height:1">${firstEmoji}</button>`;
+    }).join('');
+
+    const emojis = _arEmojiCategories[_arEmojiActiveCat].emojis;
+    grid.innerHTML = emojis.map(e =>
+      `<button type="button" onclick="arPickEmoji('${e}')" style="background:none;border:none;font-size:20px;cursor:pointer;padding:4px;border-radius:4px;line-height:1" title="${e}" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background='none'">${e}</button>`
+    ).join('');
+  }
+
+  function arSelectEmojiCat(i) {
+    _arEmojiActiveCat = i;
+    arRenderEmojiPicker();
+  }
+
+  function arPickEmoji(emoji) {
+    if (_arEmojiTargetIdx === null) return;
+    const input = document.getElementById(`arReplyInput_${_arEmojiTargetIdx}`);
+    if (!input) return;
+    const start = input.selectionStart ?? input.value.length;
+    const end   = input.selectionEnd   ?? input.value.length;
+    const newVal = input.value.slice(0, start) + emoji + input.value.slice(end);
+    input.value = newVal;
+    arFieldChanged(_arEmojiTargetIdx, 'reply', newVal);
+    // Cursor hinter Emoji setzen
+    const pos = start + emoji.length;
+    input.focus();
+    input.setSelectionRange(pos, pos);
+  }
+
+  // Klick außerhalb schließt den Picker
+  document.addEventListener('click', (e) => {
+    const picker = document.getElementById('arEmojiPicker');
+    if (!picker || picker.style.display === 'none') return;
+    if (!picker.contains(e.target) && !e.target.closest('[onclick*="arOpenEmojiPicker"]')) {
+      arCloseEmojiPicker();
+    }
+  }, true);
+  // ─────────────────────────────────────────────────────────
 
   function arAddRule() {
     const newId = `regel-${Date.now()}`;
