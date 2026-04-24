@@ -2015,7 +2015,7 @@ module.exports = function startWebServer({
         },
         greeting: {
           id: 'greeting',
-          trigger: '^\\s*(hallo|huhu|hallöchen|hey|hi|hello|winke|servus|tach|moin)\\s*$',
+          trigger: '\\b(hallo|huhu|hallöchen|hey|hi|hello|winke|servus|tach|moin)\\b',
           mode: 'regex',
           reply: 'Hallo! 👋',
           caseSensitive: false
