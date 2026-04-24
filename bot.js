@@ -3668,10 +3668,45 @@ async function _askOpenAI(userContent, userName) {
   const personaName = config.get('openai.personaName') || 'Bockis';
   const maxTokens = Math.min(2000, Math.max(50, config.get('openai.maxTokens') || 600));
   const customPrompt = config.get('openai.systemPrompt') || '';
-  const systemPrompt = customPrompt ||
-    `Du bist ${personaName}, ein freundlicher und hilfreicher Discord-Bot. ` +
-    `Antworte immer auf Deutsch, kurz und präzise (maximal 3-4 Sätze). ` +
-    `Du bist humorvoll aber respektvoll. Der Nutzer der dir schreibt heißt ${userName}.`;
+  const systemPrompt = customPrompt || (() => {
+    const enabledCmds = getEnabledSlashCommands();
+    const cmdDesc = {
+      status:      'aktuellen Service-Status anzeigen',
+      uptime:      'Gesamt-Uptime anzeigen',
+      refresh:     'Bot-Status manuell aktualisieren (Admin)',
+      cleanup:     'Nachrichten löschen (Admin)',
+      translate:   'Text übersetzen',
+      ping:        'Bot-Latenz prüfen',
+      botinfo:     'technische Bot-Infos anzeigen',
+      serverstatus:'einzelnen Dienst oder Gruppe prüfen',
+      ki:          'direkte KI-Frage stellen',
+      wetter:      'Wetter für einen Ort abrufen',
+      subscribe:   'Status-Benachrichtigungen abonnieren/verwalten',
+      remind:      'Erinnerungen setzen',
+      quote:       'Zitate speichern oder zufällig anzeigen',
+      poll:        'Umfragen erstellen',
+      avatar:      'Avatar eines Nutzers anzeigen',
+      userinfo:    'Nutzerinformationen anzeigen',
+      help:        'alle aktiven Bot-Befehle anzeigen (/hilfe)',
+      coinflip:    'Münzwurf',
+      dice:        'Würfeln mit beliebigen Seiten',
+      eightball:   'magische 8-Ball-Antwort',
+      testreply:   'Auto-Reply-Regeln testen (Admin)',
+    };
+    const enabledList = enabledCmds
+      .filter(cmd => cmdDesc[cmd])
+      .map(cmd => `  /${cmd} — ${cmdDesc[cmd]}`)
+      .join('\n');
+    const autoReplyOn = (() => { try { return config.get('discord.autoReplyEnabled'); } catch { return false; } })();
+    return (
+      `Du bist ${personaName}, ein freundlicher und hilfreicher Discord-Bot auf einem Discord-Server. ` +
+      `Antworte immer auf Deutsch, kurz und präzise (maximal 3-4 Sätze). ` +
+      `Du bist humorvoll aber respektvoll. Der Nutzer heißt ${userName}.\n\n` +
+      `Verfügbare Slash-Befehle:\n${enabledList || '  (keine aktiv)'}\n` +
+      (autoReplyOn ? `\nAußerdem aktiv: Auto-Reply — der Bot antwortet automatisch auf bestimmte Chat-Nachrichten anhand hinterlegter Stichwort-Regeln.\n` : '') +
+      `\nWenn jemand fragt wie er dich bedienen soll oder was du kannst, erkläre die Slash-Befehle kurz und weise auf /hilfe hin.`
+    );
+  })();
 
   const res = await axios.post(
     endpoint,
@@ -3697,12 +3732,30 @@ async function _askOpenAI(userContent, userName) {
 client.on('messageCreate', async (message) => {
   if (message.author?.bot) return;
   if (message.system) return;
-  if (!config.get('openai.enabled')) return;
 
   const isDM = message.channel?.type === ChannelType.DM;
   // Never auto-answer mass mentions in guild channels.
   if (!isDM && message.mentions?.everyone) return;
   const isMention = message.mentions.has(client.user);
+
+  // Fallback wenn KI deaktiviert: @Erwähnung trotzdem beantworten
+  if (!config.get('openai.enabled')) {
+    if (!isDM && isMention) {
+      const q = message.content.replace(/<@!?\d+>/g, '').trim();
+      if (q && /\b(hilf|help|hilfe|wie|was kannst|kannst du|erkl[äa]r|was machst|commands|befehle|kommandos)\b/i.test(q)) {
+        await message.reply({
+          content: '💡 Ich habe keine KI aktiviert, aber ich helfe dir trotzdem:\n' +
+            'Mit `/hilfe` siehst du alle aktiven Befehle.\n' +
+            'Auto-Reply reagiert auf hinterlegte Stichwörter im Chat. 😊'
+        }).catch(() => {});
+      } else if (q) {
+        await message.reply({
+          content: `Hey ${message.author.displayName || message.author.username}! 👋 Schreib \`/hilfe\` um alle meine Funktionen zu sehen.`
+        }).catch(() => {});
+      }
+    }
+    return;
+  }
 
   if (!isDM && !isMention) return;
   if (isDM && !config.get('openai.allowDMs')) return;
