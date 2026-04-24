@@ -3057,61 +3057,79 @@ client.on('interactionCreate', async interaction => {
 
   if (commandName === 'help') {
     const germanLocale = isGermanDiscordLocale(interactionLocale);
-    const enabled = getEnabledSlashCommands()
-      .map(cmd => `/${getSlashCommandDisplayName(cmd, interactionLocale)}`)
-      .join(', ');
+    const enabledCommands = getEnabledSlashCommands();
+    const commandMeta = {
+      status:      { cat: 'info', de: 'aktueller Service-Status', en: 'current service status' },
+      uptime:      { cat: 'info', de: 'Gesamt-Uptime', en: 'total uptime' },
+      refresh:     { cat: 'info', de: 'manueller Refresh (ManageGuild)', en: 'manual refresh (ManageGuild)' },
+      cleanup:     { cat: 'info', de: 'Nachrichten-Cleanup (ManageGuild)', en: 'message cleanup (ManageGuild)' },
+      translate:   { cat: 'info', de: 'Text übersetzen', en: 'translate text' },
+      ping:        { cat: 'info', de: 'Bot-Latenz', en: 'bot latency' },
+      botinfo:     { cat: 'info', de: 'technische Bot-Infos', en: 'technical bot info' },
+      serverstatus:{ cat: 'info', de: 'einzelner Dienst oder Gruppe', en: 'single service or group' },
+      ki:          { cat: 'info', de: 'direkte KI-Frage', en: 'direct AI question' },
+      wetter:      { cat: 'info', de: 'Wetter abrufen', en: 'get weather' },
+      subscribe:   { cat: 'info', de: 'Status-Abos umschalten/anzeigen', en: 'toggle or list subscriptions' },
+      remind:      { cat: 'info', de: 'Erinnerung setzen', en: 'create a reminder' },
+      quote:       { cat: 'info', de: 'Zitat speichern oder zufällig anzeigen', en: 'save a quote or show a random one' },
+      poll:        { cat: 'info', de: 'Umfrage erstellen', en: 'create a poll' },
+      avatar:      { cat: 'info', de: 'Avatar anzeigen', en: 'show avatar' },
+      userinfo:    { cat: 'info', de: 'Nutzerinfos anzeigen', en: 'show user info' },
+      help:        { cat: 'info', de: 'diese Hilfe anzeigen', en: 'show this help' },
+      testreply:   { cat: 'admin', de: 'Auto-Reply-Regeln testen (ManageGuild)', en: 'test auto-reply rules (ManageGuild)' },
+      coinflip:    { cat: 'fun', de: 'Münzwurf', en: 'coin flip' },
+      dice:        { cat: 'fun', de: 'Würfel', en: 'roll a die' },
+      eightball:   { cat: 'fun', de: 'magische Antwort', en: 'magic answer' },
+    };
+
+    const formatCommandLine = (cmd) => {
+      const display = getSlashCommandDisplayName(cmd, interactionLocale);
+      const meta = commandMeta[cmd];
+      const label = germanLocale ? (meta?.de || 'Beschreibung folgt') : (meta?.en || 'Description pending');
+      return `/${display} - ${label}`;
+    };
+
+    const infoLines = enabledCommands.filter((cmd) => (commandMeta[cmd]?.cat || 'info') === 'info').map(formatCommandLine);
+    const funLines = enabledCommands.filter((cmd) => commandMeta[cmd]?.cat === 'fun').map(formatCommandLine);
+    const adminLines = enabledCommands.filter((cmd) => commandMeta[cmd]?.cat === 'admin').map(formatCommandLine);
+    const enabledLine = enabledCommands.map(cmd => `/${getSlashCommandDisplayName(cmd, interactionLocale)}`).join(', ');
+
     const description = germanLocale
       ? [
+          '**So kommunizierst du mit mir**',
+          '- Mit `/help` siehst du alle aktiven Funktionen.',
+          '- Für KI-Chat im Kanal: `@Bot <deine Frage>`.',
+          '- Für direkte KI-Fragen auch `/ki` nutzbar (falls aktiviert).',
+          '- Auto-Replies reagieren auf hinterlegte Trigger-Regeln.',
+          '',
           '**Info**',
-          `/status - aktueller Service-Status`,
-          `/betriebszeit - Gesamt-Uptime`,
-          `/aktualisieren - manueller Refresh (ManageGuild)`,
-          `/bereinigen - Nachrichten-Cleanup (ManageGuild)`,
-          `/uebersetzen <text> [ziel] [quelle] - Text uebersetzen`,
-          `/ping - Bot-Latenz`,
-          `/botinfo - technische Bot-Infos`,
-          `/dienststatus [dienst] [gruppe] - einzelner Dienst oder Gruppe`,
-          `/ki <frage> - direkte KI-Frage`,
-          `/wetter <ort> - Wetter abrufen`,
-          `/abonnieren [dienst] - Status-Abos umschalten/anzeigen`,
-          `/erinnern <zeit> <text> - Erinnerung setzen`,
-          `/zitat [text] - Zitat speichern oder zufällig anzeigen`,
-          `/umfrage <frage> <optionen> - Umfrage erstellen`,
-          `/avatar [nutzer] - Avatar anzeigen`,
-          `/nutzerinfo [nutzer] - Nutzerinfos anzeigen`,
+          ...(infoLines.length ? infoLines : ['Keine Info-Kommandos aktiv.']),
           '',
           '**Fun & Gadgets**',
-          `/muenzwurf - Münzwurf`,
-          `/wuerfeln [seiten] - Würfel`,
-          `/achtball <frage> - magische Antwort`,
+          ...(funLines.length ? funLines : ['Keine Fun-Kommandos aktiv.']),
           '',
-          `**Aktiv:** ${enabled}`,
+          '**Admin / Debug**',
+          ...(adminLines.length ? adminLines : ['Keine Admin-Kommandos aktiv.']),
+          '',
+          `**Aktiv:** ${enabledLine}`,
         ].join('\n')
       : [
+          '**How To Talk To Me**',
+          '- Use `/help` to see all active features.',
+          '- For AI chat in a channel: `@Bot <your question>`.',
+          '- You can also use `/ki` for direct AI questions (if enabled).',
+          '- Auto-replies react to configured trigger rules.',
+          '',
           '**Info**',
-          `/status - current service status`,
-          `/uptime - total uptime`,
-          `/refresh - manual refresh (ManageGuild)`,
-          `/cleanup - message cleanup (ManageGuild)`,
-          `/translate <text> [target] [source] - translate text`,
-          `/ping - bot latency`,
-          `/botinfo - technical bot info`,
-          `/serverstatus [service] [group] - single service or group`,
-          `/ki <question> - direct AI question`,
-          `/wetter <location> - get weather`,
-          `/subscribe [service] - toggle or list subscriptions`,
-          `/remind <time> <text> - create a reminder`,
-          `/quote [text] - save a quote or show a random one`,
-          `/poll <question> <options> - create a poll`,
-          `/avatar [user] - show avatar`,
-          `/userinfo [user] - show user info`,
+          ...(infoLines.length ? infoLines : ['No info commands enabled.']),
           '',
           '**Fun & Gadgets**',
-          `/coinflip - coin flip`,
-          `/dice [sides] - roll a die`,
-          `/eightball <question> - magic answer`,
+          ...(funLines.length ? funLines : ['No fun commands enabled.']),
           '',
-          `**Enabled:** ${enabled}`,
+          '**Admin / Debug**',
+          ...(adminLines.length ? adminLines : ['No admin commands enabled.']),
+          '',
+          `**Enabled:** ${enabledLine}`,
         ].join('\n');
     return interaction.reply({
       ephemeral: true,
