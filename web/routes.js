@@ -1994,7 +1994,7 @@ module.exports = function startWebServer({
       } catch { /* ignore */ }
       
       // Entferne alte Template-Regeln (erkannt an bestimmten IDs)
-      const templateIds = new Set(['good-evening', 'good-day', 'greeting', 'weekend', 'weekdays']);
+      const templateIds = new Set(['good-evening', 'good-day', 'greeting', 'weekend', 'weekdays', 'good-night']);
       const existingTemplateRules = existingRules.filter(r => templateIds.has(r.id));
       existingRules = existingRules.filter(r => !templateIds.has(r.id));
       
@@ -2033,6 +2033,13 @@ module.exports = function startWebServer({
           trigger: 'schönen\\s+(montag|dienstag|mittwoch|donnerstag|freitag|samstag|sonntag)',
           mode: 'regex',
           reply: 'Dir auch einen schönen Tag! ✨',
+          caseSensitive: false
+        },
+        goodNight: {
+          id: 'good-night',
+          trigger: '\\b(gute\\s+nacht|schlaf(?:t)?\\s+gut|süße\\s+träume|suesse\\s+traeume|träum(?:t)?\\s+schön|traeum(?:t)?\\s+schoen)\\b',
+          mode: 'regex',
+          reply: 'Gute Nacht und schlaft gut! 😴✨',
           caseSensitive: false
         }
       };
