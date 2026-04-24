@@ -314,6 +314,12 @@ const config = convict({
       default: false,
       env: 'OPENAI_ENABLED'
     },
+    baseUrl: {
+      doc: 'OpenAI-kompatible API Base URL (z.B. https://api.openai.com/v1 oder https://api.groq.com/openai/v1)',
+      format: String,
+      default: 'https://api.openai.com/v1',
+      env: 'OPENAI_BASE_URL'
+    },
     apiKey: {
       doc: 'OpenAI API-Key (sk-...)',
       format: String,

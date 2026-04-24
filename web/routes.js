@@ -1321,6 +1321,7 @@ module.exports = function startWebServer({
         DB_DIALECT:                   get('DB_DIALECT') || 'sqlite',
         DB_STORAGE:                   get('DB_STORAGE') || './data/status.db',
         OPENAI_ENABLED:               get('OPENAI_ENABLED') || 'false',
+        OPENAI_BASE_URL:              get('OPENAI_BASE_URL') || 'https://api.openai.com/v1',
         OPENAI_API_KEY:               maskSecret(get('OPENAI_API_KEY')),
         OPENAI_MODEL:                 get('OPENAI_MODEL') || 'gpt-4o-mini',
         OPENAI_PERSONA_NAME:          get('OPENAI_PERSONA_NAME') || 'Bockis',
@@ -1394,6 +1395,7 @@ module.exports = function startWebServer({
       'DB_DIALECT',
         'DB_STORAGE',
         'OPENAI_ENABLED',
+        'OPENAI_BASE_URL',
         'OPENAI_API_KEY',
         'OPENAI_MODEL',
         'OPENAI_PERSONA_NAME',
@@ -1422,7 +1424,8 @@ module.exports = function startWebServer({
       'SERVICE_CHANNEL_DEBUG_FILTER',
       'DISCORD_TRANSLATE_ALLOWED_GUILD_IDS',
       'OPENAI_SYSTEM_PROMPT',
-      'OPENAI_CHANNEL_IDS'
+      'OPENAI_CHANNEL_IDS',
+      'OPENAI_BASE_URL'
     ]);
     const envPath = path.join(rootDir, '.env');
     if (!fs.existsSync(envPath)) return res.json({ ok: false, error: '.env nicht gefunden' });
@@ -1604,6 +1607,8 @@ module.exports = function startWebServer({
       }
       if (key === 'OPENAI_MODEL' && /[\n\r]/.test(val))
         return res.json({ ok: false, error: 'OPENAI_MODEL darf keine Zeilenumbrüche enthalten' });
+      if (key === 'OPENAI_BASE_URL' && val && !/^https?:\/\/.+/.test(val))
+        return res.json({ ok: false, error: 'OPENAI_BASE_URL muss mit http:// oder https:// beginnen' });
       if (key === 'OPENAI_PERSONA_NAME') {
         if (/[\n\r]/.test(val)) return res.json({ ok: false, error: 'OPENAI_PERSONA_NAME darf keine Zeilenumbrüche enthalten' });
         if (val.length > 64) return res.json({ ok: false, error: 'OPENAI_PERSONA_NAME darf maximal 64 Zeichen enthalten' });

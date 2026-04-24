@@ -2449,6 +2449,9 @@ async function _fetchWeather(location) {
 async function _askOpenAI(userContent, userName) {
   const apiKey = config.get('openai.apiKey');
   if (!apiKey) return null;
+  const baseUrlRaw = (config.get('openai.baseUrl') || 'https://api.openai.com/v1').trim();
+  const baseUrl = baseUrlRaw.replace(/\/+$/, '');
+  const endpoint = /\/chat\/completions$/i.test(baseUrl) ? baseUrl : `${baseUrl}/chat/completions`;
   const model = config.get('openai.model') || 'gpt-4o-mini';
   const personaName = config.get('openai.personaName') || 'Bockis';
   const maxTokens = Math.min(2000, Math.max(50, config.get('openai.maxTokens') || 600));
@@ -2459,7 +2462,7 @@ async function _askOpenAI(userContent, userName) {
     `Du bist humorvoll aber respektvoll. Der Nutzer der dir schreibt heißt ${userName}.`;
 
   const res = await axios.post(
-    'https://api.openai.com/v1/chat/completions',
+    endpoint,
     {
       model,
       max_tokens: maxTokens,

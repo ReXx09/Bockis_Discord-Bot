@@ -2040,9 +2040,14 @@
           <div class="cfg-hint">Wenn aktiviert: Nutzer können den Bot direkt per @Erwähnung oder DM ansprechen. Der Bot antwortet mit KI-generierten Antworten.</div>
         </div>
         <div class="cfg-field">
-          <label class="cfg-label" for="cfgOpenaiApiKey">OpenAI API-Key</label>
+          <label class="cfg-label" for="cfgOpenaiBaseUrl">API-Base-URL (OpenAI-kompatibel)</label>
+          <input class="cfg-input" id="cfgOpenaiBaseUrl" type="text" autocomplete="off" placeholder="https://api.openai.com/v1">
+          <div class="cfg-hint">Beispiele: OpenAI <code>https://api.openai.com/v1</code>, Groq <code>https://api.groq.com/openai/v1</code>, OpenRouter <code>https://openrouter.ai/api/v1</code>.</div>
+        </div>
+        <div class="cfg-field">
+          <label class="cfg-label" for="cfgOpenaiApiKey">API-Key</label>
           <input class="cfg-input" id="cfgOpenaiApiKey" type="password" autocomplete="off" placeholder="sk-...">
-          <div class="cfg-hint">Erhältlich unter <a href="https://platform.openai.com/api-keys" target="_blank" style="color:var(--blue)">platform.openai.com/api-keys</a>. Der Key wird sicher in der .env gespeichert.</div>
+          <div class="cfg-hint">Key deines Providers. Für OpenAI z. B. unter <a href="https://platform.openai.com/api-keys" target="_blank" style="color:var(--blue)">platform.openai.com/api-keys</a>. Der Key wird in der .env gespeichert.</div>
         </div>
         <div class="cfg-field">
           <label class="cfg-label" for="cfgOpenaiModel">KI-Modell</label>
@@ -4445,6 +4450,7 @@
 
         // KI-Chat (OpenAI)
         setCheckboxValue('cfgOpenaiEnabled', (d.OPENAI_ENABLED || 'false') === 'true', { force });
+        setCfg('cfgOpenaiBaseUrl', d.OPENAI_BASE_URL || 'https://api.openai.com/v1');
         setCfg('cfgOpenaiApiKey', '');
         document.getElementById('cfgOpenaiApiKey').placeholder = d.OPENAI_API_KEY
           ? 'sk-… (gesetzt – leer lassen = unverändert)'
@@ -4629,6 +4635,7 @@
     if (curGithubWatch !== (githubWatchEl.dataset.initialValue || 'false')) body.DISCORD_GITHUB_WATCH_ENABLED = curGithubWatch;
 
       // KI-Chat (OpenAI)
+      maybeSetChanged(body, 'OPENAI_BASE_URL', 'cfgOpenaiBaseUrl', { allowEmpty: true });
       maybeSetChanged(body, 'OPENAI_MODEL', 'cfgOpenaiModel');
       maybeSetChanged(body, 'OPENAI_PERSONA_NAME', 'cfgOpenaiPersonaName', { allowEmpty: true });
       maybeSetChanged(body, 'OPENAI_SYSTEM_PROMPT', 'cfgOpenaiSystemPrompt', { allowEmpty: true });
