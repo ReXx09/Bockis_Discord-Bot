@@ -145,11 +145,11 @@ update_native() {
       print_status "Lade neueste Version von GitHub..."
       STASH_DONE=false
 
-      # Lokale .env-Änderungen sichern falls sie tracked sind
-      if git -C "$BOT_DIR" diff --quiet -- .env 2>/dev/null; then
+      # Lokale Laufzeit-Dateien sichern (z. B. .env + Auto-Reply-Regeln)
+      if git -C "$BOT_DIR" diff --quiet -- .env auto-replies.json data/auto-replies.json 2>/dev/null; then
         true
       else
-        git -C "$BOT_DIR" stash push -m "update-backup" -- .env 2>/dev/null && STASH_DONE=true || true
+        git -C "$BOT_DIR" stash push -m "update-backup" -- .env auto-replies.json data/auto-replies.json 2>/dev/null && STASH_DONE=true || true
       fi
 
       git -C "$BOT_DIR" pull --ff-only origin main 2>&1 | while IFS= read -r line; do
@@ -157,7 +157,7 @@ update_native() {
       done
 
       if [[ "$STASH_DONE" == "true" ]]; then
-        git -C "$BOT_DIR" stash pop 2>/dev/null || print_warn ".env-Stash konnte nicht wiederhergestellt werden. Backup: $BACKUP_FILE"
+        git -C "$BOT_DIR" stash pop 2>/dev/null || print_warn "Update-Stash (.env/Auto-Replies) konnte nicht automatisch wiederhergestellt werden. Backup: $BACKUP_FILE"
       fi
       print_success "Code aktualisiert"
     else
