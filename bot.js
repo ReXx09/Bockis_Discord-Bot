@@ -3789,7 +3789,7 @@ function _matchAutoReplyRule(content, rule) {
   }
 }
 
-client.on('messageCreate', async (message) => {
+async function _processAutoReplyMessage(message) {
   if (!config.get('discord.autoReplyEnabled')) return;
   if (message.author?.bot) return;
   if (message.system) return;
@@ -3832,6 +3832,21 @@ client.on('messageCreate', async (message) => {
       }
       break; // nur erste passende Regel anwenden
     }
+  }
+}
+
+client.on('messageCreate', async (message) => {
+  await _processAutoReplyMessage(message);
+});
+
+client.on('messageUpdate', async (_oldMessage, newMessage) => {
+  try {
+    const message = newMessage?.partial ? await newMessage.fetch() : newMessage;
+    if (!message || typeof message.content !== 'string') return;
+    if (!message.content.trim()) return;
+    await _processAutoReplyMessage(message);
+  } catch {
+    // Ignore fetch/update edge cases quietly.
   }
 });
 // #endregion
