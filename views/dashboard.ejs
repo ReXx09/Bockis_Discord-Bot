@@ -2203,6 +2203,15 @@
             <div class="cfg-section-body">
         <div class="cfg-field">
           <label class="cfg-label" for="cfgOpenaiSystemPrompt">System-Prompt (Persönlichkeit)</label>
+          <div style="display:flex;gap:8px;margin-bottom:6px;flex-wrap:wrap;align-items:center">
+            <span style="font-size:12px;color:var(--text-muted,#888)">Vorlage:</span>
+            <button type="button" class="ar-btn ar-btn-secondary" style="padding:3px 10px;font-size:11px" onclick="applySystemPromptTemplate('freundlich')">😊 Freundlich</button>
+            <button type="button" class="ar-btn ar-btn-secondary" style="padding:3px 10px;font-size:11px" onclick="applySystemPromptTemplate('professionell')">💼 Professionell</button>
+            <button type="button" class="ar-btn ar-btn-secondary" style="padding:3px 10px;font-size:11px" onclick="applySystemPromptTemplate('humorvoll')">😄 Humorvoll</button>
+            <button type="button" class="ar-btn ar-btn-secondary" style="padding:3px 10px;font-size:11px" onclick="applySystemPromptTemplate('streng')">🎓 Streng/Sachlich</button>
+            <button type="button" class="ar-btn ar-btn-secondary" style="padding:3px 10px;font-size:11px" onclick="applySystemPromptTemplate('gaming')">🎮 Gaming</button>
+            <button type="button" class="ar-btn ar-btn-secondary" style="padding:3px 10px;font-size:11px;color:#e74c3c" onclick="document.getElementById('cfgOpenaiSystemPrompt').value=''">✕ Leeren</button>
+          </div>
           <textarea class="cfg-input" id="cfgOpenaiSystemPrompt" rows="4" style="resize:vertical;font-family:monospace;font-size:12px" placeholder="Du bist Bockis, ein freundlicher Discord-Bot. Antworte immer auf Deutsch, kurz und präzise…"></textarea>
           <div class="cfg-hint">Leer lassen für die Standard-Persönlichkeit. Hier kannst du dem Bot eine eigene Persönlichkeit, Sprache und Verhaltensregeln geben.</div>
         </div>
@@ -4489,6 +4498,28 @@
     _arRules.splice(idx, 1);
     arRenderTable();
   }
+
+  // ── KI System-Prompt Templates ──────────────────────────────────────────
+  const _systemPromptTemplates = {
+    freundlich: `Du bist {name}, ein freundlicher und hilfsbereiter Discord-Bot auf diesem Server. Antworte immer auf Deutsch, kurz und präzise (maximal 3-4 Sätze). Du bist warmherzig, geduldig und unterstützend. Wenn du etwas nicht weißt, sagst du es ehrlich.`,
+    professionell: `Du bist {name}, ein professioneller Discord-Assistent. Antworte sachlich, präzise und strukturiert. Nutze eine höfliche, formelle Sprache. Halte Antworten auf maximal 4 Sätze begrenzt. Fachbegriffe erklärst du kurz, wenn nötig.`,
+    humorvoll: `Du bist {name}, ein witziger und schlagfertiger Discord-Bot. Antworte auf Deutsch mit einem Augenzwinkern – locker, charmant und manchmal frech, aber niemals beleidigend. Halte Antworten kurz (2-3 Sätze) und streue gelegentlich ein passendes Emoji ein.`,
+    streng: `Du bist {name}, ein sachlicher Discord-Bot. Antworte ausschließlich faktisch korrekt, ohne Emotionen oder Smalltalk. Bleibe bei Fakten, formuliere klar und direkt. Maximal 3 Sätze. Keine Floskeln.`,
+    gaming: `Du bist {name}, ein Gaming-affiner Discord-Bot. Du liebst Videospiele, kennst gängige Gaming-Begriffe und Memes. Antworte auf Deutsch, locker im Gamer-Slang (aber verständlich), kurz und mit Bezug zur Gaming-Community. Nutze gelegentlich passende Gaming-Referenzen.`,
+  };
+
+  function applySystemPromptTemplate(key) {
+    const tpl = _systemPromptTemplates[key];
+    if (!tpl) return;
+    const personaName = document.getElementById('cfgOpenaiPersonaName')?.value?.trim() || 'Bockis';
+    const filled = tpl.replace(/\{name\}/g, personaName);
+    const ta = document.getElementById('cfgOpenaiSystemPrompt');
+    if (!ta) return;
+    if (ta.value && !confirm('Aktuellen System-Prompt ersetzen?')) return;
+    ta.value = filled;
+    ta.dispatchEvent(new Event('input'));
+  }
+  // ────────────────────────────────────────────────────────────────────────
 
   function arSyncTemplateCheckboxesFromRules(rules = []) {
     const ids = new Set((Array.isArray(rules) ? rules : []).map(r => String(r?.id || '').trim()));
