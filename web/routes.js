@@ -1995,9 +1995,10 @@ module.exports = function startWebServer({
       
       // Entferne alte Template-Regeln (erkannt an bestimmten IDs)
       const templateIds = new Set(['good-evening', 'good-day', 'greeting', 'weekend', 'weekdays']);
+      const existingTemplateRules = existingRules.filter(r => templateIds.has(r.id));
       existingRules = existingRules.filter(r => !templateIds.has(r.id));
       
-      // Definierte Templates
+      // Definierte Templates mit Defaults
       const templateDefs = {
         goodEvening: {
           id: 'good-evening',
@@ -2036,9 +2037,15 @@ module.exports = function startWebServer({
         }
       };
       
-      // Füge aktivierte Templates hinzu
+      // Füge aktivierte Templates hinzu und behalte caseSensitive-Werte bei
       for (const [key, templateDef] of Object.entries(templateDefs)) {
         if (templates[key]) {
+          // Versuche existierende Regel mit diesem Template-ID zu finden
+          const existingTemplate = existingTemplateRules.find(r => r.id === templateDef.id);
+          // Behalte caseSensitive-Wert wenn vorhanden
+          if (existingTemplate && existingTemplate.caseSensitive !== undefined) {
+            templateDef.caseSensitive = existingTemplate.caseSensitive;
+          }
           existingRules.push(templateDef);
         }
       }
