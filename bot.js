@@ -3558,27 +3558,23 @@ client.on('interactionCreate', async interaction => {
     let matchedRule = null;
     for (const rule of rules) {
       if (!rule.trigger || !rule.reply) continue;
-      let matched = false;
-      try {
-        if (rule.mode === 'exact') {
-          const a = rule.caseSensitive ? testText : testText.toLowerCase();
-          const b = rule.caseSensitive ? rule.trigger : rule.trigger.toLowerCase();
-          matched = a === b;
-        } else if (rule.mode === 'contains') {
-          const a = rule.caseSensitive ? testText : testText.toLowerCase();
-          const b = rule.caseSensitive ? rule.trigger : rule.trigger.toLowerCase();
-          matched = a.includes(b);
-        } else if (rule.mode === 'regex') {
-          const flags = rule.caseSensitive ? '' : 'i';
-          matched = new RegExp(rule.trigger, flags).test(testText);
-        }
-      } catch { continue; }
-      if (matched) { matchedRule = rule; break; }
+      const res = _matchAutoReplyRule(testText, rule);
+      if (res.error) continue;
+      if (res.matched) { matchedRule = rule; break; }
     }
 
     if (!matchedRule) {
+      const nearMiss = rules.find((rule) => {
+        if (!rule?.trigger || !rule?.reply || rule.caseSensitive !== true) return false;
+        const probeRule = { ...rule, caseSensitive: false };
+        const res = _matchAutoReplyRule(testText, probeRule);
+        return !!res.matched;
+      });
+      const hint = nearMiss
+        ? `\n\n💡 Hinweis: Regel \`${nearMiss.id || 'ohne-id'}\` würde bei deaktivierter Groß/Klein-Prüfung matchen.`
+        : '';
       return interaction.reply({
-        content: `🔍 **Testreply** – kein Treffer\n\n> \`${testText.slice(0, 200)}\`\n\nKeine der ${rules.length} Regel(n) matcht diesen Text.`,
+        content: `🔍 **Testreply** – kein Treffer\n\n> \`${testText.slice(0, 200)}\`\n\nKeine der ${rules.length} Regel(n) matcht diesen Text.${hint}`,
         ephemeral: true,
       });
     }
@@ -3746,6 +3742,33 @@ function _loadAutoReplyRules() {
   }
 }
 
+function _autoReplyMatchTextValue(value, caseSensitive = false) {
+  const normalized = String(value ?? '').normalize('NFC');
+  return caseSensitive ? normalized : normalized.toLocaleLowerCase('de-DE');
+}
+
+function _matchAutoReplyRule(content, rule) {
+  const mode = String(rule?.mode || 'contains').trim().toLowerCase();
+  const effectiveMode = ['contains', 'exact', 'regex'].includes(mode) ? mode : 'contains';
+  const caseSensitive = rule?.caseSensitive === true;
+  const trigger = String(rule?.trigger ?? '');
+  const text = String(content ?? '');
+
+  try {
+    if (effectiveMode === 'regex') {
+      const flags = caseSensitive ? 'u' : 'iu';
+      return { matched: new RegExp(trigger, flags).test(text), mode: effectiveMode, error: null };
+    }
+
+    const a = _autoReplyMatchTextValue(text, caseSensitive);
+    const b = _autoReplyMatchTextValue(trigger, caseSensitive);
+    if (effectiveMode === 'exact') return { matched: a === b, mode: effectiveMode, error: null };
+    return { matched: a.includes(b), mode: effectiveMode, error: null };
+  } catch (err) {
+    return { matched: false, mode: effectiveMode, error: err };
+  }
+}
+
 client.on('messageCreate', async (message) => {
   if (!config.get('discord.autoReplyEnabled')) return;
   if (message.author?.bot) return;
@@ -3773,28 +3796,14 @@ client.on('messageCreate', async (message) => {
 
   for (const rule of rules) {
     if (!rule.trigger || !rule.reply) continue;
-    let matched = false;
-
-    try {
-      if (rule.mode === 'exact') {
-        const a = rule.caseSensitive ? content : content.toLowerCase();
-        const b = rule.caseSensitive ? rule.trigger : rule.trigger.toLowerCase();
-        matched = a === b;
-      } else if (rule.mode === 'contains') {
-        const a = rule.caseSensitive ? content : content.toLowerCase();
-        const b = rule.caseSensitive ? rule.trigger : rule.trigger.toLowerCase();
-        matched = a.includes(b);
-      } else if (rule.mode === 'regex') {
-        const flags = rule.caseSensitive ? '' : 'i';
-        const regex = new RegExp(rule.trigger, flags);
-        matched = regex.test(content);
-      }
-    } catch (err) {
-      logger.warn(`Auto-Reply Regex-Fehler (Regel ${rule.id}): ${err.message}`);
+    const res = _matchAutoReplyRule(content, rule);
+    if (res.error) {
+      const modeHint = String(rule.mode || 'contains');
+      logger.warn(`Auto-Reply Regel-Fehler (Regel ${rule.id || 'ohne-id'}, Modus ${modeHint}): ${res.error.message}`);
       continue;
     }
 
-    if (matched) {
+    if (res.matched) {
       try {
         _autoReplyCooldownMap.set(cooldownKey, Date.now());
         await message.reply({ content: rule.reply });
