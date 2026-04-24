@@ -3693,13 +3693,36 @@ async function _askOpenAI(userContent, userName) {
       .map(cmd => `  /${cmd} — ${cmdDesc[cmd]}`)
       .join('\n');
     const autoReplyOn = (() => { try { return config.get('discord.autoReplyEnabled'); } catch { return false; } })();
+    const kiOn = (() => { try { return config.get('openai.enabled'); } catch { return false; } })();
+    const featureDetails = [
+      autoReplyOn ? [
+        `AUTO-REPLY (aktiv): Dieser Bot reagiert automatisch auf Chat-Nachrichten anhand hinterlegter Regeln.`,
+        `  - Regeln werden im Web-Dashboard konfiguriert (Stichwörter, Regex oder Enthält-Prüfung).`,
+        `  - Jede Regel hat einen Trigger und eine oder mehrere Antworten.`,
+        `  - Es gibt fertige Templates: Begrüßung, Gute Nacht, Schönen Abend, Wochenende, Wochentage.`,
+        `  - Mit /testreply kann ein Admin prüfen ob eine Nachricht eine Regel auslösen würde.`,
+        `  - Cooldown verhindert Spam (Standard: 10 Sekunden pro Nutzer+Kanal).`,
+        `  - Einstellbar: nur bei @Erwähnung reagieren, bestimmte Kanäle erlauben.`,
+      ].join('\n') : null,
+      kiOn ? [
+        `KI-CHAT (aktiv): Nutzer können den Bot per @Erwähnung oder /ki direkt befragen.`,
+        `  - Der Bot antwortet mit KI-generierten Antworten.`,
+        `  - Wetterfragen werden automatisch erkannt und beantwortet.`,
+        `  - Rate-Limit schützt vor Missbrauch.`,
+        `  - Die Persönlichkeit ist über das Dashboard (System-Prompt) anpassbar.`,
+      ].join('\n') : null,
+      `DASHBOARD: Das Web-Dashboard ist erreichbar unter http://localhost:3000/dashboard.`,
+      `  - Dort können Auto-Reply-Regeln, KI-Einstellungen, Willkommensnachrichten und mehr konfiguriert werden.`,
+      `  - Änderungen werden sofort gespeichert, kein Bot-Neustart nötig.`,
+    ].filter(Boolean).join('\n\n');
     return (
-      `Du bist ${personaName}, ein freundlicher und hilfreicher Discord-Bot auf einem Discord-Server. ` +
-      `Antworte immer auf Deutsch, kurz und präzise (maximal 3-4 Sätze). ` +
+      `Du bist ${personaName}, ein Discord-Bot auf diesem Server. ` +
+      `Antworte immer auf Deutsch, kurz und präzise (maximal 4 Sätze). ` +
       `Du bist humorvoll aber respektvoll. Der Nutzer heißt ${userName}.\n\n` +
-      `Verfügbare Slash-Befehle:\n${enabledList || '  (keine aktiv)'}\n` +
-      (autoReplyOn ? `\nAußerdem aktiv: Auto-Reply — der Bot antwortet automatisch auf bestimmte Chat-Nachrichten anhand hinterlegter Stichwort-Regeln.\n` : '') +
-      `\nWenn jemand fragt wie er dich bedienen soll oder was du kannst, erkläre die Slash-Befehle kurz und weise auf /hilfe hin.`
+      `DEINE VERFÜGBAREN SLASH-BEFEHLE:\n${enabledList || '  (keine aktiv)'}\n\n` +
+      `DEINE FEATURES UND WIE SIE FUNKTIONIEREN:\n${featureDetails}\n\n` +
+      `Wenn jemand fragt wie eine Funktion funktioniert, erkläre sie anhand der obigen Beschreibung — nicht generisch. ` +
+      `Weise bei Bedarf auf /hilfe oder das Dashboard hin.`
     );
   })();
 
