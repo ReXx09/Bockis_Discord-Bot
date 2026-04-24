@@ -1952,7 +1952,7 @@
         </div>
 
         <!-- ── EMOJI PICKER ────────────────────────────── -->
-        <div id="arEmojiPicker" style="display:none;position:fixed;z-index:10000;background:var(--surface1);border:1px solid var(--border);border-radius:10px;box-shadow:0 8px 32px rgba(0,0,0,0.4);padding:10px;width:320px;max-height:340px;overflow:hidden;flex-direction:column">
+        <div id="arEmojiPicker" style="display:none;position:fixed;z-index:10000;background:#0f1724;border:1px solid #2b3f5f;border-radius:10px;box-shadow:0 10px 36px rgba(0,0,0,0.55);padding:10px;width:320px;max-height:340px;overflow:hidden;flex-direction:column">
           <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px;border-bottom:1px solid var(--border);padding-bottom:8px" id="arEmojiCatBtns"></div>
           <div id="arEmojiGrid" style="display:flex;flex-wrap:wrap;gap:2px;overflow-y:auto;max-height:230px"></div>
         </div>
@@ -4429,7 +4429,7 @@
 
     const emojis = _arEmojiCategories[_arEmojiActiveCat].emojis;
     grid.innerHTML = emojis.map(e =>
-      `<button type="button" onclick="arPickEmoji('${e}')" style="background:none;border:none;font-size:20px;cursor:pointer;padding:4px;border-radius:4px;line-height:1" title="${e}" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background='none'">${e}</button>`
+      `<button type="button" onclick="arPickEmoji('${e}')" style="background:#111a2a;border:1px solid #22344f;font-size:20px;cursor:pointer;padding:4px;border-radius:4px;line-height:1" title="${e}" onmouseover="this.style.background='#1b2a40'" onmouseout="this.style.background='#111a2a'">${e}</button>`
     ).join('');
   }
 
