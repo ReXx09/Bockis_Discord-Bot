@@ -2056,16 +2056,9 @@
         </div>
         <div class="cfg-field">
           <label class="cfg-label" for="cfgOpenaiModel">KI-Modell</label>
-          <input class="cfg-input" id="cfgOpenaiModel" type="text" list="cfgOpenaiModelList" autocomplete="off" placeholder="openai/gpt-4o-mini">
-          <datalist id="cfgOpenaiModelList">
-            <option value="openai/gpt-4o-mini"></option>
-            <option value="openai/gpt-4o"></option>
-            <option value="meta-llama/llama-3.1-8b-instruct:free"></option>
-            <option value="meta-llama/llama-3.1-70b-instruct"></option>
-            <option value="google/gemini-2.0-flash-001"></option>
-            <option value="anthropic/claude-3.5-sonnet"></option>
-          </datalist>
-          <div class="cfg-hint">Für OpenRouter Modell-ID direkt eintragen (z. B. <code>openai/gpt-4o-mini</code> oder <code>meta-llama/llama-3.1-8b-instruct:free</code>).</div>
+          <input class="cfg-input" id="cfgOpenaiModel" type="text" list="cfgOpenaiModelList" autocomplete="off" placeholder="gpt-4o-mini">
+          <datalist id="cfgOpenaiModelList"></datalist>
+          <div class="cfg-hint" id="cfgOpenaiModelHint">Modell-ID passend zum gewählten Provider eintragen.</div>
         </div>
         <div class="cfg-field">
           <label class="cfg-label" for="cfgOpenaiPersonaName">Bot-Name / Persönlichkeit</label>
@@ -4470,11 +4463,12 @@
           openaiBaseUrlSelect.appendChild(dynamicOption);
         }
         setCfg('cfgOpenaiBaseUrl', openaiBaseUrl);
+        updateModelSuggestions(openaiBaseUrl);
         setCfg('cfgOpenaiApiKey', '');
         document.getElementById('cfgOpenaiApiKey').placeholder = d.OPENAI_API_KEY
           ? 'sk-… (gesetzt – leer lassen = unverändert)'
           : 'sk-… (noch nicht gesetzt)';
-        setCfg('cfgOpenaiModel', d.OPENAI_MODEL || 'gpt-4o-mini');
+        setCfg('cfgOpenaiModel', d.OPENAI_MODEL || _defaultModelForBaseUrl(openaiBaseUrl));
         setCfg('cfgOpenaiPersonaName', d.OPENAI_PERSONA_NAME || 'Bockis');
         setCfg('cfgOpenaiSystemPrompt', d.OPENAI_SYSTEM_PROMPT || '');
         setCfg('cfgOpenaiMaxTokens', d.OPENAI_MAX_TOKENS || '600');
@@ -4488,6 +4482,52 @@
       document.getElementById('cfgStatus').className = 'err';
     }
   }
+
+  // ── KI-Modell Vorschläge nach Provider ────────────────
+  const _MODEL_SUGGESTIONS = {
+    'https://api.openai.com/v1': {
+      models: ['gpt-4o-mini', 'gpt-4o', 'gpt-3.5-turbo', 'o1-mini'],
+      hint: 'OpenAI Modell-ID, z. B. <code>gpt-4o-mini</code>.',
+      placeholder: 'gpt-4o-mini',
+    },
+    'https://api.groq.com/openai/v1': {
+      models: ['llama-3.1-8b-instant', 'llama-3.3-70b-versatile', 'mixtral-8x7b-32768', 'gemma2-9b-it'],
+      hint: 'Groq Modell-ID, z. B. <code>llama-3.1-8b-instant</code>.',
+      placeholder: 'llama-3.1-8b-instant',
+    },
+    'https://openrouter.ai/api/v1': {
+      models: ['openai/gpt-4o-mini', 'openai/gpt-4o', 'meta-llama/llama-3.1-8b-instruct:free', 'meta-llama/llama-3.1-70b-instruct', 'mistralai/mistral-7b-instruct:free', 'google/gemini-2.0-flash-001', 'anthropic/claude-3.5-sonnet'],
+      hint: 'OpenRouter Modell-ID, z. B. <code>meta-llama/llama-3.1-8b-instruct:free</code> (kostenlos).',
+      placeholder: 'meta-llama/llama-3.1-8b-instruct:free',
+    },
+    'https://models.inference.ai.azure.com': {
+      models: ['gpt-4o-mini', 'gpt-4o', 'Phi-3.5-mini-instruct', 'Phi-4', 'Meta-Llama-3.1-8B-Instruct'],
+      hint: 'GitHub Models Modell-ID, z. B. <code>gpt-4o-mini</code>.',
+      placeholder: 'gpt-4o-mini',
+    },
+  };
+
+  function _defaultModelForBaseUrl(url) {
+    return (_MODEL_SUGGESTIONS[url] || _MODEL_SUGGESTIONS['https://api.openai.com/v1']).models[0];
+  }
+
+  function updateModelSuggestions(baseUrl) {
+    const cfg = _MODEL_SUGGESTIONS[baseUrl] || { models: [], hint: 'Modell-ID passend zum gewählten Provider eintragen.', placeholder: '' };
+    const dl = document.getElementById('cfgOpenaiModelList');
+    dl.innerHTML = cfg.models.map(m => `<option value="${m}"></option>`).join('');
+    const hint = document.getElementById('cfgOpenaiModelHint');
+    if (hint) hint.innerHTML = cfg.hint;
+    const inp = document.getElementById('cfgOpenaiModel');
+    if (inp) inp.placeholder = cfg.placeholder;
+  }
+
+  // Provider-Dropdown: Modellvorschläge und Placeholder aktualisieren
+  document.getElementById('cfgOpenaiBaseUrl').addEventListener('change', function () {
+    updateModelSuggestions(this.value);
+    // Modellfeld leeren, damit der Nutzer bewusst ein neues Modell wählt
+    const modelInp = document.getElementById('cfgOpenaiModel');
+    if (modelInp) modelInp.value = '';
+  });
 
   function confirmResetConfig() {
     const ok = window.confirm('Zurücksetzen lädt alle Einstellungsfelder aus der gespeicherten Konfiguration neu. Nicht gespeicherte Änderungen gehen verloren. Fortfahren?');
