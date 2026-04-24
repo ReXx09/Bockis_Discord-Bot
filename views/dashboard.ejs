@@ -2046,7 +2046,7 @@
             <span><strong>🎉 Schönes Wochenende</strong></span>
           </label>
         </div>
-        <button class="btn btn-green" onclick="saveAutoReplyTemplates()" style="margin-top:12px;width:100%;background:var(--green);border-color:var(--green)">💾 Templates speichern</button>
+        <button class="btn btn-green" id="btnSaveAutoReplyTemplates" onclick="saveAutoReplyTemplates()" style="margin-top:12px;width:100%;background:var(--green);border-color:var(--green)">💾 Templates speichern</button>
             </div>
           </div>
         </div>
@@ -4412,6 +4412,11 @@
   }
 
   async function saveAutoReplyTemplates() {
+    const btn = document.getElementById('btnSaveAutoReplyTemplates');
+    const originalText = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = '⏳ Speichern…';
+    
     const templates = {
       goodEvening: document.getElementById('cfgTemplateGoodEvening').checked,
       goodDay: document.getElementById('cfgTemplateGoodDay').checked,
@@ -4427,14 +4432,17 @@
       });
       const result = await response.json();
       if (result.ok) {
-        showAlert('✓ Templates gespeichert! Auto-Replies aktualisiert.', 'success');
+        toast('✓ Templates gespeichert! Auto-Replies aktualisiert.', 'ok');
         // Regeln neu laden um die Updates zu sehen
         setTimeout(() => arLoadRules(), 500);
       } else {
-        showAlert('✗ Fehler: ' + result.error, 'error');
+        toast('✗ Fehler: ' + result.error, 'err');
       }
     } catch (e) {
-      showAlert('✗ Fehler: ' + e.message, 'error');
+      toast('✗ Fehler: ' + e.message, 'err');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = originalText;
     }
   }
 
