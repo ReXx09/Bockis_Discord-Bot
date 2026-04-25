@@ -448,6 +448,12 @@ const config = convict({
       default: true,
       env: 'OPENAI_ALLOW_DMS'
     },
+    nameTriggerEnabled: {
+      doc: 'Bot reagiert im Server auch auf seinen Rufnamen ohne direkte @Erwaehnung',
+      format: Boolean,
+      default: false,
+      env: 'OPENAI_NAME_TRIGGER_ENABLED'
+    },
     rateLimitPerMinute: {
       doc: 'Maximale Anfragen pro Nutzer pro Minute (Schutz vor Missbrauch)',
       format: 'int',

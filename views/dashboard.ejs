@@ -2252,6 +2252,16 @@
           </div>
           <div class="cfg-hint">Wenn aktiviert, kann jeder Nutzer den Bot per DM kontaktieren (unabhängig von den Kanal-Einschränkungen oben).</div>
         </div>
+        <div class="cfg-field" style="border:1px solid var(--border);border-radius:8px;padding:12px;background:rgba(255,255,255,.01)">
+          <label class="cfg-label">Rufname ohne @Erwähnung</label>
+          <div style="display:flex;align-items:center;gap:12px;margin-top:2px">
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px">
+              <input type="checkbox" id="cfgOpenaiNameTriggerEnabled" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
+              <span>Bot reagiert auch, wenn sein Name (z.B. Bob/Bockis) im Chat steht</span>
+            </label>
+          </div>
+          <div class="cfg-hint">Beispiel: "Bob, wie funktioniert Auto-Reply?" funktioniert dann auch ohne direkte @Erwähnung.</div>
+        </div>
             </div>
           </div>
         </div>
@@ -4794,6 +4804,7 @@
         setCfg('cfgOpenaiRateLimit', d.OPENAI_RATE_LIMIT_PER_MINUTE || '5');
         setCfg('cfgOpenaiChannelIds', d.OPENAI_CHANNEL_IDS || '');
         setCheckboxValue('cfgOpenaiAllowDMs', (d.OPENAI_ALLOW_DMS || 'true') === 'true', { force });
+        setCheckboxValue('cfgOpenaiNameTriggerEnabled', (d.OPENAI_NAME_TRIGGER_ENABLED || 'false') === 'true', { force });
 
         if (force) clearConfigDirtyTracking();
     } catch (e) {
@@ -5029,6 +5040,9 @@
       const openaiDMsEl = document.getElementById('cfgOpenaiAllowDMs');
       const curOpenaiDMs = openaiDMsEl.checked ? 'true' : 'false';
       if (curOpenaiDMs !== (openaiDMsEl.dataset.initialValue || 'true')) body.OPENAI_ALLOW_DMS = curOpenaiDMs;
+      const openaiNameTriggerEl = document.getElementById('cfgOpenaiNameTriggerEnabled');
+      const curOpenaiNameTrigger = openaiNameTriggerEl.checked ? 'true' : 'false';
+      if (curOpenaiNameTrigger !== (openaiNameTriggerEl.dataset.initialValue || 'false')) body.OPENAI_NAME_TRIGGER_ENABLED = curOpenaiNameTrigger;
 
       const indicatorEl = document.getElementById('cfgChannelIndicator');
     const currentIndicator = indicatorEl.checked ? 'true' : 'false';

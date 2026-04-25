@@ -3641,6 +3641,27 @@ function _getChatAllowedChannelIds() {
   return raw.split(/[,;]/).map(s => s.trim()).filter(Boolean);
 }
 
+function _escapeRegex(value) {
+  return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function _getAiNameTriggers() {
+  const fromConfig = [String(config.get('openai.personaName') || '').trim(), String(client.user?.username || '').trim()]
+    .filter(Boolean);
+  return [...new Set(fromConfig.map((v) => v.toLocaleLowerCase('de-DE')))].filter((v) => v.length >= 2);
+}
+
+function _messageHasAiNameTrigger(message) {
+  if (!config.get('openai.nameTriggerEnabled')) return false;
+  const text = String(message?.content || '').normalize('NFC');
+  if (!text.trim()) return false;
+  const triggers = _getAiNameTriggers();
+  return triggers.some((name) => {
+    const rx = new RegExp(`(^|[^\\p{L}\\p{N}_])${_escapeRegex(name)}(?=$|[^\\p{L}\\p{N}_])`, 'iu');
+    return rx.test(text);
+  });
+}
+
 async function _fetchWeather(location) {
   try {
     const url = `https://wttr.in/${encodeURIComponent(location)}?format=3&lang=de`;
@@ -3755,10 +3776,11 @@ client.on('messageCreate', async (message) => {
   // Never auto-answer mass mentions in guild channels.
   if (!isDM && message.mentions?.everyone) return;
   const isMention = message.mentions.has(client.user);
+  const isNameTrigger = !isDM && _messageHasAiNameTrigger(message);
 
   // Fallback wenn KI deaktiviert: @Erwähnung trotzdem beantworten
   if (!config.get('openai.enabled')) {
-    if (!isDM && isMention) {
+    if (!isDM && (isMention || isNameTrigger)) {
       const q = message.content.replace(/<@!?\d+>/g, '').trim();
       if (q && /\b(hilf|help|hilfe|wie|was kannst|kannst du|erkl[äa]r|was machst|commands|befehle|kommandos)\b/i.test(q)) {
         await message.reply({
@@ -3775,7 +3797,7 @@ client.on('messageCreate', async (message) => {
     return;
   }
 
-  if (!isDM && !isMention) return;
+  if (!isDM && !isMention && !isNameTrigger) return;
   if (isDM && !config.get('openai.allowDMs')) return;
 
   // Kanal-Filter (nur bei Guild-Nachrichten)
@@ -3796,7 +3818,16 @@ client.on('messageCreate', async (message) => {
   _chatRateLimitMap.set(message.author.id, history);
 
   // Mention-Prefix entfernen
-  const content = message.content.replace(/<@!?\d+>/g, '').trim();
+  let content = message.content.replace(/<@!?\d+>/g, '').trim();
+  if (!isMention && isNameTrigger) {
+    const triggerPatterns = _getAiNameTriggers().map((name) => new RegExp(`^\\s*${_escapeRegex(name)}(?:[,:;!?.-]+\\s*|\\s+)`, 'iu'));
+    for (const pattern of triggerPatterns) {
+      if (pattern.test(content)) {
+        content = content.replace(pattern, '').trim();
+        break;
+      }
+    }
+  }
   if (!content) {
     await message.reply({ content: `Hey ${message.author.displayName}! Wie kann ich dir helfen? 😊` }).catch(() => {});
     return;

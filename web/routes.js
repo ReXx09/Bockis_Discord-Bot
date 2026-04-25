@@ -1343,6 +1343,7 @@ module.exports = function startWebServer({
         OPENAI_CHANNEL_IDS:           get('OPENAI_CHANNEL_IDS') || '',
         OPENAI_MAX_TOKENS:            get('OPENAI_MAX_TOKENS') || '600',
         OPENAI_ALLOW_DMS:             get('OPENAI_ALLOW_DMS') || 'true',
+        OPENAI_NAME_TRIGGER_ENABLED:  get('OPENAI_NAME_TRIGGER_ENABLED') || 'false',
         OPENAI_RATE_LIMIT_PER_MINUTE: get('OPENAI_RATE_LIMIT_PER_MINUTE') || '5',
       });
     } catch (err) {
@@ -1431,6 +1432,7 @@ module.exports = function startWebServer({
         'OPENAI_CHANNEL_IDS',
         'OPENAI_MAX_TOKENS',
         'OPENAI_ALLOW_DMS',
+        'OPENAI_NAME_TRIGGER_ENABLED',
         'OPENAI_RATE_LIMIT_PER_MINUTE'
     ];
     const CLEARABLE_CFG = new Set([
