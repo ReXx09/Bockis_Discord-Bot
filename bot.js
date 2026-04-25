@@ -3905,6 +3905,7 @@ async function _processAutoReplyMessage(message) {
   if (!rules.length) return;
 
   const content = message.content;
+  const matchedReplies = [];
 
   for (const rule of rules) {
     if (!rule.trigger || !rule.reply) continue;
@@ -3916,13 +3917,23 @@ async function _processAutoReplyMessage(message) {
     }
 
     if (res.matched) {
-      try {
-        _autoReplyCooldownMap.set(cooldownKey, Date.now());
-        await message.reply({ content: rule.reply });
-      } catch (err) {
-        logger.warn(`Auto-Reply fehlgeschlagen (Regel ${rule.id}): ${err.message}`);
-      }
-      break; // nur erste passende Regel anwenden
+      matchedReplies.push(String(rule.reply));
+    }
+  }
+
+  if (!matchedReplies.length) return;
+
+  // Duplikate entfernen und Reply-Flut begrenzen.
+  const uniqueReplies = [...new Set(matchedReplies.map((v) => String(v || '').trim()).filter(Boolean))];
+  const repliesToSend = uniqueReplies.slice(0, 5);
+
+  _autoReplyCooldownMap.set(cooldownKey, Date.now());
+  for (const replyText of repliesToSend) {
+    try {
+      const safeReply = replyText.length > 1900 ? replyText.slice(0, 1897) + '…' : replyText;
+      await message.reply({ content: safeReply });
+    } catch (err) {
+      logger.warn(`Auto-Reply fehlgeschlagen: ${err.message}`);
     }
   }
 }
