@@ -17,7 +17,7 @@
     "id": "good-evening",
     "trigger": "schönen abend",
     "mode": "contains",
-    "reply": "Schönen Abend! 🌙",
+    "reply": "Danke schön 😀Ich wünsche Dir auch einen Schönen Abend! 🌙",
     "caseSensitive": false
   },
   {
@@ -25,6 +25,13 @@
     "trigger": "schönen tag",
     "mode": "contains",
     "reply": "Schönen Tag noch! ☀️",
+    "caseSensitive": false
+  },
+  {
+    "id": "good-morning",
+    "trigger": "guten morgen",
+    "mode": "contains",
+    "reply": "Guten Morgen! ☕",
     "caseSensitive": false
   },
   {
