@@ -1070,7 +1070,7 @@
                 </select>
                 <button class="btn" onclick="appendAutoReactionEmoji()">➕ Emoji übernehmen</button>
               </div>
-              <div class="cfg-hint">Trenne mehrere Emojis mit <code>;</code> oder <code>,</code>. Maximal 5 Emojis. Pro Nachricht wird zufällig 1 davon gewählt. Unicode und Custom-Emoji-Strings sind möglich.</div>
+              <div class="cfg-hint">Trenne mehrere Emojis mit <code>;</code> oder <code>,</code>. Maximal 20 Emojis. Pro Nachricht wird zufällig 1 davon gewählt. Unicode und Custom-Emoji-Strings sind möglich.</div>
               <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
                 <input class="cfg-input" id="cfgAutoReactionChannelIds" type="text" autocomplete="off" style="min-width:260px;flex:1"
                        placeholder="Optional: 123456789012345678,234567890123456789">
@@ -4124,7 +4124,7 @@
       .map(s => s.trim())
       .filter(Boolean);
     if (!existing.includes(value)) existing.push(value);
-    inputEl.value = existing.slice(0, 5).join(';');
+    inputEl.value = existing.slice(0, 20).join(';');
     presetEl.value = '';
   }
 

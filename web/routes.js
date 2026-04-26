@@ -1508,7 +1508,7 @@ module.exports = function startWebServer({
         if (/[\n\r]/.test(val)) return res.json({ ok: false, error: 'DISCORD_AUTO_REACTION_EMOJIS darf keine Zeilenumbrueche enthalten' });
         const entries = val.split(/[;,]/).map(s => s.trim()).filter(Boolean);
         if (!entries.length) return res.json({ ok: false, error: 'DISCORD_AUTO_REACTION_EMOJIS muss mindestens ein Emoji enthalten' });
-        if (entries.length > 5) return res.json({ ok: false, error: 'DISCORD_AUTO_REACTION_EMOJIS erlaubt maximal 5 Emojis' });
+        if (entries.length > 20) return res.json({ ok: false, error: 'DISCORD_AUTO_REACTION_EMOJIS erlaubt maximal 20 Emojis' });
       }
       if (key === 'DISCORD_AUTO_REACTION_CHANNEL_IDS') {
         const entries = val.split(/[;,]/).map(s => s.trim()).filter(Boolean);

@@ -2818,7 +2818,7 @@ function getConfiguredAutoReactionEmojis() {
     .split(/[;,]/)
     .map(s => s.trim())
     .filter(Boolean);
-  return Array.from(new Set(entries)).slice(0, 5);
+  return Array.from(new Set(entries)).slice(0, 20);
 }
 
 function getConfiguredAutoReactionChannelIds() {
