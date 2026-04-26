@@ -1280,6 +1280,8 @@ module.exports = function startWebServer({
         DISCORD_AUTO_REPLY_CHANNEL_IDS: get('DISCORD_AUTO_REPLY_CHANNEL_IDS') || '',
         DISCORD_AUTO_REPLY_COOLDOWN_MS: get('DISCORD_AUTO_REPLY_COOLDOWN_MS') || '30000',
         DISCORD_AUTO_REPLY_RULES_FILE: get('DISCORD_AUTO_REPLY_RULES_FILE') || './auto-replies.json',
+        DISCORD_AUTO_REPLY_RESPONSE_MODE: get('DISCORD_AUTO_REPLY_RESPONSE_MODE') || 'list',
+        DISCORD_AUTO_REPLY_CONNECTOR: get('DISCORD_AUTO_REPLY_CONNECTOR') || 'Außerdem',
         DISCORD_WELCOME_ENABLED:      get('DISCORD_WELCOME_ENABLED') || 'false',
         DISCORD_WELCOME_CHANNEL_ID:   get('DISCORD_WELCOME_CHANNEL_ID') || '',
         DISCORD_WELCOME_MESSAGE_TEMPLATE: get('DISCORD_WELCOME_MESSAGE_TEMPLATE') || 'Willkommen {{user}}!',
@@ -1368,6 +1370,8 @@ module.exports = function startWebServer({
       'DISCORD_AUTO_REPLY_CHANNEL_IDS',
       'DISCORD_AUTO_REPLY_COOLDOWN_MS',
       'DISCORD_AUTO_REPLY_RULES_FILE',
+      'DISCORD_AUTO_REPLY_RESPONSE_MODE',
+      'DISCORD_AUTO_REPLY_CONNECTOR',
       'DISCORD_ENABLED_COMMANDS',
       'DISCORD_TRANSLATE_ENABLED',
       'DISCORD_TRANSLATE_DEFAULT_TARGET',
@@ -1441,6 +1445,7 @@ module.exports = function startWebServer({
       'DISCORD_AUTO_REACTION_CHANNEL_IDS',
       'DISCORD_AUTO_REPLY_CHANNEL_IDS',
       'DISCORD_AUTO_REPLY_RULES_FILE',
+      'DISCORD_AUTO_REPLY_CONNECTOR',
       'DISCORD_WELCOME_CHANNEL_ID',
       'DISCORD_WELCOME_MESSAGE_TEMPLATE',
       'DISCORD_GITHUB_CHANNEL_ID',
@@ -1636,6 +1641,15 @@ module.exports = function startWebServer({
         const n = parseInt(val, 10);
         if (!Number.isFinite(n) || n < 50 || n > 2000)
           return res.json({ ok: false, error: 'OPENAI_MAX_TOKENS muss zwischen 50 und 2000 liegen' });
+      }
+      if (key === 'DISCORD_AUTO_REPLY_RESPONSE_MODE') {
+        if (!['list', 'sentence'].includes(String(val).trim().toLowerCase())) {
+          return res.json({ ok: false, error: 'DISCORD_AUTO_REPLY_RESPONSE_MODE muss list oder sentence sein' });
+        }
+      }
+      if (key === 'DISCORD_AUTO_REPLY_CONNECTOR') {
+        if (/[\n\r]/.test(val)) return res.json({ ok: false, error: 'DISCORD_AUTO_REPLY_CONNECTOR darf keine Zeilenumbrüche enthalten' });
+        if (String(val).length > 40) return res.json({ ok: false, error: 'DISCORD_AUTO_REPLY_CONNECTOR darf maximal 40 Zeichen enthalten' });
       }
       if (key === 'OPENAI_RATE_LIMIT_PER_MINUTE') {
         const n = parseInt(val, 10);

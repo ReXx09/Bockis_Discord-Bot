@@ -328,6 +328,18 @@ const config = convict({
       default: './auto-replies.json',
       env: 'DISCORD_AUTO_REPLY_RULES_FILE'
     },
+    autoReplyResponseMode: {
+      doc: 'Antwortmodus bei mehreren Treffern: list oder sentence',
+      format: String,
+      default: 'list',
+      env: 'DISCORD_AUTO_REPLY_RESPONSE_MODE'
+    },
+    autoReplyConnector: {
+      doc: 'Konnektor fuer Satzmodus bei mehreren Treffern (z.B. Ausserdem)',
+      format: String,
+      default: 'Außerdem',
+      env: 'DISCORD_AUTO_REPLY_CONNECTOR'
+    },
     welcomeEnabled: {
       doc: 'Willkommensnachrichten für neue Nutzer aktivieren',
       format: Boolean,

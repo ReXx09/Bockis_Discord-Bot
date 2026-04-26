@@ -3912,6 +3912,30 @@ function _matchAutoReplyRule(content, rule) {
   }
 }
 
+function _buildAutoReplyCombinedReply(replies) {
+  const cleanReplies = (Array.isArray(replies) ? replies : [])
+    .map((v) => String(v || '').trim())
+    .filter(Boolean);
+  if (!cleanReplies.length) return '';
+
+  const modeRaw = String(config.get('discord.autoReplyResponseMode') || 'list').trim().toLowerCase();
+  const mode = modeRaw === 'sentence' ? 'sentence' : 'list';
+  if (mode === 'list' || cleanReplies.length === 1) {
+    return cleanReplies.length > 1 ? cleanReplies.map((text) => `- ${text}`).join('\n') : cleanReplies[0];
+  }
+
+  const connectorRaw = String(config.get('discord.autoReplyConnector') || 'Außerdem').trim();
+  const connector = connectorRaw || 'Außerdem';
+
+  let out = cleanReplies[0];
+  for (let i = 1; i < cleanReplies.length; i += 1) {
+    const part = cleanReplies[i];
+    const endsWithPunctuation = /[.!?…:]$/.test(out.trim());
+    out += endsWithPunctuation ? ` ${connector} ${part}` : `. ${connector} ${part}`;
+  }
+  return out;
+}
+
 async function _processAutoReplyMessage(message) {
   if (!config.get('discord.autoReplyEnabled')) return;
   if (message.author?.bot) return;
@@ -3960,9 +3984,8 @@ async function _processAutoReplyMessage(message) {
 
   _autoReplyCooldownMap.set(cooldownKey, Date.now());
   try {
-    const combinedReply = repliesToSend.length > 1
-      ? repliesToSend.map((text) => `- ${text}`).join('\n')
-      : repliesToSend[0];
+    const combinedReply = _buildAutoReplyCombinedReply(repliesToSend);
+    if (!combinedReply) return;
     const safeReply = combinedReply.length > 1900 ? combinedReply.slice(0, 1897) + '…' : combinedReply;
     await message.reply({ content: safeReply });
   } catch (err) {

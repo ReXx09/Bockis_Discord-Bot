@@ -1906,6 +1906,25 @@
           <div class="cfg-hint">Mindestabstand in Millisekunden pro Kanal (0 = kein Cooldown, Standard: 30000 = 30 Sek).</div>
         </div>
         <div class="cfg-field">
+          <label class="cfg-label" for="cfgAutoReplyResponseMode">Antwortmodus bei mehreren Treffern</label>
+          <select class="cfg-input" id="cfgAutoReplyResponseMode">
+            <option value="list">Liste (mehrere Zeilen)</option>
+            <option value="sentence">Satzmodus (eine Fließtext-Antwort)</option>
+          </select>
+          <div class="cfg-hint">Steuert wie mehrere Trigger-Antworten in einer Sammelantwort formatiert werden.</div>
+        </div>
+        <div class="cfg-field">
+          <label class="cfg-label" for="cfgAutoReplyConnector">Konnektor (für Satzmodus)</label>
+          <select class="cfg-input" id="cfgAutoReplyConnector">
+            <option value="Außerdem">Außerdem</option>
+            <option value="Und">Und</option>
+            <option value="Zudem">Zudem</option>
+            <option value="Sowie">Sowie</option>
+            <option value="Dann noch">Dann noch</option>
+          </select>
+          <div class="cfg-hint">Wird zwischen mehreren Teilantworten im Satzmodus eingefügt.</div>
+        </div>
+        <div class="cfg-field">
           <label class="cfg-label" for="cfgAutoReplyRulesFile">Pfad zur Regeldatei</label>
           <input class="cfg-input" id="cfgAutoReplyRulesFile" type="text" autocomplete="off" placeholder="./auto-replies.json">
           <div class="cfg-hint">JSON-Array mit Regeln (Felder: <code>id</code>, <code>trigger</code>, <code>mode</code>, <code>reply</code>). Modus: <code>contains</code>, <code>exact</code>, <code>regex</code>.</div>
@@ -4765,6 +4784,8 @@
       setCheckboxValue('cfgAutoReplyMentionOnly', (d.DISCORD_AUTO_REPLY_MENTION_ONLY || 'false') === 'true', { force });
       setCfg('cfgAutoReplyChannelIds', d.DISCORD_AUTO_REPLY_CHANNEL_IDS || '');
       setCfg('cfgAutoReplyCooldownMs', d.DISCORD_AUTO_REPLY_COOLDOWN_MS || '30000');
+      setCfg('cfgAutoReplyResponseMode', d.DISCORD_AUTO_REPLY_RESPONSE_MODE || 'list');
+      setCfg('cfgAutoReplyConnector', d.DISCORD_AUTO_REPLY_CONNECTOR || 'Außerdem');
       setCfg('cfgAutoReplyRulesFile', d.DISCORD_AUTO_REPLY_RULES_FILE || './auto-replies.json');
 
       // GitHub-Watcher
@@ -5006,6 +5027,8 @@
     // Auto-Reply
     maybeSetChanged(body, 'DISCORD_AUTO_REPLY_CHANNEL_IDS', 'cfgAutoReplyChannelIds', { allowEmpty: true });
     maybeSetChanged(body, 'DISCORD_AUTO_REPLY_COOLDOWN_MS', 'cfgAutoReplyCooldownMs');
+    maybeSetChanged(body, 'DISCORD_AUTO_REPLY_RESPONSE_MODE', 'cfgAutoReplyResponseMode');
+    maybeSetChanged(body, 'DISCORD_AUTO_REPLY_CONNECTOR', 'cfgAutoReplyConnector', { allowEmpty: true });
     maybeSetChanged(body, 'DISCORD_AUTO_REPLY_RULES_FILE', 'cfgAutoReplyRulesFile', { allowEmpty: true });
     const autoReplyEl = document.getElementById('cfgAutoReplyEnabled');
     const curAutoReply = autoReplyEl.checked ? 'true' : 'false';
