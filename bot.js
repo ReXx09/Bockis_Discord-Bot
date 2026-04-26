@@ -4022,12 +4022,11 @@ client.on('messageCreate', async (message) => {
   const emojis = getConfiguredAutoReactionEmojis();
   if (!emojis.length) return;
 
-  for (const emoji of emojis) {
-    try {
-      await message.react(emoji);
-    } catch (err) {
-      logger.warn(`Auto-Reaction fehlgeschlagen in #${message.channel?.name || message.channelId} mit ${emoji}: ${err.message}`);
-    }
+  const emoji = emojis[Math.floor(Math.random() * emojis.length)];
+  try {
+    await message.react(emoji);
+  } catch (err) {
+    logger.warn(`Auto-Reaction fehlgeschlagen in #${message.channel?.name || message.channelId} mit ${emoji}: ${err.message}`);
   }
 });
 

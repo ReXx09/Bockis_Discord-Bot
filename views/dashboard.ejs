@@ -1025,7 +1025,7 @@
               <div style="display:flex;align-items:center;gap:12px;margin-top:2px;flex-wrap:wrap">
                 <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px">
                   <input type="checkbox" id="cfgAutoReactionEnabled" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
-                  <span>Für neue Guild-Nachrichten automatisch Emojis setzen</span>
+                  <span>Für neue Guild-Nachrichten automatisch 1 zufälliges Emoji setzen</span>
                 </label>
               </div>
               <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
@@ -1046,7 +1046,7 @@
                 </select>
                 <button class="btn" onclick="appendAutoReactionEmoji()">➕ Emoji übernehmen</button>
               </div>
-              <div class="cfg-hint">Trenne mehrere Emojis mit <code>;</code> oder <code>,</code>. Maximal 5 Emojis. Unicode und Custom-Emoji-Strings sind möglich.</div>
+              <div class="cfg-hint">Trenne mehrere Emojis mit <code>;</code> oder <code>,</code>. Maximal 5 Emojis. Pro Nachricht wird zufällig 1 davon gewählt. Unicode und Custom-Emoji-Strings sind möglich.</div>
               <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
                 <input class="cfg-input" id="cfgAutoReactionChannelIds" type="text" autocomplete="off" style="min-width:260px;flex:1"
                        placeholder="Optional: 123456789012345678,234567890123456789">
