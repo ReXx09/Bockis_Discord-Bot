@@ -1141,6 +1141,9 @@
                 </div>
                 <div class="cfg-hint">DeepL bietet hoehere Qualitaet. Fallback: LibreTranslate. API-Key unter https://www.deepl.com/pro-account/summary erhältlich.</div>
               </div>
+              <div id="cfgTranslateProviderStatus" style="margin-top:12px;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:rgba(255,255,255,.03);font-size:13px;color:var(--text)">
+                Uebersetzer-Status wird geladen...
+              </div>
               <div style="border-top:1px solid var(--border);margin-top:12px;padding-top:12px">
                 <label class="cfg-label" style="font-size:12px;margin-bottom:4px">Fallback: LibreTranslate</label>
                 <label class="cfg-label" for="cfgTranslateApiUrl" style="font-size:12px;margin-bottom:4px;margin-top:8px">API URL</label>
@@ -4117,6 +4120,28 @@
     presetEl.value = '';
   }
 
+  function updateTranslateProviderStatus() {
+    const statusEl = document.getElementById('cfgTranslateProviderStatus');
+    const useDeepLEl = document.getElementById('cfgUseDeepL');
+    const deepLKeyEl = document.getElementById('cfgDeepLApiKey');
+    const libreUrlEl = document.getElementById('cfgTranslateApiUrl');
+    if (!statusEl || !useDeepLEl || !deepLKeyEl || !libreUrlEl) return;
+
+    const deepLEnabled = !!useDeepLEl.checked;
+    const hasDeepLKey = !!String(deepLKeyEl.value || '').trim() || deepLKeyEl.dataset.initialValue === '__MASKED__';
+    const libreUrl = String(libreUrlEl.value || '').trim() || 'http://localhost:5000/translate';
+
+    if (deepLEnabled && hasDeepLKey) {
+      statusEl.innerHTML = '<strong>Aktiv:</strong> DeepL wird bevorzugt verwendet. <span style="color:var(--text-muted,#9aa)">Fallback bei Fehlern: LibreTranslate unter ' + libreUrl + '</span>';
+      return;
+    }
+    if (deepLEnabled && !hasDeepLKey) {
+      statusEl.innerHTML = '<strong>Fallback aktiv:</strong> DeepL ist eingeschaltet, aber es ist kein API-Key gesetzt. Es wird aktuell <strong>LibreTranslate</strong> unter ' + libreUrl + ' verwendet.';
+      return;
+    }
+    statusEl.innerHTML = '<strong>Aktiv:</strong> DeepL ist deaktiviert. Es wird <strong>LibreTranslate</strong> unter ' + libreUrl + ' verwendet.';
+  }
+
   function _parseEnabledCommands(value) {
     const allowed = ['status', 'uptime', 'refresh', 'help', 'coinflip', 'dice', 'eightball', 'cleanup', 'translate', 'ping', 'botinfo', 'serverstatus', 'ki', 'wetter', 'subscribe', 'remind', 'quote', 'poll', 'avatar', 'userinfo', 'testreply'];
     const entries = String(value || '')
@@ -4721,6 +4746,7 @@
       setCfg('cfgTranslateApiUrlSecurity', d.DISCORD_TRANSLATE_API_URL || 'http://localhost:5000/translate');
       setCfg('cfgTranslateAllowedGuildIds', d.DISCORD_TRANSLATE_ALLOWED_GUILD_IDS || '');
       setCfg('cfgTranslateMaxTextLength', d.DISCORD_TRANSLATE_MAX_TEXT_LENGTH || '1800');
+      updateTranslateProviderStatus();
       setCfg('cfgNotifCh', d.DISCORD_NOTIFICATION_CHANNEL || '');
       setCfg('cfgKumaUrl', d.UPTIME_KUMA_URL || '');
       setCfg('cfgRenderMode', d.DISCORD_STATUS_RENDER_MODE || 'auto');
@@ -4960,6 +4986,9 @@
   }
   document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('btnAddCleanupChannel')?.addEventListener('click', () => addCleanupChannelRow());
+    document.getElementById('cfgUseDeepL')?.addEventListener('change', updateTranslateProviderStatus);
+    document.getElementById('cfgDeepLApiKey')?.addEventListener('input', updateTranslateProviderStatus);
+    document.getElementById('cfgTranslateApiUrl')?.addEventListener('input', updateTranslateProviderStatus);
     arLoadRules();
   });
 
