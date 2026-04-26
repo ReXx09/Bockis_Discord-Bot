@@ -3959,13 +3959,14 @@ async function _processAutoReplyMessage(message) {
   const repliesToSend = uniqueReplies.slice(0, 5);
 
   _autoReplyCooldownMap.set(cooldownKey, Date.now());
-  for (const replyText of repliesToSend) {
-    try {
-      const safeReply = replyText.length > 1900 ? replyText.slice(0, 1897) + '…' : replyText;
-      await message.reply({ content: safeReply });
-    } catch (err) {
-      logger.warn(`Auto-Reply fehlgeschlagen: ${err.message}`);
-    }
+  try {
+    const combinedReply = repliesToSend.length > 1
+      ? repliesToSend.map((text) => `- ${text}`).join('\n')
+      : repliesToSend[0];
+    const safeReply = combinedReply.length > 1900 ? combinedReply.slice(0, 1897) + '…' : combinedReply;
+    await message.reply({ content: safeReply });
+  } catch (err) {
+    logger.warn(`Auto-Reply fehlgeschlagen: ${err.message}`);
   }
 }
 
