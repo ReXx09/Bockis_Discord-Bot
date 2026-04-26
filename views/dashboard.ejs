@@ -3829,7 +3829,9 @@
     const el = document.getElementById(id);
     if (!el) return;
     if (_shouldPreserveConfigField(el, force)) return;
-    const normalized = !!checked;
+    const normalized = typeof checked === 'string'
+      ? /^(true|1|yes|on)$/i.test(checked.trim())
+      : !!checked;
     el.checked = normalized;
     el.dataset.initialValue = normalized ? 'true' : 'false';
     _setDirtyState(el, false);
@@ -4713,7 +4715,7 @@
       ensureSelectOption('cfgTranslateDefaultSource', d.DISCORD_TRANSLATE_DEFAULT_SOURCE || 'auto');
       setCfg('cfgTranslateDefaultTarget', d.DISCORD_TRANSLATE_DEFAULT_TARGET || 'de');
       setCfg('cfgTranslateDefaultSource', d.DISCORD_TRANSLATE_DEFAULT_SOURCE || 'auto');
-      setCheckboxValue('cfgUseDeepL', d.DISCORD_USE_DEEPL || false);
+      setCheckboxValue('cfgUseDeepL', d.DISCORD_USE_DEEPL || 'false', { force });
       setCfg('cfgDeepLApiUrl', d.DISCORD_DEEPL_API_URL || 'https://api-free.deepl.com');
       setCfg('cfgTranslateApiUrl', d.DISCORD_TRANSLATE_API_URL || 'http://localhost:5000/translate');
       setCfg('cfgTranslateApiUrlSecurity', d.DISCORD_TRANSLATE_API_URL || 'http://localhost:5000/translate');
@@ -4982,7 +4984,9 @@
     maybeSetChanged(body, 'DISCORD_ENABLED_COMMANDS', 'cfgEnabledCommands');
     maybeSetChanged(body, 'DISCORD_TRANSLATE_DEFAULT_TARGET', 'cfgTranslateDefaultTarget');
     maybeSetChanged(body, 'DISCORD_TRANSLATE_DEFAULT_SOURCE', 'cfgTranslateDefaultSource');
-    maybeSetChanged(body, 'DISCORD_USE_DEEPL', 'cfgUseDeepL');
+    const useDeepLEl = document.getElementById('cfgUseDeepL');
+    const curUseDeepL = useDeepLEl.checked ? 'true' : 'false';
+    if (curUseDeepL !== (useDeepLEl.dataset.initialValue || 'false')) body.DISCORD_USE_DEEPL = curUseDeepL;
     maybeSetChanged(body, 'DISCORD_DEEPL_API_KEY', 'cfgDeepLApiKey', { allowEmpty: true });
     maybeSetChanged(body, 'DISCORD_DEEPL_API_URL', 'cfgDeepLApiUrl');
     maybeSetChangedAny(body, 'DISCORD_TRANSLATE_API_URL', ['cfgTranslateApiUrl', 'cfgTranslateApiUrlSecurity']);
