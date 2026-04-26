@@ -2831,6 +2831,40 @@ function getConfiguredAutoReactionChannelIds() {
   ));
 }
 
+function _classifyReactionMood(text) {
+  const msg = String(text || '').toLocaleLowerCase('de-DE');
+  if (!msg) return 'neutral';
+
+  // Grobe Heuristik: bei negativen/ernsten Inhalten keine Party-/Lach-Emojis.
+  const negativeRx = /\b(schlecht|traurig|depri|depressiv|angst|stress|gestresst|müde|muede|krank|schei(?:ss|ß)e|kacke|fail|fehler|problem|rip|tot|gestorben|beerdigung|verlust|streit|wut|sauer|kummer|hilfe)\b/i;
+  if (negativeRx.test(msg)) return 'negative';
+
+  const positiveRx = /\b(super|top|nice|geil|cool|yay|wow|freu|freue|glück|glueck|geschafft|gewonnen|danke|happy|stark|mega)\b/i;
+  if (positiveRx.test(msg)) return 'positive';
+
+  return 'neutral';
+}
+
+function _pickSmartAutoReactionEmoji(emojis, messageText) {
+  const list = Array.isArray(emojis) ? emojis.filter(Boolean) : [];
+  if (!list.length) return null;
+
+  const mood = _classifyReactionMood(messageText);
+  if (mood !== 'negative') {
+    return list[Math.floor(Math.random() * list.length)];
+  }
+
+  const avoidForNegative = new Set(['😂', '🤣', '😅', '😎', '🥳', '🎉', '🔥', '💯', '🚀', '🌞']);
+  const supportiveFirst = ['🙏', '❤️', '💚', '🫶', '🤔', '👀', '💡', '✅'];
+
+  const filtered = list.filter((e) => !avoidForNegative.has(e));
+  if (!filtered.length) return null;
+
+  const supportive = filtered.filter((e) => supportiveFirst.includes(e));
+  const pool = supportive.length ? supportive : filtered;
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
 function isTranslationEnabled() {
   return config.get('discord.translateEnabled') === true;
 }
@@ -4022,7 +4056,8 @@ client.on('messageCreate', async (message) => {
   const emojis = getConfiguredAutoReactionEmojis();
   if (!emojis.length) return;
 
-  const emoji = emojis[Math.floor(Math.random() * emojis.length)];
+  const emoji = _pickSmartAutoReactionEmoji(emojis, message.content);
+  if (!emoji) return;
   try {
     await message.react(emoji);
   } catch (err) {
