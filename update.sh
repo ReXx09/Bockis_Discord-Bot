@@ -146,10 +146,18 @@ update_native() {
       STASH_DONE=false
 
       # Lokale Laufzeit-Dateien sichern (z. B. .env + Auto-Reply-Regeln)
-      if git -C "$BOT_DIR" diff --quiet -- .env auto-replies.json data/auto-replies.json 2>/dev/null; then
-        true
-      else
-        git -C "$BOT_DIR" stash push -m "update-backup" -- .env auto-replies.json data/auto-replies.json 2>/dev/null && STASH_DONE=true || true
+      LOCAL_OVERRIDE_FILES=()
+      for rel in .env auto-replies.json data/auto-replies.json; do
+        if [[ -e "$BOT_DIR/$rel" ]]; then
+          LOCAL_OVERRIDE_FILES+=("$rel")
+        fi
+      done
+
+      if [[ ${#LOCAL_OVERRIDE_FILES[@]} -gt 0 ]]; then
+        HAS_LOCAL_OVERRIDES="$(git -C "$BOT_DIR" status --porcelain -- "${LOCAL_OVERRIDE_FILES[@]}" 2>/dev/null || true)"
+        if [[ -n "$HAS_LOCAL_OVERRIDES" ]]; then
+          git -C "$BOT_DIR" stash push -u -m "update-backup" -- "${LOCAL_OVERRIDE_FILES[@]}" 2>/dev/null && STASH_DONE=true || true
+        fi
       fi
 
       git -C "$BOT_DIR" pull --ff-only origin main 2>&1 | while IFS= read -r line; do
