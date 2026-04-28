@@ -1184,6 +1184,73 @@ module.exports = function startWebServer({
     proc.on('close', code => { res.write(`data: __EXIT__:${code}\n\n`); res.end(); });
   });
 
+  // ── API: Git-Recovery (stash / pull / pop) via SSE ───────────────────────
+
+  app.post('/api/git-recovery-run', dashboardAuth, (req, res) => {
+    const ALLOWED_STEPS = ['stash', 'pull', 'pop', 'all'];
+    const step = ALLOWED_STEPS.includes(req.body?.step) ? req.body.step : 'all';
+
+    try {
+      execFileSync('git', ['rev-parse', '--is-inside-work-tree'], { cwd: rootDir, stdio: 'ignore' });
+    } catch {
+      return res.json({ ok: false, error: 'Kein Git-Repository gefunden' });
+    }
+
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders();
+
+    const send = (line) => res.write(`data: ${line.replace(/\n/g, ' ')}\n\n`);
+
+    const baseScript = [
+      'set -euo pipefail',
+      'REC_FILES=()',
+      'for rel in .env auto-replies.json data/auto-replies.json; do',
+      '  [[ -e "$rel" ]] && REC_FILES+=("$rel")',
+      'done',
+      'stash_step() {',
+      '  if [[ ${#REC_FILES[@]} -eq 0 ]]; then',
+      '    echo "[Recovery] Keine lokalen Override-Dateien gefunden"',
+      '    return 0',
+      '  fi',
+      '  if [[ -z "$(git status --porcelain -- "${REC_FILES[@]}" 2>/dev/null || true)" ]]; then',
+      '    echo "[Recovery] Keine lokalen Änderungen zum Stashen"',
+      '    return 0',
+      '  fi',
+      '  STASH_NAME="dashboard-recovery-$(date +%Y%m%d_%H%M%S)"',
+      '  echo "[Recovery] Stashe lokale Änderungen als ${STASH_NAME}"',
+      '  git stash push -u -m "$STASH_NAME" -- "${REC_FILES[@]}"',
+      '}',
+      'pull_step() {',
+      '  echo "[Recovery] git pull --ff-only origin main"',
+      '  git pull --ff-only origin main',
+      '}',
+      'pop_step() {',
+      '  if [[ -z "$(git stash list 2>/dev/null)" ]]; then',
+      '    echo "[Recovery] Kein Stash zum Zurückspielen vorhanden"',
+      '    return 0',
+      '  fi',
+      '  echo "[Recovery] Wende letzten Stash wieder an"',
+      '  git stash pop',
+      '}',
+    ];
+
+    const flowByStep = {
+      stash: 'stash_step',
+      pull: 'pull_step',
+      pop: 'pop_step',
+      all: 'stash_step; pull_step; pop_step',
+    };
+
+    const script = `${baseScript.join('\n')}\n${flowByStep[step]}\necho "[Recovery] Schritt ${step} abgeschlossen"`;
+    const proc = spawn('bash', ['-lc', script], { cwd: rootDir });
+
+    proc.stdout.on('data', d => d.toString().split('\n').filter(Boolean).forEach(send));
+    proc.stderr.on('data', d => d.toString().split('\n').filter(Boolean).forEach(send));
+    proc.on('close', code => { res.write(`data: __EXIT__:${code}\n\n`); res.end(); });
+  });
+
   // ── API: Vorhandene Discord-Kategorien/Kanäle lesen ───────────────────────
 
   app.get('/api/discord-channel-browser', dashboardAuth, async (req, res) => {

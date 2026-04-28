@@ -579,7 +579,7 @@ menu_bot() {
     fi
 
     CHOICE=$(whiptail --title "🤖 Bot-Verwaltung  [$BOT_STATUS]" --menu \
-      "Bockis Discord Bot verwalten:" $H $W 9 \
+      "Bockis Discord Bot verwalten:" $H $W 10 \
       "1" "Bot installieren  (start-bot.sh + install.js)" \
       "2" "Bot aktualisieren  (git pull + npm ci)" \
       "3" "Bot starten" \
@@ -588,6 +588,7 @@ menu_bot() {
       "6" "Bot-Logs anzeigen" \
       "7" "Service-Status anzeigen" \
       "8" "Bot deinstallieren" \
+      "9" "Git Recovery 1-3  (stash / pull / pop)" \
       "←" "Zurück zum Hauptmenü" \
       3>&1 1>&2 2>&3) || return
 
@@ -600,6 +601,7 @@ menu_bot() {
       "6") bot_logs ;;
       "7") bot_service_status ;;
       "8") bot_uninstall ;;
+      "9") bot_git_recovery ;;
       "←") return ;;
     esac
   done
@@ -656,6 +658,93 @@ bot_update() {
   fi
 
   bash "$SCRIPT_DIR/update.sh" --bot-dir "$BOT_DIR" --mode "$UPDATE_MODE" --yes $SKIP_FLAG
+  pause
+}
+
+bot_git_recovery() {
+  check_bot_installed || return
+
+  local STEP
+  STEP=$(whiptail --title "Git Recovery 1-3" --menu \
+    "Lokale Änderungen sichern, Update ziehen, Änderungen zurückholen:" 15 $W 5 \
+    "1" "Stash lokale Änderungen (.env / auto-replies)" \
+    "2" "Git Pull (ff-only)" \
+    "3" "Stash Pop" \
+    "4" "Alles in einem Schritt (1→2→3)" \
+    "←" "Abbrechen" \
+    3>&1 1>&2 2>&3) || return
+
+  [[ "$STEP" == "←" ]] && return
+
+  _git_recovery_stash() {
+    local -a LOCAL_OVERRIDE_FILES=()
+    for rel in .env auto-replies.json data/auto-replies.json; do
+      [[ -e "$BOT_DIR/$rel" ]] && LOCAL_OVERRIDE_FILES+=("$rel")
+    done
+
+    if [[ ${#LOCAL_OVERRIDE_FILES[@]} -eq 0 ]]; then
+      info "Keine lokalen Override-Dateien gefunden (.env / auto-replies)."
+      return 0
+    fi
+
+    local HAS_LOCAL_OVERRIDES
+    HAS_LOCAL_OVERRIDES="$(git -C "$BOT_DIR" status --porcelain -- "${LOCAL_OVERRIDE_FILES[@]}" 2>/dev/null || true)"
+    if [[ -z "$HAS_LOCAL_OVERRIDES" ]]; then
+      info "Keine lokalen Änderungen zum Stashen gefunden."
+      return 0
+    fi
+
+    local STASH_NAME
+    STASH_NAME="menu-recovery-$(date +%Y%m%d_%H%M%S)"
+    if git -C "$BOT_DIR" stash push -u -m "$STASH_NAME" -- "${LOCAL_OVERRIDE_FILES[@]}"; then
+      ok "Stash erstellt: $STASH_NAME"
+      return 0
+    fi
+
+    err "Stash fehlgeschlagen"
+    return 1
+  }
+
+  _git_recovery_pull() {
+    info "Führe git pull --ff-only origin main aus..."
+    if git -C "$BOT_DIR" pull --ff-only origin main; then
+      ok "Git Pull erfolgreich"
+      return 0
+    fi
+
+    err "Git Pull fehlgeschlagen"
+    return 1
+  }
+
+  _git_recovery_pop() {
+    if [[ -z "$(git -C "$BOT_DIR" stash list 2>/dev/null)" ]]; then
+      info "Kein Stash zum Zurückholen vorhanden."
+      return 0
+    fi
+
+    if git -C "$BOT_DIR" stash pop; then
+      ok "Stash erfolgreich zurückgespielt"
+      return 0
+    fi
+
+    err "Stash Pop fehlgeschlagen (mögliche Konflikte)"
+    return 1
+  }
+
+  clear
+  echo -e "${BOLD}${CYAN}━━ Git Recovery ━━${NC}\n"
+  case "$STEP" in
+    "1") _git_recovery_stash ;;
+    "2") _git_recovery_pull ;;
+    "3") _git_recovery_pop ;;
+    "4")
+      _git_recovery_stash && _git_recovery_pull && _git_recovery_pop
+      ;;
+  esac
+
+  echo ""
+  info "Aktueller Git-Status:"
+  git -C "$BOT_DIR" status -sb 2>/dev/null || true
   pause
 }
 
