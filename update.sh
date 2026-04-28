@@ -145,6 +145,33 @@ update_native() {
       print_status "Lade neueste Version von GitHub..."
       STASH_DONE=false
 
+      # Offene Merge/Rebase/Cherry-Pick-Vorgänge abbrechen, damit pull/stash nicht an Exit 128 scheitert.
+      if [[ -f "$BOT_DIR/.git/MERGE_HEAD" ]]; then
+        print_warn "Unfertiger Merge erkannt — versuche git merge --abort"
+        git -C "$BOT_DIR" merge --abort >/dev/null 2>&1 || print_warn "git merge --abort fehlgeschlagen"
+      fi
+      if [[ -d "$BOT_DIR/.git/rebase-apply" || -d "$BOT_DIR/.git/rebase-merge" ]]; then
+        print_warn "Unfertiger Rebase erkannt — versuche git rebase --abort"
+        git -C "$BOT_DIR" rebase --abort >/dev/null 2>&1 || print_warn "git rebase --abort fehlgeschlagen"
+      fi
+      if [[ -f "$BOT_DIR/.git/CHERRY_PICK_HEAD" ]]; then
+        print_warn "Unfertiger Cherry-Pick erkannt — versuche git cherry-pick --abort"
+        git -C "$BOT_DIR" cherry-pick --abort >/dev/null 2>&1 || print_warn "git cherry-pick --abort fehlgeschlagen"
+      fi
+      if [[ -f "$BOT_DIR/.git/REVERT_HEAD" ]]; then
+        print_warn "Unfertiger Revert erkannt — versuche git revert --abort"
+        git -C "$BOT_DIR" revert --abort >/dev/null 2>&1 || print_warn "git revert --abort fehlgeschlagen"
+      fi
+
+      UNMERGED_FILES="$(git -C "$BOT_DIR" diff --name-only --diff-filter=U 2>/dev/null || true)"
+      if [[ -n "$UNMERGED_FILES" ]]; then
+        print_error "Unaufgelöste Merge-Konflikte gefunden. Bitte zuerst auflösen oder Merge abbrechen."
+        while IFS= read -r f; do
+          [[ -n "$f" ]] && print_error "Konflikt: $f"
+        done <<< "$UNMERGED_FILES"
+        die "Git-Update abgebrochen wegen unaufgelöster Konflikte"
+      fi
+
       # Lokale Laufzeit-Dateien sichern (z. B. .env + Auto-Reply-Regeln)
       LOCAL_OVERRIDE_FILES=()
       for rel in .env auto-replies.json data/auto-replies.json; do

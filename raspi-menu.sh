@@ -676,7 +676,43 @@ bot_git_recovery() {
 
   [[ "$STEP" == "←" ]] && return
 
+  _git_recovery_cleanup() {
+    local cleaned=false
+
+    if [[ -f "$BOT_DIR/.git/MERGE_HEAD" ]]; then
+      info "Unfertiger Merge erkannt — versuche merge --abort"
+      git -C "$BOT_DIR" merge --abort >/dev/null 2>&1 && cleaned=true || err "merge --abort fehlgeschlagen"
+    fi
+    if [[ -d "$BOT_DIR/.git/rebase-apply" || -d "$BOT_DIR/.git/rebase-merge" ]]; then
+      info "Unfertiger Rebase erkannt — versuche rebase --abort"
+      git -C "$BOT_DIR" rebase --abort >/dev/null 2>&1 && cleaned=true || err "rebase --abort fehlgeschlagen"
+    fi
+    if [[ -f "$BOT_DIR/.git/CHERRY_PICK_HEAD" ]]; then
+      info "Unfertiger Cherry-Pick erkannt — versuche cherry-pick --abort"
+      git -C "$BOT_DIR" cherry-pick --abort >/dev/null 2>&1 && cleaned=true || err "cherry-pick --abort fehlgeschlagen"
+    fi
+    if [[ -f "$BOT_DIR/.git/REVERT_HEAD" ]]; then
+      info "Unfertiger Revert erkannt — versuche revert --abort"
+      git -C "$BOT_DIR" revert --abort >/dev/null 2>&1 && cleaned=true || err "revert --abort fehlgeschlagen"
+    fi
+
+    local unmerged
+    unmerged="$(git -C "$BOT_DIR" diff --name-only --diff-filter=U 2>/dev/null || true)"
+    if [[ -n "$unmerged" ]]; then
+      err "Unaufgelöste Konflikte gefunden — bitte zuerst auflösen"
+      while IFS= read -r f; do
+        [[ -n "$f" ]] && err "Konflikt: $f"
+      done <<< "$unmerged"
+      return 1
+    fi
+
+    [[ "$cleaned" == "true" ]] && ok "Laufende Git-Operationen wurden bereinigt"
+    return 0
+  }
+
   _git_recovery_stash() {
+    _git_recovery_cleanup || return 1
+
     local -a LOCAL_OVERRIDE_FILES=()
     for rel in .env auto-replies.json data/auto-replies.json; do
       [[ -e "$BOT_DIR/$rel" ]] && LOCAL_OVERRIDE_FILES+=("$rel")
@@ -706,6 +742,8 @@ bot_git_recovery() {
   }
 
   _git_recovery_pull() {
+    _git_recovery_cleanup || return 1
+
     info "Führe git pull --ff-only origin main aus..."
     if git -C "$BOT_DIR" pull --ff-only origin main; then
       ok "Git Pull erfolgreich"
