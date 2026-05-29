@@ -1681,7 +1681,7 @@ module.exports = function startWebServer({
         return res.json({ ok: false, error: 'MESSAGE_CLEANUP_ONLY_BOT_MESSAGES muss true oder false sein' });
       if (key === 'MESSAGE_CLEANUP_CHANNEL_IDS') {
         const entries = val.split(/[;,]/).map(s => s.trim()).filter(Boolean);
-        const invalid = entries.filter(id => !/^\d+$/.test(id));
+        const invalid = entries.filter(id => !/^\d+(?::[a-zA-Z]+=-?\d+)*$/.test(id));
         if (invalid.length) {
           return res.json({ ok: false, error: `MESSAGE_CLEANUP_CHANNEL_IDS ungueltig: ${invalid.join(', ')}` });
         }
