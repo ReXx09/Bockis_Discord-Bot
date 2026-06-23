@@ -54,5 +54,82 @@
     "mode": "regex",
     "reply": "Dir auch einen schönen Tag! ✨",
     "caseSensitive": false
+  },
+ {
+    "id": "meal-time",
+    "trigger": "\\b(mittag|abendessen|abendbrot|brunch)\\b|(?<!\\w)(frühstück)(?!\\w)",
+    "mode": "regex",
+    "reply": "Klingt lecker! Was gibt's heute? 🍽️",
+    "caseSensitive": false
+  },
+  {
+    "id": "brunch-time",
+    "trigger": "\\b(mahlzeit|lecker)\\b|sehr\\s+lecker|hmm\\s+lecker",
+    "mode": "regex",
+    "reply": "hmmmm lecker 😋 Guten Hunger 😄",
+    "caseSensitive": false
+  },
+  {
+    "id": "hot",
+    "trigger": "(?<!\\w)(heiß|hitze|schwitzen|gluthitze|zu\\s+warm|so\\s+heiß)(?!\\w)",
+    "mode": "regex",
+    "reply": "🌡️ Viel Wasser trinken und kühl bleiben! 🧊",
+    "caseSensitive": false
+  },
+  {
+    "id": "cold",
+    "trigger": "\\b(kalt|friere|eiskalt|gefroren|bitterkalt)\\b|so\\s+kalt",
+    "mode": "regex",
+    "reply": "🧥 Zeit für Tee und eine warme Decke! ☕",
+    "caseSensitive": false
+  },
+  {
+    "id": "rain",
+    "trigger": "\\b(regnet|regen|nass)\\b|nass\\s+geworden|schlechtes\\s+wetter|grau\\s+draußen",
+    "mode": "regex",
+    "reply": "🌧️ Perfektes Wetter zum Chillen drinnen!",
+    "caseSensitive": false
+  },
+  {
+    "id": "sunshine",
+    "trigger": "\\b(sonnig|warm)\\b|sonne\\s+scheint|schönes\\s+wetter|endlich\\s+warm",
+    "mode": "regex",
+    "reply": "☀️ Genieß es! Raus an die frische Luft! 🌿",
+    "caseSensitive": false
+  },
+  {
+    "id": "health-sick",
+    "trigger": "\\b(krank|erkältet|fieber|husten|schnupfen|grippe|halsweh)\\b|nicht\\s+gut\\s+drauf|fühle\\s+mich\\s+schlecht",
+    "mode": "regex",
+    "reply": "Oh nein, gute Besserung! 🤒 Viel trinken, ausruhen und auf dich achten! 💊",
+    "caseSensitive": false
+  },
+  {
+    "id": "health-tired",
+    "trigger": "(?<!\\w)(müde|erschöpft|schlapp)(?!\\w)|\\b(kaputt|ausgelaugt|keine\\s+energie|so\\s+fertig)\\b",
+    "mode": "regex",
+    "reply": "Klingt nach einer wohlverdienten Pause! 😴 Gönn dir was und tank auf! ☕",
+    "caseSensitive": false
+  },
+  {
+    "id": "health-headache",
+    "trigger": "(?<!\\w)(kopfschmerzen|kopfweh|migräne)(?!\\w)|\\b(schmerzen\\s+im\\s+kopf|hämmert\\s+im\\s+kopf)\\b",
+    "mode": "regex",
+    "reply": "Autsch! 😣 Viel Wasser trinken, abdunkeln und eine kurze Pause helfen oft. 💆",
+    "caseSensitive": false
+  },
+  {
+    "id": "health-sport",
+    "trigger": "\\b(trainiert|workout|joggen|laufen|radfahren|schwimmen|gym|fitness|sport\\s+gemacht)\\b",
+    "mode": "regex",
+    "reply": "Respekt, weiter so! 💪 Regelmäßiges Training zahlt sich aus! 🏋️",
+    "caseSensitive": false
+  },
+  {
+    "id": "health-fit",
+    "trigger": "(?<!\\w)(fit|topfit|erholt|ausgeschlafen|gesund)(?!\\w)|\\b(fühle\\s+mich\\s+gut|bin\\s+wieder\\s+fit|endlich\\s+gesund)\\b",
+    "mode": "regex",
+    "reply": "Das freut uns! 🌟 Bleib so fit und pass auf dich auf! 💚",
+    "caseSensitive": false
   }
 ]
