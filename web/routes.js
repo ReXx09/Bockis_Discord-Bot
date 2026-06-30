@@ -2083,6 +2083,15 @@ module.exports = function startWebServer({
       }
       
       const autoRepliesFile = path.join(rootDir, config.get('discord.autoReplyRulesFile') || './auto-replies.json');
+      
+      // 🔄 Backup erstellen, bevor überschrieben wird
+      if (fs.existsSync(autoRepliesFile)) {
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+        const backupFile = autoRepliesFile + `.backup-${timestamp}`;
+        fs.copyFileSync(autoRepliesFile, backupFile);
+        logger.info(`Auto-Reply Backup erstellt: ${backupFile}`);
+      }
+      
       fs.writeFileSync(autoRepliesFile, JSON.stringify(rules, null, 2), 'utf8');
       
       logger.info(`Auto-Reply Regeln gespeichert: ${rules.length} Regeln`);
@@ -2173,6 +2182,14 @@ module.exports = function startWebServer({
       }
       
       // Schreibe zurück
+      // 🔄 Backup erstellen, bevor überschrieben wird
+      if (fs.existsSync(autoRepliesFile)) {
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+        const backupFile = autoRepliesFile + `.backup-${timestamp}`;
+        fs.copyFileSync(autoRepliesFile, backupFile);
+        logger.info(`Auto-Reply Backup erstellt: ${backupFile}`);
+      }
+      
       fs.writeFileSync(autoRepliesFile, JSON.stringify(existingRules, null, 2), 'utf8');
       
       logger.info(`Auto-Reply Templates aktualisiert: ${Object.entries(templates).filter(([, v]) => v).map(([k]) => k).join(', ')}`);
