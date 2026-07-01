@@ -2040,16 +2040,87 @@ module.exports = function startWebServer({
   // ── HTTP-Server starten ─────────────────────────────────────────────────────
   
   // ── API: Auto-Reply Templates ────────────────────────────────────────────────
+  const AUTO_REPLY_TEMPLATE_RULES = [
+    {
+      id: 'good-evening',
+      trigger: 'schönen abend',
+      mode: 'contains',
+      reply: 'Schönen Abend! 🌙',
+      enabled: true,
+      caseSensitive: false,
+    },
+    {
+      id: 'good-day',
+      trigger: 'schönen tag',
+      mode: 'contains',
+      reply: 'Schönen Tag noch! ☀️',
+      enabled: true,
+      caseSensitive: false,
+    },
+    {
+      id: 'greeting',
+      trigger: '\\b(hallo|huhu|hallöchen|hey|hi|hello|winke|servus|tach|moin)\\b',
+      mode: 'regex',
+      reply: 'Hallo! 👋',
+      enabled: true,
+      caseSensitive: false,
+    },
+    {
+      id: 'weekend',
+      trigger: 'schönes wochenende',
+      mode: 'contains',
+      reply: 'Dir auch ein schönes Wochenende! 🎉',
+      enabled: true,
+      caseSensitive: false,
+    },
+    {
+      id: 'weekdays',
+      trigger: 'schönen\\s+(montag|dienstag|mittwoch|donnerstag|freitag|samstag|sonntag)',
+      mode: 'regex',
+      reply: 'Dir auch einen schönen Tag! ✨',
+      enabled: true,
+      caseSensitive: false,
+    },
+    {
+      id: 'good-night',
+      trigger: '\\b(gute\\s+nacht|schlaf(?:t)?\\s+gut|süße\\s+träume|suesse\\s+traeume|träum(?:t)?\\s+schön|traeum(?:t)?\\s+schoen)\\b',
+      mode: 'regex',
+      reply: 'Gute Nacht und schlaft gut! 😴✨',
+      enabled: true,
+      caseSensitive: false,
+    },
+  ];
+  const AUTO_REPLY_TEMPLATE_IDS = new Set(AUTO_REPLY_TEMPLATE_RULES.map((r) => r.id));
+
+  function withDefaultTemplateRules(rules) {
+    const normalized = Array.isArray(rules) ? rules : [];
+    const byId = new Map();
+    for (const rule of normalized) {
+      const id = String(rule?.id || '').trim();
+      if (!id) continue;
+      byId.set(id, {
+        ...rule,
+        enabled: rule?.enabled !== false,
+      });
+    }
+
+    for (const tmpl of AUTO_REPLY_TEMPLATE_RULES) {
+      if (byId.has(tmpl.id)) continue;
+      byId.set(tmpl.id, { ...tmpl });
+    }
+
+    return Array.from(byId.values());
+  }
   
   app.get('/api/auto-replies', dashboardAuth, (req, res) => {
     try {
       const autoRepliesFile = path.join(rootDir, config.get('discord.autoReplyRulesFile') || './auto-replies.json');
       if (!fs.existsSync(autoRepliesFile)) {
-        return res.json({ ok: true, rules: [] });
+        return res.json({ ok: true, rules: withDefaultTemplateRules([]) });
       }
       const content = fs.readFileSync(autoRepliesFile, 'utf8');
       const rules = JSON.parse(content);
-      res.json({ ok: true, rules: Array.isArray(rules) ? rules : [] });
+      res.json({ ok: true, rules: withDefaultTemplateRules(rules) });
     } catch (err) {
       logger.error(`/api/auto-replies GET Fehler: ${err.message}`);
       res.json({ ok: false, error: err.message, rules: [] });
@@ -2058,7 +2129,8 @@ module.exports = function startWebServer({
 
   app.post('/api/auto-replies', dashboardAuth, (req, res) => {
     try {
-      const rules = req.body?.rules || [];
+      const inputRules = req.body?.rules || [];
+      const rules = withDefaultTemplateRules(inputRules);
       if (!Array.isArray(rules)) {
         return res.status(400).json({ ok: false, error: 'rules muss ein Array sein' });
       }
@@ -2080,6 +2152,9 @@ module.exports = function startWebServer({
         if (rule.reply.length > 2000) {
           return res.status(400).json({ ok: false, error: 'Antwort darf max. 2000 Zeichen sein' });
         }
+        if (rule.enabled !== undefined && typeof rule.enabled !== 'boolean') {
+          return res.status(400).json({ ok: false, error: `enabled muss true/false sein (Regel ${rule.id})` });
+        }
       }
       
       const autoRepliesFile = path.join(rootDir, config.get('discord.autoReplyRulesFile') || './auto-replies.json');
@@ -2092,10 +2167,15 @@ module.exports = function startWebServer({
         logger.info(`Auto-Reply Backup erstellt: ${backupFile}`);
       }
       
-      fs.writeFileSync(autoRepliesFile, JSON.stringify(rules, null, 2), 'utf8');
+      const normalizedRules = rules.map((rule) => ({
+        ...rule,
+        enabled: rule.enabled !== false,
+      }));
+
+      fs.writeFileSync(autoRepliesFile, JSON.stringify(normalizedRules, null, 2), 'utf8');
       
-      logger.info(`Auto-Reply Regeln gespeichert: ${rules.length} Regeln`);
-      res.json({ ok: true, count: rules.length });
+      logger.info(`Auto-Reply Regeln gespeichert: ${normalizedRules.length} Regeln`);
+      res.json({ ok: true, count: normalizedRules.length, rules: normalizedRules });
     } catch (err) {
       logger.error(`/api/auto-replies POST Fehler: ${err.message}`);
       res.json({ ok: false, error: err.message });
@@ -2123,54 +2203,18 @@ module.exports = function startWebServer({
       } catch { /* ignore */ }
       
       // Entferne alte Template-Regeln (erkannt an bestimmten IDs)
-      const templateIds = new Set(['good-evening', 'good-day', 'greeting', 'weekend', 'weekdays', 'good-night']);
+      const templateIds = new Set(AUTO_REPLY_TEMPLATE_IDS);
       const existingTemplateRules = existingRules.filter(r => templateIds.has(r.id));
       existingRules = existingRules.filter(r => !templateIds.has(r.id));
       
       // Definierte Templates mit Defaults
       const templateDefs = {
-        goodEvening: {
-          id: 'good-evening',
-          trigger: 'schönen abend',
-          mode: 'contains',
-          reply: 'Schönen Abend! 🌙',
-          caseSensitive: false
-        },
-        goodDay: {
-          id: 'good-day',
-          trigger: 'schönen tag',
-          mode: 'contains',
-          reply: 'Schönen Tag noch! ☀️',
-          caseSensitive: false
-        },
-        greeting: {
-          id: 'greeting',
-          trigger: '\\b(hallo|huhu|hallöchen|hey|hi|hello|winke|servus|tach|moin)\\b',
-          mode: 'regex',
-          reply: 'Hallo! 👋',
-          caseSensitive: false
-        },
-        weekend: {
-          id: 'weekend',
-          trigger: 'schönes wochenende',
-          mode: 'contains',
-          reply: 'Dir auch ein schönes Wochenende! 🎉',
-          caseSensitive: false
-        },
-        weekdays: {
-          id: 'weekdays',
-          trigger: 'schönen\\s+(montag|dienstag|mittwoch|donnerstag|freitag|samstag|sonntag)',
-          mode: 'regex',
-          reply: 'Dir auch einen schönen Tag! ✨',
-          caseSensitive: false
-        },
-        goodNight: {
-          id: 'good-night',
-          trigger: '\\b(gute\\s+nacht|schlaf(?:t)?\\s+gut|süße\\s+träume|suesse\\s+traeume|träum(?:t)?\\s+schön|traeum(?:t)?\\s+schoen)\\b',
-          mode: 'regex',
-          reply: 'Gute Nacht und schlaft gut! 😴✨',
-          caseSensitive: false
-        }
+        goodEvening: { ...AUTO_REPLY_TEMPLATE_RULES.find((r) => r.id === 'good-evening') },
+        goodDay: { ...AUTO_REPLY_TEMPLATE_RULES.find((r) => r.id === 'good-day') },
+        greeting: { ...AUTO_REPLY_TEMPLATE_RULES.find((r) => r.id === 'greeting') },
+        weekend: { ...AUTO_REPLY_TEMPLATE_RULES.find((r) => r.id === 'weekend') },
+        weekdays: { ...AUTO_REPLY_TEMPLATE_RULES.find((r) => r.id === 'weekdays') },
+        goodNight: { ...AUTO_REPLY_TEMPLATE_RULES.find((r) => r.id === 'good-night') },
       };
       
       // Füge aktivierte Templates hinzu und behalte caseSensitive-Werte bei
@@ -2182,7 +2226,7 @@ module.exports = function startWebServer({
           if (existingTemplate && existingTemplate.caseSensitive !== undefined && templateDef.id !== 'good-night') {
             templateDef.caseSensitive = existingTemplate.caseSensitive;
           }
-          existingRules.push(templateDef);
+          existingRules.push({ ...templateDef, enabled: true });
         }
       }
       

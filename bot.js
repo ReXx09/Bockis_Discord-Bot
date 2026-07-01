@@ -3618,6 +3618,7 @@ client.on('interactionCreate', async interaction => {
 
     let matchedRule = null;
     for (const rule of rules) {
+      if (rule?.enabled === false) continue;
       if (!rule.trigger || !rule.reply) continue;
       const res = _matchAutoReplyRule(testText, rule);
       if (res.error) continue;
@@ -3626,6 +3627,7 @@ client.on('interactionCreate', async interaction => {
 
     if (!matchedRule) {
       const nearMiss = rules.find((rule) => {
+        if (rule?.enabled === false) return false;
         if (!rule?.trigger || !rule?.reply || rule.caseSensitive !== true) return false;
         const probeRule = { ...rule, caseSensitive: false };
         const res = _matchAutoReplyRule(testText, probeRule);
@@ -3997,6 +3999,7 @@ async function _processAutoReplyMessage(message) {
   const matchedReplies = [];
 
   for (const rule of rules) {
+    if (rule?.enabled === false) continue;
     if (!rule.trigger || !rule.reply) continue;
     const res = _matchAutoReplyRule(content, rule);
     if (res.error) {

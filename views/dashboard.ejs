@@ -1988,12 +1988,13 @@
                 <th style="text-align:left;padding:4px 6px;width:90px">Modus</th>
                 <th style="text-align:left;padding:4px 6px">Trigger</th>
                 <th style="text-align:left;padding:4px 6px">Antwort</th>
+                <th style="text-align:center;padding:4px 6px;width:60px">Aktiv</th>
                 <th style="text-align:center;padding:4px 6px;width:60px">Groß/Klein</th>
                 <th style="text-align:center;padding:4px 6px;width:40px"></th>
               </tr>
             </thead>
             <tbody id="arTableBody">
-              <tr><td colspan="6" style="text-align:center;padding:12px;color:var(--muted)">← Auf „Laden" klicken um Regeln zu laden</td></tr>
+              <tr><td colspan="7" style="text-align:center;padding:12px;color:var(--muted)">← Auf „Laden" klicken um Regeln zu laden</td></tr>
             </tbody>
           </table>
         </div>
@@ -2074,51 +2075,6 @@
           </div>
         </div>
       </div>
-        <!-- Standard-Templates Section -->
-        <div class="cfg-section">
-          <div class="cfg-section-header" onclick="toggleConfigSection(this)">
-            <div class="cfg-section-header-title">
-              <span class="cfg-section-toggle">▾</span>
-              <span>✨ Standard-Templates</span>
-            </div>
-          </div>
-          <div class="cfg-section-content">
-            <div class="cfg-section-body">
-        <div class="cfg-hint" style="margin-bottom:12px">Aktiviere vordefinierte Auto-Reply-Vorlagen. Beim Speichern werden sie automatisch zu den Regeln hinzugefügt.</div>
-        <div style="display:flex;flex-direction:column;gap:10px">
-          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;padding:8px;background:rgba(64,190,105,.12);border-radius:6px;border:1px solid rgba(64,190,105,.35)">
-            <input type="checkbox" id="cfgTemplateAll" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)" onchange="toggleAllTemplates(this.checked)">
-            <span><strong>✅ Alle markieren</strong></span>
-          </label>
-          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;padding:8px;background:rgba(255,255,255,.02);border-radius:6px;border:1px solid var(--border)">
-            <input type="checkbox" id="cfgTemplateGoodEvening" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)" onchange="syncTemplateAllCheckboxFromItems()">
-            <span><strong>🌙 Schönen Abend</strong></span>
-          </label>
-          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;padding:8px;background:rgba(255,255,255,.02);border-radius:6px;border:1px solid var(--border)">
-            <input type="checkbox" id="cfgTemplateGoodDay" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)" onchange="syncTemplateAllCheckboxFromItems()">
-            <span><strong>☀️ Schönen Tag</strong></span>
-          </label>
-          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;padding:8px;background:rgba(255,255,255,.02);border-radius:6px;border:1px solid var(--border)">
-            <input type="checkbox" id="cfgTemplateGreeting" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)" onchange="syncTemplateAllCheckboxFromItems()">
-            <span><strong>👋 Begrüßungen</strong> (Hallo, Hi, Hey, Hallöchen, Huhu, Winke, Servus, Tach, Moin, Hello)</span>
-          </label>
-          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;padding:8px;background:rgba(255,255,255,.02);border-radius:6px;border:1px solid var(--border)">
-            <input type="checkbox" id="cfgTemplateWeekend" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)" onchange="syncTemplateAllCheckboxFromItems()">
-            <span><strong>🎉 Schönes Wochenende</strong></span>
-          </label>
-          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;padding:8px;background:rgba(255,255,255,.02);border-radius:6px;border:1px solid var(--border)">
-            <input type="checkbox" id="cfgTemplateWeekdays" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)" onchange="syncTemplateAllCheckboxFromItems()">
-            <span><strong>📅 Wochentage</strong> (Schönen Montag, Freitag, etc.)</span>
-          </label>
-          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;padding:8px;background:rgba(255,255,255,.02);border-radius:6px;border:1px solid var(--border)">
-            <input type="checkbox" id="cfgTemplateGoodNight" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)" onchange="syncTemplateAllCheckboxFromItems()">
-            <span><strong>🌜 Gute Nacht</strong> (Gute Nacht, schlaf gut/schlaft gut, süße Träume)</span>
-          </label>
-        </div>
-        <button class="btn btn-green" id="btnSaveAutoReplyTemplates" onclick="saveAutoReplyTemplates()" style="margin-top:12px;width:100%;background:var(--green);border-color:var(--green)">💾 Templates speichern</button>
-            </div>
-          </div>
-        </div>
           </div>
         </div>
       </div>
@@ -4577,7 +4533,7 @@
     const tbody = document.getElementById('arTableBody');
     const count = document.getElementById('arRulesCount');
     if (!_arRules.length) {
-      tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:12px;color:var(--muted)">Keine Regeln vorhanden. Neue Regel hinzufügen →</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:12px;color:var(--muted)">Keine Regeln vorhanden. Neue Regel hinzufügen →</td></tr>';
       count.textContent = '0 Regeln';
       return;
     }
@@ -4598,6 +4554,9 @@
             <input class="cfg-input" id="arReplyInput_${i}" style="padding:3px 6px;font-size:12px;min-width:140px;width:100%" value="${arEsc(r.reply)}" data-ar-idx="${i}" oninput="arFieldChanged(${i},'reply',this.value)">
             <button type="button" title="Emoji einfügen" onclick="arOpenEmojiPicker(${i}, this)" style="flex-shrink:0;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:3px 7px;font-size:14px;cursor:pointer;line-height:1">😀</button>
           </div>
+        </td>
+        <td style="text-align:center;padding:4px 6px">
+          <input type="checkbox" style="width:16px;height:16px;accent-color:var(--green)" ${(r.enabled !== false)?'checked':''} data-ar-idx="${i}" onchange="arFieldChanged(${i},'enabled',this.checked)">
         </td>
         <td style="text-align:center;padding:4px 6px">
           <input type="checkbox" style="width:16px;height:16px;accent-color:var(--green)" ${r.caseSensitive?'checked':''} data-ar-idx="${i}" onchange="arFieldChanged(${i},'caseSensitive',this.checked)">
@@ -4700,7 +4659,7 @@
 
   function arAddRule() {
     const newId = `regel-${Date.now()}`;
-    _arRules.push({ id: newId, trigger: '', mode: 'contains', reply: '', caseSensitive: false });
+    _arRules.push({ id: newId, trigger: '', mode: 'contains', reply: '', enabled: true, caseSensitive: false });
     arRenderTable();
     // Zur neuen Zeile scrollen
     const tbody = document.getElementById('arTableBody');
@@ -4738,57 +4697,17 @@
   }
   // ────────────────────────────────────────────────────────────────────────
 
-  function arSyncTemplateCheckboxesFromRules(rules = []) {
-    const ids = new Set((Array.isArray(rules) ? rules : []).map(r => String(r?.id || '').trim()));
-    const mapping = [
-      ['cfgTemplateGoodEvening', 'good-evening'],
-      ['cfgTemplateGoodDay', 'good-day'],
-      ['cfgTemplateGreeting', 'greeting'],
-      ['cfgTemplateWeekend', 'weekend'],
-      ['cfgTemplateWeekdays', 'weekdays'],
-      ['cfgTemplateGoodNight', 'good-night'],
-    ];
-    mapping.forEach(([checkboxId, ruleId]) => {
-      const el = document.getElementById(checkboxId);
-      if (el) el.checked = ids.has(ruleId);
-    });
-    syncTemplateAllCheckboxFromItems();
-  }
-
-  function _getTemplateCheckboxes() {
-    return [
-      'cfgTemplateGoodEvening',
-      'cfgTemplateGoodDay',
-      'cfgTemplateGreeting',
-      'cfgTemplateWeekend',
-      'cfgTemplateWeekdays',
-      'cfgTemplateGoodNight',
-    ].map((id) => document.getElementById(id)).filter(Boolean);
-  }
-
-  function syncTemplateAllCheckboxFromItems() {
-    const allEl = document.getElementById('cfgTemplateAll');
-    if (!allEl) return;
-    const boxes = _getTemplateCheckboxes();
-    const checkedCount = boxes.filter((b) => b.checked).length;
-    allEl.checked = boxes.length > 0 && checkedCount === boxes.length;
-    allEl.indeterminate = checkedCount > 0 && checkedCount < boxes.length;
-  }
-
-  function toggleAllTemplates(checked) {
-    _getTemplateCheckboxes().forEach((box) => { box.checked = checked; });
-    syncTemplateAllCheckboxFromItems();
-  }
-
   async function arLoadRules() {
     const st = document.getElementById('arStatus');
     st.textContent = '⏳ Laden…'; st.className = 'muted';
     try {
       const d = await fetch('/api/auto-replies').then(r => r.json());
       if (!d.ok) { st.textContent = '✗ ' + d.error; st.className = 'err'; return; }
-      _arRules = d.rules;
+      _arRules = (Array.isArray(d.rules) ? d.rules : []).map((r) => ({
+        ...r,
+        enabled: r?.enabled !== false,
+      }));
       arRenderTable();
-      arSyncTemplateCheckboxesFromRules(_arRules);
       st.textContent = `✓ ${_arRules.length} Regel${_arRules.length !== 1 ? 'n' : ''} geladen`;
       st.className = 'ok';
     } catch (e) {
@@ -4816,53 +4735,7 @@
     }
   }
 
-  async function saveAutoReplyTemplates() {
-    const btn = document.getElementById('btnSaveAutoReplyTemplates');
-    const st = document.getElementById('arStatus');
-    const originalText = btn.textContent;
-    btn.disabled = true;
-    btn.textContent = '⏳ Speichern…';
-    
-    const templates = {
-      goodEvening: document.getElementById('cfgTemplateGoodEvening').checked,
-      goodDay: document.getElementById('cfgTemplateGoodDay').checked,
-      greeting: document.getElementById('cfgTemplateGreeting').checked,
-      weekend: document.getElementById('cfgTemplateWeekend').checked,
-      weekdays: document.getElementById('cfgTemplateWeekdays').checked,
-      goodNight: document.getElementById('cfgTemplateGoodNight').checked
-    };
-    
-    try {
-      const response = await fetch('/api/auto-reply-templates', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ templates })
-      });
-      const result = await response.json();
-      if (result.ok) {
-        toast('✓ Templates gespeichert! Auto-Replies aktualisiert.', 'ok');
-        if (Array.isArray(result.rules)) {
-          _arRules = result.rules;
-          arRenderTable();
-          arSyncTemplateCheckboxesFromRules(_arRules);
-          if (st) {
-            st.textContent = `✓ ${_arRules.length} Regel${_arRules.length !== 1 ? 'n' : ''} geladen`;
-            st.className = 'ok';
-          }
-        } else {
-          // Fallback, falls ältere API-Version ohne rules antwortet
-          setTimeout(() => arLoadRules(), 300);
-        }
-      } else {
-        toast('✗ Fehler: ' + result.error, 'err');
-      }
-    } catch (e) {
-      toast('✗ Fehler: ' + e.message, 'err');
-    } finally {
-      btn.disabled = false;
-      btn.textContent = originalText;
-    }
-  }
+  
 
   // ── Config laden ─────────────────────────────────────
   async function loadConfig({ force = false } = {}) {
