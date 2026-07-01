@@ -1390,7 +1390,7 @@ module.exports = function startWebServer({
         DISCORD_GITHUB_MODE:          get('DISCORD_GITHUB_MODE') || 'releases',
         DISCORD_GITHUB_POLL_INTERVAL_MS: get('DISCORD_GITHUB_POLL_INTERVAL_MS') || '300000',
         GITHUB_TOKEN:                 maskSecret(get('GITHUB_TOKEN')),
-        DISCORD_ENABLED_COMMANDS:     get('DISCORD_ENABLED_COMMANDS') || 'status,uptime,refresh,help,coinflip,dice,eightball,cleanup,translate,ping,botinfo,serverstatus,ki,wetter,subscribe,remind,quote,poll,avatar,userinfo',
+        DISCORD_ENABLED_COMMANDS:     get('DISCORD_ENABLED_COMMANDS') || 'status,uptime,refresh,help,triggerinfo,coinflip,dice,eightball,cleanup,translate,ping,botinfo,serverstatus,ki,wetter,subscribe,remind,quote,poll,avatar,userinfo,testreply',
         DISCORD_TRANSLATE_ENABLED:    get('DISCORD_TRANSLATE_ENABLED') || 'false',
         DISCORD_TRANSLATE_DEFAULT_TARGET: get('DISCORD_TRANSLATE_DEFAULT_TARGET') || 'de',
         DISCORD_TRANSLATE_DEFAULT_SOURCE: get('DISCORD_TRANSLATE_DEFAULT_SOURCE') || 'auto',

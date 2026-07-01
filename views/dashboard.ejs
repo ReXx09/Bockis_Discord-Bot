@@ -5239,11 +5239,30 @@
     }
 
     try {
-      const res = await fetch('/api/config', {
+      let res = await fetch('/api/config', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify(body),
       }).then(r => r.json());
+
+      // Fallback für ältere Backend-Versionen ohne triggerinfo-Support.
+      if (!res.ok && /ungueltige kommandos:\s*triggerinfo/i.test(String(res.error || '')) && typeof body.DISCORD_ENABLED_COMMANDS === 'string') {
+        const downgraded = body.DISCORD_ENABLED_COMMANDS
+          .split(',')
+          .map((v) => v.trim())
+          .filter(Boolean)
+          .filter((cmd) => cmd !== 'triggerinfo')
+          .join(',');
+        body.DISCORD_ENABLED_COMMANDS = downgraded;
+        res = await fetch('/api/config', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify(body),
+        }).then(r => r.json());
+        if (res.ok) {
+          toast('Hinweis: triggerinfo wurde entfernt, weil der Server noch eine ältere Version nutzt.', 'warn');
+        }
+      }
 
       if (res.ok) {
         st.textContent = `✓ Gespeichert: ${res.updated.join(', ')}${res.restarted ? ' · Bot startet neu…' : ''}`;
