@@ -1532,6 +1532,10 @@
               <span><code>/help</code> - Übersicht aller Bot-Kommandos</span>
             </label>
             <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px">
+              <input type="checkbox" id="cfgCmdTriggerinfo" data-cmd="triggerinfo" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
+              <span><code>/triggerinfo</code> - Trigger-Info für Nutzer posten</span>
+            </label>
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px">
               <input type="checkbox" id="cfgCmdCoinflip" data-cmd="coinflip" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
               <span><code>/coinflip</code> - Münzwurf (Kopf/Zahl)</span>
             </label>
@@ -1600,7 +1604,7 @@
               <span><code>/testreply</code> - Auto-Reply-Regeln testen (nur Admins, ephemeral)</span>
             </label>
           </div>
-          <input type="hidden" id="cfgEnabledCommands" value="status,uptime,refresh,help,coinflip,dice,eightball,cleanup,translate,ping,botinfo,serverstatus,ki,wetter,subscribe,remind,quote,poll,avatar,userinfo,testreply">
+          <input type="hidden" id="cfgEnabledCommands" value="status,uptime,refresh,help,triggerinfo,coinflip,dice,eightball,cleanup,translate,ping,botinfo,serverstatus,ki,wetter,subscribe,remind,quote,poll,avatar,userinfo,testreply">
           <div class="cfg-hint">Mindestens ein Kommando muss aktiv bleiben. Änderungen werden beim Neustart neu registriert.</div>
               </div>
             </div>
@@ -4804,8 +4808,8 @@
       setCfg('cfgPresenceRotateMs', d.DISCORD_PRESENCE_ROTATE_MS || '90000');
       setCfg('cfgAutoReactionEmojis', d.DISCORD_AUTO_REACTION_EMOJIS || '👍');
       setCfg('cfgAutoReactionChannelIds', d.DISCORD_AUTO_REACTION_CHANNEL_IDS || '');
-      setCfg('cfgEnabledCommands', d.DISCORD_ENABLED_COMMANDS || 'status,uptime,refresh,help,coinflip,dice,eightball,cleanup,translate,ping,botinfo,serverstatus,ki,wetter,subscribe,remind,quote,poll,avatar,userinfo,testreply');
-      applyEnabledCommandsToCheckboxes(d.DISCORD_ENABLED_COMMANDS || 'status,uptime,refresh,help,coinflip,dice,eightball,cleanup,translate,ping,botinfo,serverstatus,ki,wetter,subscribe,remind,quote,poll,avatar,userinfo,testreply');
+      setCfg('cfgEnabledCommands', d.DISCORD_ENABLED_COMMANDS || 'status,uptime,refresh,help,triggerinfo,coinflip,dice,eightball,cleanup,translate,ping,botinfo,serverstatus,ki,wetter,subscribe,remind,quote,poll,avatar,userinfo,testreply');
+      applyEnabledCommandsToCheckboxes(d.DISCORD_ENABLED_COMMANDS || 'status,uptime,refresh,help,triggerinfo,coinflip,dice,eightball,cleanup,translate,ping,botinfo,serverstatus,ki,wetter,subscribe,remind,quote,poll,avatar,userinfo,testreply');
       ensureSelectOption('cfgTranslateDefaultTarget', d.DISCORD_TRANSLATE_DEFAULT_TARGET || 'de');
       ensureSelectOption('cfgTranslateDefaultSource', d.DISCORD_TRANSLATE_DEFAULT_SOURCE || 'auto');
       setCfg('cfgTranslateDefaultTarget', d.DISCORD_TRANSLATE_DEFAULT_TARGET || 'de');

@@ -1999,7 +1999,7 @@ async function calculateUptimeMetrics() {
 // #endregion
 
 // #region 20. SLASH-COMMANDS REGISTRIEREN
-const AVAILABLE_SLASH_COMMANDS = ['status', 'uptime', 'refresh', 'help', 'coinflip', 'dice', 'eightball', 'cleanup', 'translate', 'ping', 'botinfo', 'serverstatus', 'ki', 'wetter', 'subscribe', 'remind', 'quote', 'poll', 'avatar', 'userinfo', 'testreply'];
+const AVAILABLE_SLASH_COMMANDS = ['status', 'uptime', 'refresh', 'help', 'triggerinfo', 'coinflip', 'dice', 'eightball', 'cleanup', 'translate', 'ping', 'botinfo', 'serverstatus', 'ki', 'wetter', 'subscribe', 'remind', 'quote', 'poll', 'avatar', 'userinfo', 'testreply'];
 const SLASH_COMMAND_I18N = {
   status: {
     names: { de: 'status' },
@@ -2031,6 +2031,14 @@ const SLASH_COMMAND_I18N = {
       'de': 'Zeigt alle verfügbaren Bot-Kommandos',
       'en-US': 'Shows all available bot commands',
       'en-GB': 'Shows all available bot commands',
+    },
+  },
+  triggerinfo: {
+    names: { de: 'triggerinfo' },
+    descriptions: {
+      'de': 'Zeigt eine Übersicht der Auto-Reply-Trigger zum Teilen im Kanal',
+      'en-US': 'Shows a shareable overview of auto-reply triggers',
+      'en-GB': 'Shows a shareable overview of auto-reply triggers',
     },
   },
   coinflip: {
@@ -2197,6 +2205,7 @@ const SLASH_OPTION_ALIASES = {
   },
   avatar: { nutzer: ['nutzer', 'user'] },
   userinfo: { nutzer: ['nutzer', 'user'] },
+  triggerinfo: { oeffentlich: ['oeffentlich', 'public'] },
 };
 
 function applySlashCommandI18n(builder, commandKey) {
@@ -2331,6 +2340,27 @@ async function registerSlashCommands() {
       applySlashCommandI18n(new SlashCommandBuilder()
         .setName('help')
         .setDescription('Zeigt alle verfügbaren Bot-Kommandos'), 'help')
+        .toJSON()
+    );
+  }
+
+  if (enabled.has('triggerinfo')) {
+    commands.push(
+      applySlashCommandI18n(new SlashCommandBuilder()
+        .setName('triggerinfo')
+        .setDescription('Zeigt eine Übersicht der Auto-Reply-Trigger zum Teilen im Kanal')
+        .addBooleanOption(opt =>
+          applySlashOptionI18n(opt.setName('oeffentlich')
+            .setDescription('Im Kanal posten (true) oder nur für dich anzeigen (false)')
+            .setRequired(false), {
+              names: { 'en-US': 'public', 'en-GB': 'public' },
+              descriptions: {
+                'en-US': 'Post in channel (true) or show only to you (false)',
+                'en-GB': 'Post in channel (true) or show only to you (false)',
+              },
+            })
+        )
+        , 'triggerinfo')
         .toJSON()
     );
   }
@@ -3096,6 +3126,7 @@ client.on('interactionCreate', async interaction => {
       status:      { cat: 'info', de: 'aktueller Service-Status', en: 'current service status' },
       uptime:      { cat: 'info', de: 'Gesamt-Uptime', en: 'total uptime' },
       refresh:     { cat: 'info', de: 'manueller Refresh (ManageGuild)', en: 'manual refresh (ManageGuild)' },
+      triggerinfo: { cat: 'info', de: 'Auto-Reply Trigger-Übersicht posten', en: 'post auto-reply trigger overview' },
       cleanup:     { cat: 'info', de: 'Nachrichten-Cleanup (ManageGuild)', en: 'message cleanup (ManageGuild)' },
       translate:   { cat: 'info', de: 'Text übersetzen', en: 'translate text' },
       ping:        { cat: 'info', de: 'Bot-Latenz', en: 'bot latency' },
@@ -3927,12 +3958,96 @@ function _autoReplyMatchTextValue(value, caseSensitive = false) {
 }
 
 function _matchAutoReplyRule(content, rule) {
+
+  function _buildAutoReplyTriggerInfoEmbeds(locale = 'de') {
+    const german = isGermanDiscordLocale(locale);
+    const rules = _loadAutoReplyRules()
+      .filter((rule) => rule?.enabled !== false)
+      .filter((rule) => String(rule?.trigger || '').trim() && String(rule?.reply || '').trim());
+
+    if (!rules.length) {
+      return [{
+        color: 0xFAA61A,
+        title: german ? '📌 Auto-Reply Trigger-Info' : '📌 Auto-Reply Trigger Info',
+        description: german
+          ? 'Aktuell sind keine aktiven Auto-Reply-Regeln mit Triggern vorhanden.'
+          : 'There are currently no active auto-reply rules with triggers.',
+        timestamp: new Date().toISOString(),
+      }];
+    }
+
+    const modeLabel = (mode) => {
+      if (mode === 'regex') return german ? 'Regex' : 'Regex';
+      if (mode === 'exact') return german ? 'Exakt' : 'Exact';
+      return german ? 'Enthält' : 'Contains';
+    };
+
+    const lines = rules
+      .map((rule) => ({
+        id: String(rule.id || '').trim() || 'ohne-id',
+        trigger: String(rule.trigger || '').replace(/\s+/g, ' ').trim(),
+        mode: String(rule.mode || 'contains').trim().toLowerCase(),
+        caseSensitive: rule.caseSensitive === true,
+      }))
+      .sort((a, b) => a.id.localeCompare(b.id, 'de', { sensitivity: 'base' }))
+      .map((rule) => {
+        const trigger = rule.trigger.length > 70 ? `${rule.trigger.slice(0, 67)}...` : rule.trigger;
+        return `• \`${rule.id}\` (${modeLabel(rule.mode)}${rule.caseSensitive ? ', CS' : ''}) -> \`${trigger}\``;
+      });
+
+    const fields = [];
+    let chunk = [];
+    for (const line of lines) {
+      const candidate = [...chunk, line].join('\n');
+      if (candidate.length > 900 || chunk.length >= 10) {
+        fields.push({
+          name: german ? `Trigger ${fields.length + 1}` : `Triggers ${fields.length + 1}`,
+          value: chunk.join('\n'),
+          inline: false,
+        });
+        chunk = [line];
+      } else {
+        chunk.push(line);
+      }
+    }
+    if (chunk.length) {
+      fields.push({
+        name: german ? `Trigger ${fields.length + 1}` : `Triggers ${fields.length + 1}`,
+        value: chunk.join('\n'),
+        inline: false,
+      });
+    }
+
+    return [{
+      color: 0x5865F2,
+      title: german ? '📌 Auto-Reply Trigger-Info' : '📌 Auto-Reply Trigger Info',
+      description: german
+        ? [
+            'Diese Trigger reagieren aktuell automatisch im Server.',
+            'Hinweis: Regeln mit `enabled=false` werden hier nicht angezeigt.',
+          ].join('\n')
+        : [
+            'These triggers are currently active for automatic replies.',
+            'Note: Rules with `enabled=false` are hidden here.',
+          ].join('\n'),
+      fields,
+      footer: { text: german ? `${rules.length} aktive Regel(n)` : `${rules.length} active rule(s)` },
+      timestamp: new Date().toISOString(),
+    }];
+  }
   const mode = String(rule?.mode || 'contains').trim().toLowerCase();
   const effectiveMode = ['contains', 'exact', 'regex'].includes(mode) ? mode : 'contains';
   const caseSensitive = rule?.caseSensitive === true;
   const trigger = String(rule?.trigger ?? '');
   const text = String(content ?? '');
 
+
+  if (commandName === 'triggerinfo') {
+    const publishPublic = getSlashBooleanOption(interaction, 'triggerinfo', 'oeffentlich');
+    const isPublic = publishPublic !== false;
+    const embeds = _buildAutoReplyTriggerInfoEmbeds(interactionLocale);
+    return interaction.reply({ embeds, ephemeral: !isPublic });
+  }
   try {
     if (effectiveMode === 'regex') {
       const flags = caseSensitive ? 'u' : 'iu';
