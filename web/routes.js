@@ -2105,6 +2105,11 @@ module.exports = function startWebServer({
   app.post('/api/auto-reply-templates', dashboardAuth, (req, res) => {
     try {
       const templates = req.body?.templates || {};
+      const isTemplateEnabled = (value) => {
+        if (value === true || value === 1) return true;
+        const normalized = String(value ?? '').trim().toLowerCase();
+        return normalized === 'true' || normalized === '1' || normalized === 'on' || normalized === 'yes';
+      };
       const autoRepliesFile = path.join(rootDir, config.get('discord.autoReplyRulesFile') || './auto-replies.json');
       
       // Lade existierende Regeln
@@ -2170,7 +2175,7 @@ module.exports = function startWebServer({
       
       // Füge aktivierte Templates hinzu und behalte caseSensitive-Werte bei
       for (const [key, templateDef] of Object.entries(templateDefs)) {
-        if (templates[key]) {
+        if (isTemplateEnabled(templates[key])) {
           // Versuche existierende Regel mit diesem Template-ID zu finden
           const existingTemplate = existingTemplateRules.find(r => r.id === templateDef.id);
           // Behalte caseSensitive-Wert wenn vorhanden (Ausnahme: good-night immer case-insensitiv)
@@ -2197,7 +2202,8 @@ module.exports = function startWebServer({
       res.json({
         ok: true,
         count: existingRules.length,
-        activated: Object.entries(templates).filter(([, v]) => v).length
+        activated: Object.entries(templates).filter(([, v]) => isTemplateEnabled(v)).length,
+        rules: existingRules
       });
     } catch (err) {
       logger.error(`/api/auto-reply-templates Fehler: ${err.message}`);

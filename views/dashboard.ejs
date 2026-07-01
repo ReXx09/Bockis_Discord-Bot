@@ -4818,6 +4818,7 @@
 
   async function saveAutoReplyTemplates() {
     const btn = document.getElementById('btnSaveAutoReplyTemplates');
+    const st = document.getElementById('arStatus');
     const originalText = btn.textContent;
     btn.disabled = true;
     btn.textContent = '⏳ Speichern…';
@@ -4840,8 +4841,18 @@
       const result = await response.json();
       if (result.ok) {
         toast('✓ Templates gespeichert! Auto-Replies aktualisiert.', 'ok');
-        // Regeln neu laden um die Updates zu sehen
-        setTimeout(() => arLoadRules(), 500);
+        if (Array.isArray(result.rules)) {
+          _arRules = result.rules;
+          arRenderTable();
+          arSyncTemplateCheckboxesFromRules(_arRules);
+          if (st) {
+            st.textContent = `✓ ${_arRules.length} Regel${_arRules.length !== 1 ? 'n' : ''} geladen`;
+            st.className = 'ok';
+          }
+        } else {
+          // Fallback, falls ältere API-Version ohne rules antwortet
+          setTimeout(() => arLoadRules(), 300);
+        }
       } else {
         toast('✗ Fehler: ' + result.error, 'err');
       }
