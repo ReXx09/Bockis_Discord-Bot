@@ -4514,6 +4514,28 @@
 
   // ── Auto-Reply Regeleditor ───────────────────────────
   let _arRules = [];
+  const _arDefaultTemplateRules = [
+    { id: 'good-evening', trigger: 'schönen abend', mode: 'contains', reply: 'Schönen Abend! 🌙', enabled: true, caseSensitive: false },
+    { id: 'good-day', trigger: 'schönen tag', mode: 'contains', reply: 'Schönen Tag noch! ☀️', enabled: true, caseSensitive: false },
+    { id: 'greeting', trigger: '\\b(hallo|huhu|hallöchen|hey|hi|hello|winke|servus|tach|moin)\\b', mode: 'regex', reply: 'Hallo! 👋', enabled: true, caseSensitive: false },
+    { id: 'weekend', trigger: 'schönes wochenende', mode: 'contains', reply: 'Dir auch ein schönes Wochenende! 🎉', enabled: true, caseSensitive: false },
+    { id: 'weekdays', trigger: 'schönen\\s+(montag|dienstag|mittwoch|donnerstag|freitag|samstag|sonntag)', mode: 'regex', reply: 'Dir auch einen schönen Tag! ✨', enabled: true, caseSensitive: false },
+    { id: 'good-night', trigger: '\\b(gute\\s+nacht|schlaf(?:t)?\\s+gut|süße\\s+träume|suesse\\s+traeume|träum(?:t)?\\s+schön|traeum(?:t)?\\s+schoen)\\b', mode: 'regex', reply: 'Gute Nacht und schlaft gut! 😴✨', enabled: true, caseSensitive: false },
+  ];
+
+  function arEnsureDefaultTemplateRules(rules = []) {
+    const arr = Array.isArray(rules) ? rules : [];
+    const byId = new Map();
+    for (const rule of arr) {
+      const id = String(rule?.id || '').trim();
+      if (!id) continue;
+      byId.set(id, { ...rule, enabled: rule?.enabled !== false });
+    }
+    for (const tmpl of _arDefaultTemplateRules) {
+      if (!byId.has(tmpl.id)) byId.set(tmpl.id, { ...tmpl });
+    }
+    return Array.from(byId.values());
+  }
 
   function arShowTutorial() {
     const modal = document.getElementById('arTutorialModal');
@@ -4703,10 +4725,7 @@
     try {
       const d = await fetch('/api/auto-replies').then(r => r.json());
       if (!d.ok) { st.textContent = '✗ ' + d.error; st.className = 'err'; return; }
-      _arRules = (Array.isArray(d.rules) ? d.rules : []).map((r) => ({
-        ...r,
-        enabled: r?.enabled !== false,
-      }));
+      _arRules = arEnsureDefaultTemplateRules(d.rules);
       arRenderTable();
       st.textContent = `✓ ${_arRules.length} Regel${_arRules.length !== 1 ? 'n' : ''} geladen`;
       st.className = 'ok';
@@ -4721,13 +4740,19 @@
     btn.disabled = true;
     st.textContent = '⏳ Speichern…'; st.className = 'muted';
     try {
+      _arRules = arEnsureDefaultTemplateRules(_arRules);
       const d = await fetch('/api/auto-replies', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ rules: _arRules })
       }).then(r => r.json());
       if (!d.ok) { st.textContent = '✗ ' + d.error; st.className = 'err'; }
-      else { st.textContent = `✓ ${d.count} Regel${d.count !== 1 ? 'n' : ''} gespeichert`; st.className = 'ok'; }
+      else {
+        if (Array.isArray(d.rules)) _arRules = arEnsureDefaultTemplateRules(d.rules);
+        st.textContent = `✓ ${d.count} Regel${d.count !== 1 ? 'n' : ''} gespeichert`;
+        st.className = 'ok';
+        arRenderTable();
+      }
     } catch (e) {
       st.textContent = '✗ Fehler: ' + e.message; st.className = 'err';
     } finally {
