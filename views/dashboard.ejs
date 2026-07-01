@@ -5309,6 +5309,11 @@
       st.className = 'warn';
       btn.disabled = false;
       btn.textContent = '💾 Speichern & Neu starten';
+      console.warn('DEBUG saveConfig: body ist leer', { 
+        bodyKeys: Object.keys(body),
+        cfgOpenaiModelEl: document.getElementById('cfgOpenaiModel')?.value,
+        cfgOpenaiModelInitial: document.getElementById('cfgOpenaiModel')?.dataset.initialValue,
+      });
       return;
     }
 
@@ -5804,6 +5809,9 @@
         `<option value="${m.id}">${m.name} ✅ KOSTENLOS</option>`
       ).join('');
 
+      // WICHTIG: Nach Änderung der Datalist müssen wir die data-initialValue NICHT ändern,
+      // da das Feld bereits einen Wert hat. Aber wir müssen prüfen, dass dirty-tracking korrekt ist.
+
       // Statistik anzeigen
       document.getElementById('modelStats').innerHTML = 
         `<strong>${count.free}</strong> kostenlose Modelle verfügbar | <strong>${count.total}</strong> gesamt`;
@@ -5828,7 +5836,11 @@
   window.loadConfig = async function(opts) {
     await originalLoadConfig(opts);
     // Nach kurzer Verzögerung Modelle laden
-    setTimeout(() => loadOpenRouterModels(), 500);
+    setTimeout(() => {
+      loadOpenRouterModels();
+      // WICHTIG: Dirty-tracking nach Model-Refresh saubermachen
+      clearConfigDirtyTracking();
+    }, 500);
   };
 
   // Refresh-Button
