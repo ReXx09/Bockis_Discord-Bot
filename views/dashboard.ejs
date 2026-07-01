@@ -4264,13 +4264,13 @@
   }
 
   function _parseEnabledCommands(value) {
-    const allowed = ['status', 'uptime', 'refresh', 'help', 'triggerinfo', 'coinflip', 'dice', 'eightball', 'cleanup', 'translate', 'ping', 'botinfo', 'serverstatus', 'ki', 'wetter', 'subscribe', 'remind', 'quote', 'poll', 'avatar', 'userinfo', 'testreply'];
+    const defaults = Array.from(document.querySelectorAll('[data-cmd]')).map((el) => String(el.dataset.cmd || '').trim()).filter(Boolean);
     const entries = String(value || '')
       .split(',')
       .map(s => s.trim().toLowerCase())
       .filter(Boolean);
-    const unique = Array.from(new Set(entries)).filter(cmd => allowed.includes(cmd));
-    return unique.length ? unique : ['status', 'uptime', 'refresh', 'help', 'triggerinfo', 'coinflip', 'dice', 'eightball', 'cleanup', 'translate'];
+    const unique = Array.from(new Set(entries));
+    return unique.length ? unique : defaults;
   }
 
   // ── Discord-Kanal-Browser für Mapping-Übernahme ──────────────────────────
