@@ -3951,6 +3951,18 @@
     if (field) field.classList.toggle('cfg-field-dirty', !!isDirty);
   }
 
+  function _isFieldDirty(el) {
+    if (!el) return false;
+    if (el.type === 'checkbox') {
+      const current = el.checked ? 'true' : 'false';
+      const initial = (el.dataset.initialValue || 'false').trim().toLowerCase();
+      return current !== initial;
+    }
+    const current = String(el.value ?? '').trim();
+    const initial = String(el.dataset.initialValue || '').trim();
+    return current !== initial;
+  }
+
   function refreshConfigDirtyIndicator() {
     const dirtyEl = document.getElementById('cfgDirtyState');
     if (!dirtyEl) return;
@@ -3995,11 +4007,12 @@
       if (el.dataset.dirtyBound === '1') return;
       el.dataset.dirtyBound = '1';
       const markDirty = () => {
-        _setDirtyState(el, true);
+        _setDirtyState(el, _isFieldDirty(el));
         refreshConfigDirtyIndicator();
       };
       el.addEventListener('input', markDirty);
       el.addEventListener('change', markDirty);
+      _setDirtyState(el, _isFieldDirty(el));
     });
     refreshConfigDirtyIndicator();
   }
@@ -5309,11 +5322,6 @@
       st.className = 'warn';
       btn.disabled = false;
       btn.textContent = '💾 Speichern & Neu starten';
-      console.warn('DEBUG saveConfig: body ist leer', { 
-        bodyKeys: Object.keys(body),
-        cfgOpenaiModelEl: document.getElementById('cfgOpenaiModel')?.value,
-        cfgOpenaiModelInitial: document.getElementById('cfgOpenaiModel')?.dataset.initialValue,
-      });
       return;
     }
 
