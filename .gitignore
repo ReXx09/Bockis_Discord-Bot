@@ -14,3 +14,7 @@ data/
 # IDE
 .vscode/
 .idea/
+
+# Lokale Scripts (Pi-spezifisch)
+cleanup-and-sync.sh
+auto-sync.sh
