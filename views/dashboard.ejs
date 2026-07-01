@@ -5246,7 +5246,11 @@
       }).then(r => r.json());
 
       // Fallback für ältere Backend-Versionen ohne triggerinfo-Support.
-      if (!res.ok && /ungueltige kommandos:\s*triggerinfo/i.test(String(res.error || '')) && typeof body.DISCORD_ENABLED_COMMANDS === 'string') {
+      const resErrorText = String(res.error || '');
+      const triggerinfoRejected =
+        /ung[üu]ltige\s+kommandos/i.test(resErrorText) && /triggerinfo/i.test(resErrorText)
+        || (/DISCORD_ENABLED_COMMANDS/i.test(resErrorText) && /triggerinfo/i.test(resErrorText));
+      if (!res.ok && triggerinfoRejected && typeof body.DISCORD_ENABLED_COMMANDS === 'string') {
         const downgraded = body.DISCORD_ENABLED_COMMANDS
           .split(',')
           .map((v) => v.trim())
