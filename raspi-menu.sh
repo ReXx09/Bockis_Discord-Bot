@@ -1462,8 +1462,9 @@ main_menu() {
 menu_repair() {
   while true; do
     CHOICE=$(whiptail --title "🔧 Reparatur" --menu \
-      "Bot-Umgebung reparieren — bei Abstürzen oder fehlenden Dateien:" $H $W 7 \
-      "1" "Vollreparatur  (alle Schritte in einem)  ★" \
+      "Bot-Umgebung reparieren — bei Abstürzen oder fehlenden Dateien:" $H $W 8 \
+      "0" "⚡ Git Cleanup & Sync  (Docker + Git-Konflikte + Restart)  ★" \
+      "1" "Vollreparatur  (alle Schritte in einem)" \
       "2" "Node.js Symlink reparieren  (/usr/bin/node)" \
       "3" "apt-Fehler beheben  (dpkg --configure + fix-broken)" \
       "4" "npm Pakete neu installieren  (node_modules löschen + npm install)" \
@@ -1473,6 +1474,7 @@ menu_repair() {
       3>&1 1>&2 2>&3) || return
 
     case "$CHOICE" in
+      "0") repair_cleanup_sync ;;
       "1") repair_full ;;
       "2") repair_node_symlink ;;
       "3") repair_apt_fix ;;
@@ -1482,6 +1484,113 @@ menu_repair() {
       "←") return ;;
     esac
   done
+}
+
+repair_cleanup_sync() {
+  clear
+  echo -e "${BOLD}${CYAN}━━ Git Cleanup & Sync ━━${NC}\n"
+  echo -e "  Folgende Aktionen werden durchgeführt:"
+  echo -e "  1. Docker-Container & Images aufräumen"
+  echo -e "  2. Git-Merge-Konflikte beheben"
+  echo -e "  3. Neueste Version von GitHub ziehen"
+  echo -e "  4. npm-Abhängigkeiten aktualisieren"
+  echo -e "  5. Bot neu starten"
+  echo ""
+
+  if ! whiptail --title "Cleanup & Sync bestätigen" --yesno \
+    "Git & Docker aufräumen + Bot aktualisieren?\n\nDies kann mehrere Minuten dauern." 9 $W; then
+    return
+  fi
+
+  clear
+  echo -e "${BOLD}${CYAN}━━ Git Cleanup & Sync ━━${NC}\n"
+
+  # Docker aufräumen
+  echo -e "${BOLD}${YELLOW}=== Schritt 1/5: Docker-Cleanup ===${NC}"
+  if command -v docker >/dev/null 2>&1; then
+    info "Stoppe laufende Docker-Container..."
+    if [ $(docker ps -q 2>/dev/null | wc -l) -gt 0 ]; then
+      docker stop $(docker ps -q) 2>/dev/null && ok "Container gestoppt" || info "Keine Container laufend"
+    fi
+    info "Entferne alte Docker-Images und Daten..."
+    docker system prune -a --volumes -f 2>&1 | tail -3 && ok "Docker aufgeräumt" || info "Docker-Cleanup übersprungen"
+  else
+    info "Docker nicht installiert — übersprungen"
+  fi
+
+  echo ""
+  echo -e "${BOLD}${YELLOW}=== Schritt 2/5: Git-Merge-Konflikte beheben ===${NC}"
+  if [[ ! -d "$BOT_DIR/.git" ]]; then
+    err "Git-Repository nicht gefunden in $BOT_DIR"
+    pause; return
+  fi
+
+  cd "$BOT_DIR"
+
+  # Merge-Konflikt abbrechen
+  if [[ -f ".git/MERGE_HEAD" ]]; then
+    info "Unfertiger Merge erkannt — versuche merge --abort"
+    git merge --abort 2>/dev/null && ok "Merge abgebrochen" || err "merge --abort fehlgeschlagen"
+  fi
+
+  # Rebase abbrechen
+  if [[ -d ".git/rebase-apply" || -d ".git/rebase-merge" ]]; then
+    info "Unfertiger Rebase erkannt — versuche rebase --abort"
+    git rebase --abort 2>/dev/null && ok "Rebase abgebrochen" || err "rebase --abort fehlgeschlagen"
+  fi
+
+  git config pull.rebase false 2>/dev/null || true
+
+  echo ""
+  echo -e "${BOLD}${YELLOW}=== Schritt 3/5: Neueste Version vom GitHub ===${NC}"
+  info "git fetch origin..."
+  git fetch origin 2>&1 | tail -2 || err "Git fetch fehlgeschlagen"
+
+  info "git reset --hard origin/main..."
+  git reset --hard origin/main 2>&1 | tail -2 && ok "Auf neueste Version zurückgesetzt" || err "Reset fehlgeschlagen"
+
+  info "git pull..."
+  git pull 2>&1 | tail -2 && ok "Neueste Version gepullt" || err "Pull fehlgeschlagen"
+
+  local CURRENT_VER
+  CURRENT_VER=$(git log --oneline -1 2>/dev/null || echo "unbekannt")
+  ok "Aktuelle Version: $CURRENT_VER"
+
+  echo ""
+  echo -e "${BOLD}${YELLOW}=== Schritt 4/5: npm-Abhängigkeiten ===${NC}"
+  if [[ -f "package.json" ]]; then
+    info "npm install --omit=dev..."
+    npm install --omit=dev 2>&1 | tail -5 && ok "npm-Pakete aktualisiert" || err "npm install fehlgeschlagen"
+  else
+    info "package.json nicht gefunden — übersprungen"
+  fi
+
+  echo ""
+  echo -e "${BOLD}${YELLOW}=== Schritt 5/5: Bot neu starten ===${NC}"
+  info "Starte Bot neu..."
+  
+  if systemctl is-active --quiet bockis-bot 2>/dev/null; then
+    sudo systemctl restart bockis-bot 2>&1 && sleep 2 || err "Neustart fehlgeschlagen"
+  elif command -v pm2 >/dev/null 2>&1; then
+    pm2 restart Bockis_Discord-Bot 2>&1 && sleep 2 || info "PM2-Bot nicht aktiv"
+  fi
+
+  info "Prüfe Bot-Status..."
+  if systemctl is-active --quiet bockis-bot 2>/dev/null; then
+    ok "Bot ist wieder AKTIV (systemd)"
+  elif docker ps --format '{{.Names}}' 2>/dev/null | grep -q "bot"; then
+    ok "Bot ist wieder AKTIV (Docker)"
+  elif command -v pm2 >/dev/null 2>&1 && pm2 id Bockis_Discord-Bot >/dev/null 2>&1; then
+    ok "Bot ist wieder AKTIV (PM2)"
+  else
+    err "Bot-Status unbekannt — prüfe Logs:"
+    echo ""
+    sudo journalctl -u bockis-bot -n 15 --no-pager 2>/dev/null || echo "  (keine systemd Logs verfügbar)"
+  fi
+
+  echo ""
+  ok "Cleanup & Sync abgeschlossen!"
+  pause
 }
 
 repair_node_symlink() {
@@ -1675,6 +1784,17 @@ quick_update() {
 
   clear
   echo -e "${BOLD}${CYAN}━━ Schnell-Update ━━${NC}\n"
+
+  # Vorbereitung: Git & Docker aufräumen
+  echo -e "${YELLOW}[Vorbereitung] Cleanup & Sync...${NC}"
+  if [[ -f "$BOT_DIR/cleanup-and-sync.sh" ]]; then
+    bash "$BOT_DIR/cleanup-and-sync.sh" 2>&1 | tail -15 || info "Cleanup hatte Warnungen"
+    echo ""
+  else
+    info "cleanup-and-sync.sh nicht gefunden — überspringe Vorbereitung"
+  fi
+
+  # Hauptupdate
   bash "$SCRIPT_DIR/update.sh" --bot-dir "$BOT_DIR" --mode auto --yes $SKIP_FLAG
   pause
 }
