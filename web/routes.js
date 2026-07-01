@@ -2205,6 +2205,68 @@ module.exports = function startWebServer({
     }
   });
 
+  // 🔍 OpenRouter Modelle mit Health-Check
+  app.get('/api/openrouter/models', dashboardAuth, async (req, res) => {
+    try {
+      const apiKey = config.get('openai.apiKey');
+      const baseUrl = String(config.get('openai.baseUrl') || '').trim();
+
+      // Nur für OpenRouter
+      if (!baseUrl.includes('openrouter') || !apiKey) {
+        return res.json({ 
+          ok: true, 
+          models: [],
+          message: 'OpenRouter nicht konfiguriert'
+        });
+      }
+
+      const models = await axios.get('https://openrouter.ai/api/v1/models', {
+        timeout: 5000,
+        headers: { Authorization: `Bearer ${apiKey}` }
+      });
+
+      const allModels = models.data?.data || [];
+      
+      // Filtere kostenlose Modelle
+      const freeModels = allModels
+        .filter(m => m.pricing?.prompt === '0' && m.pricing?.completion === '0')
+        .map(m => ({
+          id: m.id,
+          name: m.name,
+          pricing: m.pricing,
+          isFree: true
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name));
+
+      // Alle Modelle (auch kostenpflichtige)
+      const paidModels = allModels
+        .filter(m => !(m.pricing?.prompt === '0' && m.pricing?.completion === '0'))
+        .map(m => ({
+          id: m.id,
+          name: m.name,
+          pricing: m.pricing,
+          isFree: false
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name));
+
+      logger.info(`🔍 OpenRouter Health-Check: ${freeModels.length} kostenlos, ${paidModels.length} kostenpflichtig`);
+
+      res.json({
+        ok: true,
+        freeModels,
+        allModels: [...freeModels, ...paidModels],
+        count: { free: freeModels.length, paid: paidModels.length, total: allModels.length }
+      });
+    } catch (err) {
+      logger.warn(`⚠️  OpenRouter Modelle abrufen fehlgeschlagen: ${err.message}`);
+      res.json({
+        ok: false,
+        error: err.message,
+        models: [],
+        count: { free: 0, paid: 0, total: 0 }
+      });
+    }
+  });
 
   const port   = config.get('webPort');
   const ifaces = os.networkInterfaces();

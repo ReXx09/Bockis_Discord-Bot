@@ -2225,10 +2225,16 @@
           <div class="cfg-hint">Key deines Providers. Für OpenAI z. B. unter <a href="https://platform.openai.com/api-keys" target="_blank" style="color:var(--blue)">platform.openai.com/api-keys</a>. Der Key wird in der .env gespeichert.</div>
         </div>
         <div class="cfg-field">
-          <label class="cfg-label" for="cfgOpenaiModel">KI-Modell</label>
+          <label class="cfg-label" for="cfgOpenaiModel">
+            KI-Modell
+            <span id="modelHealthStatus" style="margin-left: 10px; font-size: 0.9em;">⏳ Lädt...</span>
+          </label>
           <input class="cfg-input" id="cfgOpenaiModel" type="text" list="cfgOpenaiModelList" autocomplete="off" placeholder="gpt-4o-mini">
           <datalist id="cfgOpenaiModelList"></datalist>
-          <div class="cfg-hint" id="cfgOpenaiModelHint">Modell-ID passend zum gewählten Provider eintragen.</div>
+          <div class="cfg-hint" id="cfgOpenaiModelHint">
+            <span id="modelStats"></span>
+            <button type="button" id="btnRefreshModels" style="margin-left: 15px; padding: 5px 10px; cursor: pointer; background: var(--blue); color: white; border: none; border-radius: 4px;">🔄 Modelle neu laden</button>
+          </div>
         </div>
         <div class="cfg-field">
           <label class="cfg-label" for="cfgOpenaiPersonaName">Bot-Name / Persönlichkeit</label>
@@ -5764,6 +5770,77 @@
 
   const _origFetchAll = window.fetchAll;
   window.fetchAll = function() { _origFetchAll?.call(this); setTimeout(initCardSystem, 150); };
+
+  // 🔍 Lade verfügbare OpenRouter-Modelle
+  async function loadOpenRouterModels() {
+    try {
+      const statusEl = document.getElementById('modelHealthStatus');
+      statusEl.textContent = '⏳ Lädt...';
+      statusEl.style.color = '#999';
+
+      const res = await fetch('/api/openrouter/models').then(r => r.json());
+
+      if (!res.ok) {
+        statusEl.textContent = '❌ API Fehler';
+        statusEl.style.color = '#f04747';
+        document.getElementById('modelStats').textContent = 'Fehler beim Laden der Modelle.';
+        return;
+      }
+
+      const { freeModels, count } = res;
+
+      // Status aktualisieren
+      if (freeModels.length > 0) {
+        statusEl.innerHTML = `✅ ${count.free} kostenlos`;
+        statusEl.style.color = '#43b581';
+      } else {
+        statusEl.innerHTML = '⚠️ Keine kostenlosen Modelle';
+        statusEl.style.color = '#faa61a';
+      }
+
+      // Datalist mit kostenlosen Modellen füllen
+      const datalist = document.getElementById('cfgOpenaiModelList');
+      datalist.innerHTML = freeModels.map(m => 
+        `<option value="${m.id}">${m.name} ✅ KOSTENLOS</option>`
+      ).join('');
+
+      // Statistik anzeigen
+      document.getElementById('modelStats').innerHTML = 
+        `<strong>${count.free}</strong> kostenlose Modelle verfügbar | <strong>${count.total}</strong> gesamt`;
+
+      // Wenn aktuelles Modell nicht mehr kostenlos, warnen
+      const currentModel = document.getElementById('cfgOpenaiModel').value;
+      if (currentModel && !freeModels.some(m => m.id === currentModel)) {
+        const isFree = res.allModels.some(m => m.id === currentModel && m.isFree);
+        if (!isFree && res.allModels.some(m => m.id === currentModel)) {
+          toast(`⚠️ Dein Modell "${currentModel}" ist NICHT MEHR KOSTENLOS!`, 'warn');
+        }
+      }
+    } catch (err) {
+      document.getElementById('modelHealthStatus').textContent = '❌ Fehler';
+      document.getElementById('modelHealthStatus').style.color = '#f04747';
+      console.error('Fehler beim Laden der OpenRouter-Modelle:', err);
+    }
+  }
+
+  // Beim Laden der Config: Modelle automatisch aktualisieren
+  const originalLoadConfig = window.loadConfig;
+  window.loadConfig = async function(opts) {
+    await originalLoadConfig(opts);
+    // Nach kurzer Verzögerung Modelle laden
+    setTimeout(() => loadOpenRouterModels(), 500);
+  };
+
+  // Refresh-Button
+  document.addEventListener('DOMContentLoaded', () => {
+    const btnRefresh = document.getElementById('btnRefreshModels');
+    if (btnRefresh) {
+      btnRefresh.addEventListener('click', (e) => {
+        e.preventDefault();
+        loadOpenRouterModels();
+      });
+    }
+  });
 </script>
 </body>
 </html>
