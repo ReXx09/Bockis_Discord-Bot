@@ -398,9 +398,9 @@ const config = convict({
     wigiDashApi: {
       doc: 'WigiDash Status-API Konfiguration (für Hardware-Monitor-Integration)',
       enabled: {
-        doc: 'WigiDash Status-API aktivieren (Endpunkt GET /status)',
+        doc: 'Optionale WigiDash-Status-API aktivieren (nur für ein WigiDash/HWiNFO-Widget)',
         format: Boolean,
-        default: true,
+        default: false,
         env: 'WIGIDASH_API_ENABLED'
       },
       host: {

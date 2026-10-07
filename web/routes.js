@@ -2005,7 +2005,8 @@ module.exports = function startWebServer({
       ok: true,
       docker: { available: false, version: null },
       uptimeKuma:     { found: false, via: null, name: null, status: null, ports: null, reachable: false, url: null },
-      libretranslate: { found: false, via: null, name: null, status: null, ports: null, reachable: false, url: null, languageCount: null }
+      libretranslate: { found: false, via: null, name: null, status: null, ports: null, reachable: false, url: null, languageCount: null },
+      cloudflare:     { configured: false, reachable: false, url: null }
     };
 
     // Docker verfügbar?
@@ -2066,6 +2067,19 @@ module.exports = function startWebServer({
         result.libretranslate.languageCount = Array.isArray(r.data) ? r.data.length : null;
       } catch (e) {
         result.libretranslate.reachable = !!(e.response);
+      }
+    }
+
+    // HTTP-Probe: öffentliche Cloudflare-/Status-URL
+    const publicUrl = (config.get('cloudflare.publicUrl') || '').replace(/\/$/, '');
+    if (publicUrl) {
+      result.cloudflare.configured = true;
+      result.cloudflare.url = publicUrl;
+      try {
+        await axios.get(publicUrl, { timeout: 3000 });
+        result.cloudflare.reachable = true;
+      } catch (e) {
+        result.cloudflare.reachable = !!(e.response); // HTTP-Antwort = erreichbar
       }
     }
 

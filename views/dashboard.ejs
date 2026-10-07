@@ -1727,7 +1727,7 @@
           <div class="cfg-section-header" onclick="toggleConfigSection(this)">
             <div class="cfg-section-header-title">
               <span class="cfg-section-toggle">▾</span>
-              <span>📟 WigiDash Status-API</span>
+              <span>📟 WigiDash Status-API (optional)</span>
             </div>
           </div>
           <div class="cfg-section-content">
@@ -1736,7 +1736,7 @@
                 <label class="cfg-label" for="cfgWigiDashEnabled">WigiDash API aktivieren</label>
                 <label style="display:flex;align-items:center;gap:8px;color:var(--muted);font-size:12px">
                   <input type="checkbox" id="cfgWigiDashEnabled" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
-                  Status-Endpunkt bereitstellen
+                  Nur für ein WigiDash/HWiNFO-Widget; für Bot, Dashboard und Monitoring nicht erforderlich
                 </label>
               </div>
               <div class="cfg-field">
@@ -3171,6 +3171,17 @@
         internal: fmtInternal(d.libretranslate),
         external: fmtExternal(d.libretranslate),
         details: '<span class="muted">Lokal per Docker-Erkennung, extern per DISCORD_TRANSLATE_API_URL</span>'
+      },
+      {
+        status: d.cloudflare?.configured
+          ? getServiceStatus({ reachable: d.cloudflare.reachable })
+          : '<span class="badge b-gray">NICHT KONFIGURIERT</span>',
+        service: 'Cloudflare / öffentliche Status-URL',
+        internal: '<span class="muted">Nicht lokal erkannt</span>',
+        external: d.cloudflare?.configured
+          ? fmtExternal(d.cloudflare)
+          : '<span class="muted">nicht konfiguriert</span>',
+        details: '<span class="muted">Prüfung über CLOUDFLARE_PUBLIC_URL</span>'
       }
     ].map(item => `
       <tr>
@@ -3181,9 +3192,11 @@
         <td>${item.details}</td>
       </tr>`).join('');
 
-    // Karten-Rahmenfarbe: grün wenn beide erreichbar, gelb wenn einer fehlt
-    const allOk = d.uptimeKuma.reachable && d.libretranslate.reachable;
-    const anyOk = d.uptimeKuma.reachable || d.libretranslate.reachable;
+    // Optionale Dienste ohne URL sollen die Gesamtbewertung nicht verschlechtern.
+    const externalServices = [d.uptimeKuma, d.libretranslate, d.cloudflare]
+      .filter(svc => svc?.url);
+    const allOk = externalServices.length > 0 && externalServices.every(svc => svc.reachable);
+    const anyOk = externalServices.some(svc => svc.reachable);
     if (card) card.style.borderTop = allOk ? '3px solid var(--green)' : anyOk ? '3px solid var(--yellow)' : '';
 
     el.innerHTML = `

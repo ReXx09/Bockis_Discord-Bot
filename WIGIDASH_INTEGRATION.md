@@ -13,11 +13,13 @@ Der Bot stellt einen HTTP-Endpunkt bereit, der aktuelle Discord-Status-Daten lie
 
 ## Aktivierung & Konfiguration
 
+Die WigiDash-API ist optional. Der Discord-Bot, das Dashboard und das Monitoring funktionieren ohne sie. Aktiviere sie nur, wenn ein WigiDash/HWiNFO-Widget den Discord-Status über HTTP anzeigen soll.
+
 ### 1. Konfigurationsvariablen in `.env` hinzufügen
 
 ```env
 # ── WigiDash Hardware-Monitor Integration ──────────────────────────────────────
-# WigiDash Status-API aktivieren
+# Nur für ein WigiDash/HWiNFO-Widget aktivieren
 WIGIDASH_API_ENABLED=true
 
 # Nur localhost (127.0.0.1) oder im Netzwerk erreichbar (0.0.0.0)

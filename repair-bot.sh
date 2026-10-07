@@ -59,9 +59,18 @@ port_from_env() {
   [[ "$value" =~ ^[0-9]+$ ]] && printf '%s' "$value" || printf '%s' "$fallback"
 }
 
+value_from_env() {
+  local key="$1" fallback="$2" value
+  value="$(grep -E "^${key}=" "$ENV_FILE" 2>/dev/null | tail -1 | cut -d= -f2- | tr -d '\"' | tr -d "'" | tr -d '\r' || true)"
+  [[ -n "$value" ]] && printf '%s' "$value" || printf '%s' "$fallback"
+}
+
 service_state="$(systemctl is-active "$SERVICE" 2>/dev/null || true)"
 web_port="$(port_from_env WEB_PORT 3000)"
 wigi_port="$(port_from_env WIGIDASH_API_PORT 47900)"
+wigi_enabled="$(value_from_env WIGIDASH_API_ENABLED false)"
+wigi_path="$(value_from_env WIGIDASH_API_PATH /status)"
+[[ "$wigi_path" == /* ]] || wigi_path="/${wigi_path}"
 
 printf '\nBockis Bot - Diagnose und Reparatur\n'
 printf 'Bot-Verzeichnis: %s\n\n' "$BOT_DIR"
@@ -131,8 +140,12 @@ else
 fi
 
 if [[ -f "$ENV_FILE" ]]; then
-  grep -q '^WIGIDASH_API_ENABLED=true' "$ENV_FILE" && ok "WigiDash-API aktiviert" || warn "WigiDash-API nicht aktiviert"
-  grep -q '^WIGIDASH_API_HOST=0.0.0.0' "$ENV_FILE" && ok "WigiDash-API ist im LAN gebunden" || warn "WigiDash-API ist nicht auf 0.0.0.0 gebunden"
+  if [[ "$wigi_enabled" == "true" ]]; then
+    ok "WigiDash-API aktiviert"
+    grep -q '^WIGIDASH_API_HOST=0.0.0.0' "$ENV_FILE" && ok "WigiDash-API ist im LAN gebunden" || warn "WigiDash-API ist nicht auf 0.0.0.0 gebunden"
+  else
+    info "WigiDash-API deaktiviert; Portprüfung wird übersprungen"
+  fi
 fi
 
 if [[ "$MODE" != "repair" ]]; then
@@ -208,10 +221,12 @@ else
 fi
 
 if command -v curl >/dev/null 2>&1; then
-  if curl -fsS --max-time 5 "http://127.0.0.1:${wigi_port}/status" >/dev/null; then
+  if [[ "$wigi_enabled" != "true" ]]; then
+    info "WigiDash-Status-Endpunkt nicht geprüft (API deaktiviert)"
+  elif curl -fsS --max-time 5 "http://127.0.0.1:${wigi_port}${wigi_path}" >/dev/null; then
     ok "WigiDash-Status-Endpunkt antwortet"
   else
-    warn "WigiDash-Status-Endpunkt antwortet nicht"
+    warn "WigiDash-Status-Endpunkt antwortet nicht: http://127.0.0.1:${wigi_port}${wigi_path}"
   fi
 fi
 
