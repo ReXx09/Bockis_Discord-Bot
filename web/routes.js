@@ -1465,7 +1465,7 @@ module.exports = function startWebServer({
         DISCORD_TRANSLATE_ALLOWED_GUILD_IDS: get('DISCORD_TRANSLATE_ALLOWED_GUILD_IDS') || '',
         DISCORD_TRANSLATE_MAX_TEXT_LENGTH: get('DISCORD_TRANSLATE_MAX_TEXT_LENGTH') || '1800',
         WIGIDASH_API_ENABLED:           get('WIGIDASH_API_ENABLED') || 'true',
-        WIGIDASH_API_HOST:              get('WIGIDASH_API_HOST') || '127.0.0.1',
+        WIGIDASH_API_HOST:              get('WIGIDASH_API_HOST') || '0.0.0.0',
         WIGIDASH_API_PORT:              get('WIGIDASH_API_PORT') || '47900',
         WIGIDASH_API_PATH:              get('WIGIDASH_API_PATH') || '/status',
         WIGIDASH_TARGET_USER_ID:        get('WIGIDASH_TARGET_USER_ID') || '',

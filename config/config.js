@@ -406,7 +406,7 @@ const config = convict({
       host: {
         doc: 'Host für WigiDash API (127.0.0.1 = nur lokal, 0.0.0.0 = netzweit)',
         format: String,
-        default: '127.0.0.1',
+        default: '0.0.0.0',
         env: 'WIGIDASH_API_HOST'
       },
       port: {
