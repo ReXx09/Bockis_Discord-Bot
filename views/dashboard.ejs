@@ -3515,8 +3515,14 @@
         }
       }
     } catch (e) {
-      addLine('Verbindungsfehler: ' + e.message, 'ul-err');
-      toast('Fehler: ' + e.message, 'err');
+      if (e.name === 'TypeError') {
+        addLine('→ Bot-Service wird neu gestartet. Der vollständige Reparaturbericht wird danach in den Bot-Logs angezeigt.', 'ul-warn');
+        toast('Service wird neu gestartet – Logs werden danach aktualisiert', 'ok');
+        window.setTimeout(() => { window.location.reload(); }, 4000);
+      } else {
+        addLine('Verbindungsfehler: ' + e.message, 'ul-err');
+        toast('Fehler: ' + e.message, 'err');
+      }
     } finally {
       if (triggerBtn) { triggerBtn.disabled = false; triggerBtn.textContent = '⬇ Installieren'; }
       if (btnInstAll) btnInstAll.disabled = false;
