@@ -36,8 +36,7 @@ if ! command -v git &> /dev/null; then
 fi
 
 if ! command -v pm2 &> /dev/null; then
-    echo -e "${RED}  ❌ PM2 nicht installiert - FEHLER${NC}"
-    exit 1
+    echo -e "${YELLOW}  ⚠️  PM2 nicht installiert - systemd wird bevorzugt${NC}"
 fi
 
 echo -e "${GREEN}  ✅ Alle Vorbedingungen erfüllt${NC}\n"
@@ -71,7 +70,7 @@ fi
 # ─────────────────────────────────────────────────────────────
 echo -e "${YELLOW}[3/5] Git synchronisieren...${NC}"
 
-BOT_DIR="/opt/Bockis_Discord-Bot"
+BOT_DIR="${BOT_DIR:-$HOME/bockis-bot}"
 
 if [ ! -d "$BOT_DIR" ]; then
     echo -e "${RED}  ❌ Bot-Verzeichnis nicht gefunden: $BOT_DIR${NC}"
@@ -118,22 +117,32 @@ fi
 # ─────────────────────────────────────────────────────────────
 echo -e "${YELLOW}[5/5] Bot neustarten...${NC}"
 
-# PM2 Status prüfen
-if pm2 id Bockis_Discord-Bot > /dev/null 2>&1; then
-    echo -e "  Starte Bot neu..."
-    pm2 restart Bockis_Discord-Bot --silent
+if systemctl list-unit-files --type=service 2>/dev/null | grep -q '^bockis-bot.service'; then
+    echo -e "  Verwende systemd als einzige Prozessverwaltung..."
+    if command -v pm2 >/dev/null 2>&1 && pm2 id Bockis_Discord-Bot > /dev/null 2>&1; then
+        echo -e "  Entferne konkurrierende PM2-Instanz..."
+        pm2 delete Bockis_Discord-Bot --silent || true
+    fi
+    sudo systemctl restart bockis-bot
     sleep 2
+    sudo systemctl is-active --quiet bockis-bot || {
+        echo -e "${RED}  ❌ systemd-Service nicht aktiv${NC}"
+        sudo journalctl -u bockis-bot -n 30 --no-pager
+        exit 1
+    }
 else
-    echo -e "  Starte Bot neu (erste Ausführung)..."
-    pm2 start bot.js --name Bockis_Discord-Bot --silent
+    if ! command -v pm2 >/dev/null 2>&1; then
+        echo -e "${RED}  ❌ Weder systemd-Service noch PM2 verfügbar${NC}"
+        exit 1
+    fi
+    echo -e "  Kein systemd-Service gefunden - verwende PM2 als Fallback..."
+    if pm2 id Bockis_Discord-Bot > /dev/null 2>&1; then
+        pm2 restart Bockis_Discord-Bot --silent
+    else
+        pm2 start bot.js --name Bockis_Discord-Bot --silent
+    fi
+    pm2 save --silent
 fi
-
-# Status anzeigen
-echo -e "  ${BLUE}PM2 Status:${NC}"
-pm2 status | tail -n +3
-
-# PM2 Config speichern
-pm2 save --silent
 
 echo -e "${GREEN}  ✅ Bot erfolgreich neu gestartet${NC}\n"
 
@@ -146,9 +155,13 @@ echo -e "${BLUE}═════════════════════�
 
 echo -e "📊 ${BLUE}System-Status:${NC}"
 echo -e "  Bot-Version: $(git log --oneline -1 | cut -d' ' -f2-)"
-echo -e "  Bot-Status: $(pm2 status | grep 'Bockis_Discord-Bot' | awk '{print $NF}')"
-echo -e "  Uptime: $(pm2 info Bockis_Discord-Bot | grep -i uptime | awk '{print $NF}')"
-echo -e "  RAM-Nutzung: $(pm2 info Bockis_Discord-Bot | grep -i memory | awk '{print $NF}')"
+if systemctl list-unit-files --type=service 2>/dev/null | grep -q '^bockis-bot.service'; then
+    echo -e "  Bot-Status: $(systemctl is-active bockis-bot 2>/dev/null || echo unbekannt) (systemd)"
+else
+    echo -e "  Bot-Status: $(pm2 status | grep 'Bockis_Discord-Bot' | awk '{print $NF}') (PM2)"
+    echo -e "  Uptime: $(pm2 info Bockis_Discord-Bot | grep -i uptime | awk '{print $NF}')"
+    echo -e "  RAM-Nutzung: $(pm2 info Bockis_Discord-Bot | grep -i memory | awk '{print $NF}')"
+fi
 echo ""
 echo -e "🔄 ${BLUE}Nächste automatische Sync: in 10 Minuten${NC}"
 echo -e "${BLUE}═══════════════════════════════════════════════════════════${NC}\n"

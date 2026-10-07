@@ -1464,26 +1464,41 @@ menu_repair() {
     CHOICE=$(whiptail --title "🔧 Reparatur" --menu \
       "Bot-Umgebung reparieren — bei Abstürzen oder fehlenden Dateien:" $H $W 8 \
       "0" "⚡ Git Cleanup & Sync  (Docker + Git-Konflikte + Restart)  ★" \
-      "1" "Vollreparatur  (alle Schritte in einem)" \
-      "2" "Node.js Symlink reparieren  (/usr/bin/node)" \
-      "3" "apt-Fehler beheben  (dpkg --configure + fix-broken)" \
-      "4" "npm Pakete neu installieren  (node_modules löschen + npm install)" \
-      "5" "Service neu starten  (systemctl restart bockis-bot)" \
-      "6" "Service-Status & Logs anzeigen" \
+      "1" "Automatische Diagnose & Reparatur  (empfohlen)" \
+      "2" "Vollreparatur  (alle Schritte in einem)" \
+      "3" "Node.js Symlink reparieren  (/usr/bin/node)" \
+      "4" "apt-Fehler beheben  (dpkg --configure + fix-broken)" \
+      "5" "npm Pakete neu installieren  (node_modules löschen + npm install)" \
+      "6" "Service neu starten  (systemctl restart bockis-bot)" \
+      "7" "Service-Status & Logs anzeigen" \
       "←" "Zurück zum Hauptmenü" \
       3>&1 1>&2 2>&3) || return
 
     case "$CHOICE" in
       "0") repair_cleanup_sync ;;
-      "1") repair_full ;;
-      "2") repair_node_symlink ;;
-      "3") repair_apt_fix ;;
-      "4") repair_npm ;;
-      "5") repair_restart ;;
-      "6") bot_service_status ;;
+      "1") repair_auto ;;
+      "2") repair_full ;;
+      "3") repair_node_symlink ;;
+      "4") repair_apt_fix ;;
+      "5") repair_npm ;;
+      "6") repair_restart ;;
+      "7") bot_service_status ;;
       "←") return ;;
     esac
   done
+}
+
+repair_auto() {
+  clear
+  echo -e "${BOLD}${CYAN}━━ Automatische Diagnose & Reparatur ━━${NC}\n"
+  echo -e "  Das Skript prueft Bot-Dateien, Node/npm, systemd, Ports,"
+  echo -e "  doppelte Bot-Prozesse, WigiDash und die Firewall.\n"
+  if ! whiptail --title "Automatische Reparatur bestätigen" --yesno \
+    "Diagnose ausführen und erkannte Probleme beheben?\n\nNur passende Bot-Prozesse werden beendet.\nDies kann npm und apt verwenden." 11 $W; then
+    return
+  fi
+  bash "$SCRIPT_DIR/repair-bot.sh" --bot-dir "$BOT_DIR" --repair --yes
+  pause
 }
 
 repair_cleanup_sync() {
@@ -1569,10 +1584,10 @@ repair_cleanup_sync() {
   echo -e "${BOLD}${YELLOW}=== Schritt 5/5: Bot neu starten ===${NC}"
   info "Starte Bot neu..."
   
-  if systemctl is-active --quiet bockis-bot 2>/dev/null; then
+  if systemctl list-unit-files --type=service 2>/dev/null | grep -q '^bockis-bot.service'; then
     sudo systemctl restart bockis-bot 2>&1 && sleep 2 || err "Neustart fehlgeschlagen"
-  elif command -v pm2 >/dev/null 2>&1; then
-    pm2 restart Bockis_Discord-Bot 2>&1 && sleep 2 || info "PM2-Bot nicht aktiv"
+  else
+    info "Kein systemd-Service gefunden — kein PM2-Fallback gestartet"
   fi
 
   info "Prüfe Bot-Status..."

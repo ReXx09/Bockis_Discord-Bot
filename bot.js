@@ -82,6 +82,13 @@ const logger = winston.createLogger({
     })
   ]
 });
+
+process.on('uncaughtException', (err) => {
+  logger.error(`Unbehandelte Ausnahme: ${err?.stack || err?.message || err}`);
+});
+process.on('unhandledRejection', (reason) => {
+  logger.error(`Unbehandelte Promise-Ablehnung: ${reason?.stack || reason?.message || reason}`);
+});
 // #endregion
 
 // #region 3. KONFIGURATION

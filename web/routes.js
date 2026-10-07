@@ -714,21 +714,41 @@ module.exports = function startWebServer({
     }
   });
 
-  // ── API: Log-Datei (letzte 100 Zeilen) ─────────────────────────────────────
+  // ── API: Bot-, Reparatur- und systemd-Logs ─────────────────────────────────
 
   app.get('/api/logs', dashboardAuth, (req, res) => {
     try {
       const logDir = path.join(rootDir, 'logs');
-      if (!fs.existsSync(logDir)) return res.json({ ok: true, lines: [], file: null });
-      const files = fs.readdirSync(logDir)
-        .filter(f => f.endsWith('.log'))
-        .sort()
-        .reverse();
-      if (!files.length) return res.json({ ok: true, lines: [], file: null });
-      const latest  = path.join(logDir, files[0]);
-      const content = fs.readFileSync(latest, 'utf8');
-      const lines   = content.split('\n').filter(Boolean).slice(-100).reverse();
-      res.json({ ok: true, lines, file: files[0] });
+      const files = fs.existsSync(logDir)
+        ? fs.readdirSync(logDir)
+          .filter(f => f.endsWith('.log') && (f.startsWith('bot-') || f === 'repair.log'))
+          .sort()
+          .reverse()
+        : [];
+      const lines = [];
+      for (const file of files.slice(0, 2)) {
+        const content = fs.readFileSync(path.join(logDir, file), 'utf8');
+        const fileLines = content.split('\n').filter(Boolean).slice(-100);
+        lines.push(...fileLines.map(line => file === 'repair.log' ? `[REPAIR] ${line}` : line));
+      }
+
+      let journalLines = [];
+      try {
+        const journal = execFileSync('journalctl', [
+          '-u', 'bockis-bot', '-p', 'warning..emerg', '-n', '100', '--no-pager', '-o', 'short-iso'
+        ], { encoding: 'utf8', timeout: 3000, windowsHide: true });
+        journalLines = String(journal).split('\n').filter(Boolean).map(line => `[SYSTEMD] ${line}`);
+      } catch {
+        // journalctl ist auf Windows oder ohne Journal-Leserechte nicht verfügbar.
+      }
+
+      lines.push(...journalLines);
+      res.json({
+        ok: true,
+        lines: lines.slice(-250).reverse(),
+        file: files.length ? files.slice(0, 2).join(', ') : null,
+        systemd: journalLines.length > 0
+      });
     } catch (err) {
       logger.error(`/api/logs Fehler: ${err.message}`);
       res.json({ ok: false, error: err.message, lines: [], file: null });
@@ -1244,6 +1264,38 @@ module.exports = function startWebServer({
 
     const proc = spawn('bash', args, { cwd: rootDir });
     const send = (line) => res.write(`data: ${line.replace(/\n/g, ' ')}\n\n`);
+    proc.stdout.on('data', d => d.toString().split('\n').filter(Boolean).forEach(send));
+    proc.stderr.on('data', d => d.toString().split('\n').filter(Boolean).forEach(send));
+    proc.on('close', code => { res.write(`data: __EXIT__:${code}\n\n`); res.end(); });
+  });
+
+  // ── API: Automatische Diagnose und Reparatur ───────────────────────────────
+
+  app.post('/api/repair', dashboardAuth, (req, res) => {
+    if (req.body?.action !== 'full') {
+      return res.status(400).json({ ok: false, error: 'Nur die automatische Vollreparatur ist verfügbar.' });
+    }
+
+    const scriptPath = path.join(rootDir, 'repair-bot.sh');
+    if (!fs.existsSync(scriptPath)) {
+      return res.status(500).json({ ok: false, error: 'repair-bot.sh nicht gefunden' });
+    }
+
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders();
+
+    const repairLogPath = path.join(rootDir, 'logs', 'repair.log');
+    try { fs.mkdirSync(path.dirname(repairLogPath), { recursive: true }); } catch { /* ignore */ }
+    const record = (line) => {
+      try { fs.appendFileSync(repairLogPath, `[${new Date().toISOString()}] ${line}\n`); } catch { /* ignore */ }
+    };
+    const send = (line) => {
+      record(line);
+      res.write(`data: ${line.replace(/\n/g, ' ')}\n\n`);
+    };
+    const proc = spawn('bash', [scriptPath, '--bot-dir', rootDir, '--repair', '--yes'], { cwd: rootDir });
     proc.stdout.on('data', d => d.toString().split('\n').filter(Boolean).forEach(send));
     proc.stderr.on('data', d => d.toString().split('\n').filter(Boolean).forEach(send));
     proc.on('close', code => { res.write(`data: __EXIT__:${code}\n\n`); res.end(); });

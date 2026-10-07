@@ -2405,11 +2405,7 @@
 <div class="card" id="repairDiagCard" data-span="12" data-pane="diagnostics">
   <div class="card-title">🔧 Reparatur (Schnellzugriff)</div>
   <div class="mb12" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px">
-    <button class="btn btn-red" id="btnRepairDiagFull"        onclick="runRepair('full', 'btnRepairDiagFull', 'diag')">🔧 Vollreparatur</button>
-    <button class="btn"         id="btnRepairDiagNodeSymlink" onclick="runRepair('node-symlink', 'btnRepairDiagNodeSymlink', 'diag')">⛓ Node-Symlink</button>
-    <button class="btn"         id="btnRepairDiagAptFix"      onclick="runRepair('apt-fix', 'btnRepairDiagAptFix', 'diag')">📦 apt reparieren</button>
-    <button class="btn"         id="btnRepairDiagNpm"         onclick="runRepair('npm-reinstall', 'btnRepairDiagNpm', 'diag')">🔄 npm neu installieren</button>
-    <button class="btn"         id="btnRepairDiagRestart"     onclick="runRepair('restart', 'btnRepairDiagRestart', 'diag')">↺ Service neustarten</button>
+    <button class="btn btn-red" id="btnRepairDiagFull" onclick="runRepair('full', 'btnRepairDiagFull', 'diag')">🔧 Automatisch prüfen und reparieren</button>
   </div>
   <div id="repairLogDiag" style="display:none;margin-top:12px"></div>
 </div>
@@ -2468,14 +2464,10 @@
 <div class="card" id="repairCard" data-span="12" data-pane="updates">
   <div class="card-title">🔧 Reparatur</div>
   <div class="mb12" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px">
-    <button class="btn btn-red" id="btnRepairFull"        onclick="runRepair('full',           'btnRepairFull')"       >🔧 Vollreparatur</button>
-    <button class="btn"         id="btnRepairNodeSymlink" onclick="runRepair('node-symlink',    'btnRepairNodeSymlink')" >⛓ Node-Symlink</button>
-    <button class="btn"         id="btnRepairAptFix"      onclick="runRepair('apt-fix',         'btnRepairAptFix')"     >📦 apt reparieren</button>
-    <button class="btn"         id="btnRepairNpm"         onclick="runRepair('npm-reinstall',   'btnRepairNpm')"        >🔄 npm neu installieren</button>
-    <button class="btn"         id="btnRepairRestart"     onclick="runRepair('restart',         'btnRepairRestart')"    >↺ Service neustarten</button>
+    <button class="btn btn-red" id="btnRepairFull" onclick="runRepair('full', 'btnRepairFull')">🔧 Automatisch prüfen und reparieren</button>
   </div>
   <div class="muted" style="font-size:12px;margin-bottom:8px">
-    Vollreparatur: Node-Symlink prüfen → apt-Fehler beheben → npm neu installieren → Service neustarten
+    Diagnose: Bot-Prozesse und Ports prüfen → erkannte Fehler beheben → Service und WigiDash-Endpunkt testen
   </div>
   <div id="repairLog" style="display:none;margin-top:12px"></div>
 </div>
@@ -2876,7 +2868,7 @@
 
   // ── Render: Logs ─────────────────────────────────────
   function renderLogs(d) {
-    document.getElementById('logFile').textContent = d.file || '–';
+    document.getElementById('logFile').textContent = [d.file, d.systemd ? 'systemd' : ''].filter(Boolean).join(' · ') || '–';
     const viewer = document.getElementById('logViewer');
 
     if (!d.lines.length) {
@@ -3558,35 +3550,19 @@
   // ── Reparatur-Funktion ────────────────────────────────────────────────────
 
   const REPAIR_LABELS = {
-    'full':          '🔧 Vollreparatur',
-    'node-symlink':  '⛓ Node-Symlink',
-    'apt-fix':       '📦 apt reparieren',
-    'npm-reinstall': '🔄 npm neu installieren',
-    'restart':       '↺ Service neustarten',
+    'full': '🔧 Automatische Diagnose und Reparatur',
   };
 
   const REPAIR_UI_GROUPS = {
     updates: {
       logId: 'repairLog',
-      buttons: ['btnRepairFull', 'btnRepairNodeSymlink', 'btnRepairAptFix', 'btnRepairNpm', 'btnRepairRestart'],
-      keyMap: {
-        btnRepairFull: 'full',
-        btnRepairNodeSymlink: 'node-symlink',
-        btnRepairAptFix: 'apt-fix',
-        btnRepairNpm: 'npm-reinstall',
-        btnRepairRestart: 'restart',
-      },
+      buttons: ['btnRepairFull'],
+      keyMap: { btnRepairFull: 'full' },
     },
     diag: {
       logId: 'repairLogDiag',
-      buttons: ['btnRepairDiagFull', 'btnRepairDiagNodeSymlink', 'btnRepairDiagAptFix', 'btnRepairDiagNpm', 'btnRepairDiagRestart'],
-      keyMap: {
-        btnRepairDiagFull: 'full',
-        btnRepairDiagNodeSymlink: 'node-symlink',
-        btnRepairDiagAptFix: 'apt-fix',
-        btnRepairDiagNpm: 'npm-reinstall',
-        btnRepairDiagRestart: 'restart',
-      },
+      buttons: ['btnRepairDiagFull'],
+      keyMap: { btnRepairDiagFull: 'full' },
     },
   };
 
