@@ -3683,8 +3683,8 @@
           if (line.startsWith('__EXIT__:')) {
             const code = line.split(':')[1];
             if (code === '0') {
-              addLine('✓ ' + (REPAIR_LABELS[action] || action) + ' erfolgreich!', 'ul-ok');
-              toast('✓ Reparatur abgeschlossen', 'ok');
+              addLine('✓ Reparatur im Hintergrund gestartet. Der vollständige Bericht wird in repair.log geschrieben.', 'ul-ok');
+              toast('✓ Reparatur gestartet', 'ok');
             } else {
               addLine('✗ Reparatur fehlgeschlagen (Exit-Code ' + code + ')', 'ul-err');
               toast('Reparatur fehlgeschlagen (Code ' + code + ')', 'err');

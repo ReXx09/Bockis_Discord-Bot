@@ -1295,14 +1295,20 @@ module.exports = function startWebServer({
       record(line);
       res.write(`data: ${line.replace(/\n/g, ' ')}\n\n`);
     };
-    // Der Reparaturlauf darf nicht im Bot-Service-CGroup laufen: Das Skript
-    // stoppt bockis-bot selbst und würde sonst zusammen mit dem Bot beendet.
+    // Der Reparaturlauf darf weder im Bot-Service-CGroup laufen noch an dessen
+    // stdin/stdout hängen: Das Skript stoppt bockis-bot selbst.
+    const shellQuote = (value) => `'${String(value).replace(/'/g, `'"'"'`)}'`;
+    const repairCommand = [
+      'set -o pipefail;',
+      `exec ${shellQuote('bash')} ${shellQuote(scriptPath)} --bot-dir ${shellQuote(rootDir)} --repair --yes`,
+      `>>${shellQuote(repairLogPath)} 2>&1`,
+    ].join(' ');
     const repairArgs = [
       '--unit', `bockis-repair-${Date.now()}`,
-      '--collect', '--pipe', '--wait',
+      '--collect', '--no-block',
       '--uid', String(typeof process.getuid === 'function' ? process.getuid() : 0),
       '--gid', String(typeof process.getgid === 'function' ? process.getgid() : 0),
-      'bash', scriptPath, '--bot-dir', rootDir, '--repair', '--yes'
+      'bash', '-lc', repairCommand,
     ];
     const proc = process.platform === 'linux'
       ? spawn('sudo', ['-n', 'systemd-run', ...repairArgs], { cwd: rootDir })
@@ -1310,7 +1316,13 @@ module.exports = function startWebServer({
     proc.on('error', err => send(`[FAIL] Reparaturprozess konnte nicht gestartet werden: ${err.message}`));
     proc.stdout.on('data', d => d.toString().split('\n').filter(Boolean).forEach(send));
     proc.stderr.on('data', d => d.toString().split('\n').filter(Boolean).forEach(send));
-    proc.on('close', code => { res.write(`data: __EXIT__:${code}\n\n`); res.end(); });
+    proc.on('close', code => {
+      if (code === 0) {
+        send('[INFO] Reparatur läuft unabhängig im Hintergrund. Der Bot darf jetzt neu starten.');
+      }
+      res.write(`data: __EXIT__:${code}\n\n`);
+      res.end();
+    });
   });
 
   // ── API: Git-Recovery (stash / pull / pop) via SSE ───────────────────────
