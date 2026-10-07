@@ -528,6 +528,9 @@
       line-height: 1.6;
       display: none;
       margin-top: 12px;
+      user-select: text;
+      -webkit-user-select: text;
+      cursor: text;
     }
     #updateLog.visible, .update-log.visible { display: block; }
     .ul-line { white-space: pre-wrap; word-break: break-all; color: var(--muted); }
@@ -2414,6 +2417,7 @@
   <div class="card-title">🔧 Reparatur (Schnellzugriff)</div>
   <div class="mb12" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px">
     <button class="btn btn-red" id="btnRepairDiagFull" onclick="runRepair('full', 'btnRepairDiagFull')">🔧 Automatisch prüfen und reparieren</button>
+    <button class="btn" type="button" id="btnCopyRepairLog" onclick="copyRepairLog()" title="Reparaturbericht kopieren">📋 Reparatur-Log kopieren</button>
   </div>
   <div id="repairLogDiag" style="display:none;margin-top:12px"></div>
 </div>
@@ -2907,6 +2911,36 @@
         if (!ok) throw new Error('Clipboard API nicht verfügbar');
       }
       toast('Logs kopiert', 'ok');
+    } catch (e) {
+      toast('Kopieren fehlgeschlagen: ' + e.message, 'err');
+    }
+  }
+
+  async function copyRepairLog() {
+    const logEl = document.getElementById('repairLogDiag');
+    const text = logEl?.innerText?.trim() || '';
+    if (!text) {
+      toast('Noch kein Reparatur-Log vorhanden', 'warn');
+      return;
+    }
+
+    try {
+      if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const tmp = document.createElement('textarea');
+        tmp.value = text;
+        tmp.setAttribute('readonly', '');
+        tmp.style.position = 'fixed';
+        tmp.style.opacity = '0';
+        document.body.appendChild(tmp);
+        tmp.focus();
+        tmp.select();
+        const ok = document.execCommand('copy');
+        document.body.removeChild(tmp);
+        if (!ok) throw new Error('Clipboard API nicht verfügbar');
+      }
+      toast('Reparatur-Log kopiert', 'ok');
     } catch (e) {
       toast('Kopieren fehlgeschlagen: ' + e.message, 'err');
     }
