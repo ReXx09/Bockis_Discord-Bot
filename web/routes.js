@@ -8,7 +8,8 @@
  * Aufruf in bot.js:
  *   const registerRoutes = require('./web/routes');
  *   registerRoutes(app, { config, logger, client, sequelize, prom,
- *                          getMonitorData, updateStatusMessage, rootDir: __dirname });
+ *                          getMonitorData, updateStatusMessage, getWigiDashStatus,
+ *                          rootDir: __dirname });
  */
 
 'use strict';
@@ -48,6 +49,7 @@ module.exports = function startWebServer({
   prom,
   getMonitorData,
   updateStatusMessage,
+  getWigiDashStatus,
   rootDir           // = __dirname aus bot.js (Projektwurzel)
 }) {
   // ── Express-App erstellen ───────────────────────────────────────────────────

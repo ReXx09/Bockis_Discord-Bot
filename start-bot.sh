@@ -126,6 +126,26 @@ node install.js
 [[ -f "$BOT_DIR/.env" ]] || die ".env wurde nicht erstellt. Bitte install.js erneut ausführen."
 print_success "Konfiguration abgeschlossen"
 
+# ── WigiDash-Firewallregel für das lokale Netzwerk ──────────────────────────
+if command -v ufw >/dev/null 2>&1 && sudo ufw status 2>/dev/null | grep -q '^Status: active'; then
+  WIGIDASH_PORT=$(grep -oP '(?<=WIGIDASH_API_PORT=)\d+' "$BOT_DIR/.env" 2>/dev/null || echo 47900)
+  LAN_CIDR=$(ip -4 route show scope link 2>/dev/null | awk '$1 ~ /^[0-9]+\./ {print $1; exit}')
+  if [[ -n "$LAN_CIDR" ]]; then
+    if sudo ufw status 2>/dev/null | grep -Eq "^${WIGIDASH_PORT}/tcp[[:space:]]+ALLOW IN[[:space:]]+${LAN_CIDR}"; then
+      print_success "UFW-Regel für WigiDash bereits vorhanden (${LAN_CIDR} → Port ${WIGIDASH_PORT})"
+    else
+      print_status "Öffne WigiDash-Port ${WIGIDASH_PORT}/tcp für ${LAN_CIDR} ..."
+      if sudo ufw allow from "$LAN_CIDR" to any port "$WIGIDASH_PORT" proto tcp comment 'WigiDash Status API' >/dev/null; then
+        print_success "UFW-Regel für WigiDash hinzugefügt (${LAN_CIDR} → Port ${WIGIDASH_PORT})"
+      else
+        echo -e "${YELLOW}  ! UFW-Regel konnte nicht automatisch hinzugefügt werden.${NC}"
+      fi
+    fi
+  else
+    echo -e "${YELLOW}  ! Lokales IPv4-Subnetz konnte nicht erkannt werden; UFW-Regel übersprungen.${NC}"
+  fi
+fi
+
 # ── 6. Systemd-Service einrichten ────────────────────────────────────────────
 print_header "6. Systemd-Service einrichten"
 
