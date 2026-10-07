@@ -192,7 +192,10 @@ const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent
+    GatewayIntentBits.MessageContent,
+    GatewayIntentBits.GuildPresences,  // Für WigiDash: User-Status (online/idle/dnd/offline)
+    GatewayIntentBits.GuildMembers,    // Für WigiDash: Member-Informationen
+    GatewayIntentBits.GuildVoiceStates // Für WigiDash: Voice-Kanal-Info
   ]
 });
 const notificationManager = new NotificationManager();
@@ -246,6 +249,109 @@ function persistState() {
     svcRenameMs: _svcRenameMs
   });
 }
+
+// #region 10.5 WIGIDASH STATUS-CACHE
+// Thread-sicherer Cache für WigiDash Discord-Status
+const _wigiDashCache = {
+  Username: '',
+  Status: 'offline',
+  Activity: '',
+  VoiceChannel: '',
+  Guild: ''
+};
+
+function updateWigiDashCache() {
+  try {
+    const wigiConfig = config.get('discord.wigiDashApi');
+    if (!wigiConfig?.enabled) return;
+
+    const targetUserId = wigiConfig.targetUserId?.trim() || '';
+    const targetGuildId = wigiConfig.targetGuildId?.trim() || '';
+
+    // Finde Ziel-Benutzer
+    let targetUser = null;
+    if (targetUserId && /^\d+$/.test(targetUserId)) {
+      targetUser = client.users.cache.get(targetUserId);
+    }
+
+    // Fallback: Nutzer aus aktuellen Member-Präsenzen finden
+    if (!targetUser && client.guilds.cache.size > 0) {
+      for (const guild of client.guilds.cache.values()) {
+        if (targetGuildId && guild.id !== targetGuildId) continue;
+        for (const member of guild.members.cache.values()) {
+          if (!targetUserId || member.user.id === targetUserId) {
+            targetUser = member.user;
+            break;
+          }
+        }
+        if (targetUser) break;
+      }
+    }
+
+    if (!targetUser) {
+      // Keine Daten verfügbar
+      _wigiDashCache.Username = '';
+      _wigiDashCache.Status = 'offline';
+      _wigiDashCache.Activity = '';
+      _wigiDashCache.VoiceChannel = '';
+      _wigiDashCache.Guild = '';
+      return;
+    }
+
+    _wigiDashCache.Username = targetUser.username || '';
+
+    // Presence-Status ermitteln
+    let userStatus = 'offline';
+    let userActivity = '';
+    let voiceChannelName = '';
+    let guildName = '';
+
+    for (const guild of client.guilds.cache.values()) {
+      if (targetGuildId && guild.id !== targetGuildId) continue;
+
+      const member = guild.members.cache.get(targetUser.id);
+      if (!member) continue;
+
+      guildName = guild.name || '';
+
+      // Presence & Activity
+      if (member.presence?.status) {
+        userStatus = member.presence.status; // 'online', 'idle', 'dnd', 'offline'
+      }
+
+      if (member.presence?.activities?.length > 0) {
+        const act = member.presence.activities[0];
+        userActivity = act.name || '';
+        if (act.state) userActivity = `${userActivity} (${act.state})`.trim();
+      }
+
+      // Voice-Kanal
+      if (member.voice?.channel) {
+        voiceChannelName = member.voice.channel.name || '';
+      }
+
+      break; // Nur erste Guild mit dem Benutzer verwenden
+    }
+
+    _wigiDashCache.Status = userStatus;
+    _wigiDashCache.Activity = userActivity;
+    _wigiDashCache.VoiceChannel = voiceChannelName;
+    _wigiDashCache.Guild = guildName;
+  } catch (err) {
+    logger.error(`WigiDash Cache Update Fehler: ${err.message}`);
+  }
+}
+
+function getWigiDashStatus() {
+  return {
+    Username: _wigiDashCache.Username,
+    Status: _wigiDashCache.Status,
+    Activity: _wigiDashCache.Activity,
+    VoiceChannel: _wigiDashCache.VoiceChannel,
+    Guild: _wigiDashCache.Guild
+  };
+}
+// #endregion
 
 function formatDurationShort(ms) {
   const totalSeconds = Math.max(1, Math.floor(ms / 1000));
@@ -4244,7 +4350,7 @@ function initializeUpdateCycle() {
 // #region 23. STARTUP
 // Webserver SOFORT starten — unabhängig vom Discord-Login
 // Damit ist das Dashboard auch erreichbar wenn der Token noch nicht stimmt
-const _webDeps = { config, logger, client, sequelize, prom, getMonitorData, updateStatusMessage, rootDir: __dirname };
+const _webDeps = { config, logger, client, sequelize, prom, getMonitorData, updateStatusMessage, getWigiDashStatus, rootDir: __dirname };
 let _httpServer = null;
 initializeDatabase().then(() => { _httpServer = startWebServer(_webDeps); }).catch(err => {
   logger.error(`DB/Webserver-Startfehler: ${err.message}`);
@@ -4258,6 +4364,37 @@ client.once('ready', async () => {
   await registerSlashCommands();
   reschedulePendingReminders();
   initializeUpdateCycle();
+  
+  // WigiDash: Initialen Status-Cache aktualisieren
+  updateWigiDashCache();
+  logger.info('WigiDash Status-Cache initialisiert');
+});
+
+// WigiDash: Presence Update Listener
+client.on('presenceUpdate', (oldPresence, newPresence) => {
+  try {
+    updateWigiDashCache();
+  } catch (err) {
+    logger.error(`WigiDash presenceUpdate Fehler: ${err.message}`);
+  }
+});
+
+// WigiDash: Voice State Update Listener
+client.on('voiceStateUpdate', (oldState, newState) => {
+  try {
+    updateWigiDashCache();
+  } catch (err) {
+    logger.error(`WigiDash voiceStateUpdate Fehler: ${err.message}`);
+  }
+});
+
+// WigiDash: Guild Member Update Listener
+client.on('guildMemberUpdate', (oldMember, newMember) => {
+  try {
+    updateWigiDashCache();
+  } catch (err) {
+    logger.error(`WigiDash guildMemberUpdate Fehler: ${err.message}`);
+  }
 });
 
 client.on('error', (err) => {

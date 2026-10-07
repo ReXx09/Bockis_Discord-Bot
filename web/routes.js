@@ -372,6 +372,69 @@ module.exports = function startWebServer({
     } catch { res.status(500).end(); }
   });
 
+  // ── WigiDash Status-API ──────────────────────────────────────────────────────
+  // Endpunkt für WigiDash HWiNFO Widget: Aktueller Discord-Status des Zielbenutzers
+
+  app.get('/status', (req, res) => {
+    try {
+      const wigiConfig = config.get('discord.wigiDashApi');
+      
+      // Prüfe, ob WigiDash-API aktiviert ist
+      if (!wigiConfig?.enabled) {
+        logger.warn('WigiDash API ist deaktiviert');
+        return res.status(503).json({
+          error: 'WigiDash API is disabled',
+          Username: '',
+          Status: 'offline',
+          Activity: '',
+          VoiceChannel: '',
+          Guild: ''
+        });
+      }
+
+      // Prüfe Host-Restriktionen (nur localhost vs. Netzwerk)
+      const requesterIp = req.ip || req.connection.remoteAddress || '';
+      const isLocalhost = ['127.0.0.1', '::1', '::ffff:127.0.0.1', 'localhost'].includes(requesterIp);
+      const configHost = wigiConfig.host?.trim() || '127.0.0.1';
+      const isLocalHostConfig = ['127.0.0.1', 'localhost'].includes(configHost);
+
+      // Wenn konfiguriert nur für localhost, aber externe IP zugegriffen → nur mit API-Key
+      if (isLocalHostConfig && !isLocalhost) {
+        const providedKey = req.headers['x-api-key'] || req.query.apiKey || '';
+        const configuredKey = wigiConfig.apiKey?.trim() || '';
+
+        if (!configuredKey) {
+          logger.warn(`WigiDash Zugriff verweigert: Externes Netzwerk ohne API-Key (IP: ${requesterIp})`);
+          return res.status(403).json({ error: 'Access denied from external network. Configure WIGIDASH_API_HOST=0.0.0.0 or provide API key.' });
+        }
+
+        if (providedKey !== configuredKey) {
+          logger.warn(`WigiDash Zugriff verweigert: Ungültiger API-Key (IP: ${requesterIp})`);
+          return res.status(401).json({ error: 'Invalid API key' });
+        }
+      }
+
+      // Hole aktuellen Discord-Status vom Cache
+      const status = getWigiDashStatus();
+
+      res.set('Content-Type', 'application/json; charset=utf-8');
+      res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+      res.json(status);
+      
+      logger.debug(`WigiDash Status abgerufen: ${status.Username} (${status.Status}) von ${requesterIp}`);
+    } catch (err) {
+      logger.error(`WigiDash Status Fehler: ${err.message}`);
+      res.status(500).json({
+        error: err.message,
+        Username: '',
+        Status: 'offline',
+        Activity: '',
+        VoiceChannel: '',
+        Guild: ''
+      });
+    }
+  });
+
   // ── API: Monitor-Status ─────────────────────────────────────────────────────
 
   app.get('/api/status', dashboardAuth, async (req, res) => {
@@ -1401,6 +1464,13 @@ module.exports = function startWebServer({
         DISCORD_TRANSLATE_API_KEY:    maskSecret(translateApiKey),
         DISCORD_TRANSLATE_ALLOWED_GUILD_IDS: get('DISCORD_TRANSLATE_ALLOWED_GUILD_IDS') || '',
         DISCORD_TRANSLATE_MAX_TEXT_LENGTH: get('DISCORD_TRANSLATE_MAX_TEXT_LENGTH') || '1800',
+        WIGIDASH_API_ENABLED:           get('WIGIDASH_API_ENABLED') || 'true',
+        WIGIDASH_API_HOST:              get('WIGIDASH_API_HOST') || '127.0.0.1',
+        WIGIDASH_API_PORT:              get('WIGIDASH_API_PORT') || '47900',
+        WIGIDASH_API_PATH:              get('WIGIDASH_API_PATH') || '/status',
+        WIGIDASH_TARGET_USER_ID:        get('WIGIDASH_TARGET_USER_ID') || '',
+        WIGIDASH_TARGET_GUILD_ID:       get('WIGIDASH_TARGET_GUILD_ID') || '',
+        WIGIDASH_API_KEY:               maskSecret(get('WIGIDASH_API_KEY')),
         STATUS_CHANNEL_ID:            get('STATUS_CHANNEL_ID'),
         DISCORD_NOTIFICATION_CHANNEL: get('DISCORD_NOTIFICATION_CHANNEL'),
         DISCORD_STATUS_RENDER_MODE:   get('DISCORD_STATUS_RENDER_MODE') || 'auto',
@@ -1482,6 +1552,13 @@ module.exports = function startWebServer({
       'DISCORD_TRANSLATE_API_KEY',
       'DISCORD_TRANSLATE_ALLOWED_GUILD_IDS',
       'DISCORD_TRANSLATE_MAX_TEXT_LENGTH',
+      'WIGIDASH_API_ENABLED',
+      'WIGIDASH_API_HOST',
+      'WIGIDASH_API_PORT',
+      'WIGIDASH_API_PATH',
+      'WIGIDASH_TARGET_USER_ID',
+      'WIGIDASH_TARGET_GUILD_ID',
+      'WIGIDASH_API_KEY',
       'DISCORD_WELCOME_ENABLED',
       'DISCORD_WELCOME_CHANNEL_ID',
       'DISCORD_WELCOME_MESSAGE_TEMPLATE',
@@ -1564,6 +1641,9 @@ module.exports = function startWebServer({
       'MESSAGE_CLEANUP_CHANNEL_IDS',
       'SERVICE_CHANNEL_DEBUG_FILTER',
       'DISCORD_TRANSLATE_ALLOWED_GUILD_IDS',
+      'WIGIDASH_TARGET_USER_ID',
+      'WIGIDASH_TARGET_GUILD_ID',
+      'WIGIDASH_API_KEY',
       'OPENAI_SYSTEM_PROMPT',
       'OPENAI_CHANNEL_IDS',
       'OPENAI_BASE_URL'
@@ -1584,7 +1664,7 @@ module.exports = function startWebServer({
       if (raw === '') continue;
 
       const val = String(raw).trim();
-      if (key === 'DISCORD_TOKEN' || key === 'UPTIME_KUMA_API_KEY' || key === 'DISCORD_STATUS_WEBHOOK_URL' || key === 'DASHBOARD_PASSWORD' || key === 'DISCORD_TRANSLATE_API_KEY' || key === 'OPENAI_API_KEY') {
+      if (key === 'DISCORD_TOKEN' || key === 'UPTIME_KUMA_API_KEY' || key === 'DISCORD_STATUS_WEBHOOK_URL' || key === 'DASHBOARD_PASSWORD' || key === 'DISCORD_TRANSLATE_API_KEY' || key === 'OPENAI_API_KEY' || key === 'WIGIDASH_API_KEY') {
         if (val.includes('*')) continue;
         if (/[\n\r]/.test(val)) return res.json({ ok: false, error: 'Ungültiger Token (enthält Zeilenumbruch)' });
       }
@@ -1647,6 +1727,19 @@ module.exports = function startWebServer({
         if (!Number.isFinite(n) || n < 64 || n > 4000)
           return res.json({ ok: false, error: 'DISCORD_TRANSLATE_MAX_TEXT_LENGTH muss zwischen 64 und 4000 liegen' });
       }
+      if (key === 'WIGIDASH_API_ENABLED' && !['true', 'false'].includes(val))
+        return res.json({ ok: false, error: 'WIGIDASH_API_ENABLED muss true oder false sein' });
+      if (key === 'WIGIDASH_API_HOST' && (!/^[A-Za-z0-9.:-]+$/.test(val) || val.length > 253))
+        return res.json({ ok: false, error: 'WIGIDASH_API_HOST enthält ungültige Zeichen' });
+      if (key === 'WIGIDASH_API_PORT') {
+        const n = parseInt(val, 10);
+        if (!Number.isFinite(n) || n < 1 || n > 65535)
+          return res.json({ ok: false, error: 'WIGIDASH_API_PORT muss zwischen 1 und 65535 liegen' });
+      }
+      if (key === 'WIGIDASH_API_PATH' && !/^\/[A-Za-z0-9/_-]+$/.test(val))
+        return res.json({ ok: false, error: 'WIGIDASH_API_PATH muss mit / beginnen und darf nur URL-Pfadzeichen enthalten' });
+      if ((key === 'WIGIDASH_TARGET_USER_ID' || key === 'WIGIDASH_TARGET_GUILD_ID') && val && !/^\d+$/.test(val))
+        return res.json({ ok: false, error: `${key} muss eine Discord-ID oder leer sein` });
       if ((key === 'STATUS_CHANNEL_ID' || key === 'DISCORD_NOTIFICATION_CHANNEL') && !/^\d+$/.test(val))
         return res.json({ ok: false, error: `${key}: Nur Zahlen erlaubt (Discord ID)` });
       if (key === 'DISCORD_STATUS_RENDER_MODE' && !['auto', 'direct', 'graphical', 'svg_attachment', 'webhook_ascii', 'embed', 'link_preview'].includes(val))
@@ -2331,6 +2424,63 @@ module.exports = function startWebServer({
     logger.info(`Dashboard verfügbar unter http://${localIp}:${port}/dashboard`);
     logger.info(`(Auch erreichbar als http://localhost:${port}/dashboard)`);
   });
+
+  // ── WigiDash Status-API Server (optionaler separater Server) ─────────────────
+  // Falls konfiguriert: Starte einen zusätzlichen HTTP-Server nur für WigiDash-Status
+  const wigiConfig = config.get('discord.wigiDashApi');
+  let wigiServer = null;
+  if (wigiConfig?.enabled) {
+    const wigiHost = wigiConfig.host?.trim() || '127.0.0.1';
+    const wigiPort = wigiConfig.port ?? 47900;
+    const wigiApp = express();
+
+    // WigiDash: Nur Status-Endpunkt, minimal
+    wigiApp.get(wigiConfig.path?.trim() || '/status', (req, res) => {
+      try {
+        // Prüfe API-Key falls nicht localhost
+        const requesterIp = req.ip || req.connection.remoteAddress || '';
+        const isLocalhost = ['127.0.0.1', '::1', '::ffff:127.0.0.1', 'localhost'].includes(requesterIp);
+        
+        if (!isLocalhost && wigiConfig.apiKey?.trim()) {
+          const providedKey = req.headers['x-api-key'] || req.query.apiKey || '';
+          if (providedKey !== wigiConfig.apiKey?.trim()) {
+            logger.warn(`WigiDash (Separate-Server): Zugriff verweigert - Ungültiger API-Key (IP: ${requesterIp})`);
+            return res.status(401).json({ error: 'Invalid API key' });
+          }
+        }
+
+        const status = getWigiDashStatus();
+        res.set('Content-Type', 'application/json; charset=utf-8');
+        res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+        res.json(status);
+        
+        logger.debug(`WigiDash Separate-Server: Status abgerufen von ${requesterIp}`);
+      } catch (err) {
+        logger.error(`WigiDash Separate-Server Fehler: ${err.message}`);
+        res.status(500).json({
+          error: err.message,
+          Username: '',
+          Status: 'offline',
+          Activity: '',
+          VoiceChannel: '',
+          Guild: ''
+        });
+      }
+    });
+
+    wigiServer = wigiApp.listen(wigiPort, wigiHost, () => {
+      logger.info(`WigiDash Status-API verfügbar unter http://${wigiHost}:${wigiPort}${wigiConfig.path?.trim() || '/status'}`);
+    });
+
+    wigiServer.on('error', (err) => {
+      if (err.code === 'EADDRINUSE') {
+        logger.error(`WigiDash Port ${wigiPort} ist bereits in Verwendung. Bitte freigeben oder Port in WIGIDASH_API_PORT ändern.`);
+      } else {
+        logger.error(`WigiDash Server Fehler: ${err.message}`);
+      }
+    });
+  }
+
   return server;
 };
 

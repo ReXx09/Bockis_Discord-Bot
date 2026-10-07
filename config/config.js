@@ -394,6 +394,52 @@ const config = convict({
       default: '',
       env: 'GITHUB_TOKEN',
       sensitive: true
+    },
+    wigiDashApi: {
+      doc: 'WigiDash Status-API Konfiguration (für Hardware-Monitor-Integration)',
+      enabled: {
+        doc: 'WigiDash Status-API aktivieren (Endpunkt GET /status)',
+        format: Boolean,
+        default: true,
+        env: 'WIGIDASH_API_ENABLED'
+      },
+      host: {
+        doc: 'Host für WigiDash API (127.0.0.1 = nur lokal, 0.0.0.0 = netzweit)',
+        format: String,
+        default: '127.0.0.1',
+        env: 'WIGIDASH_API_HOST'
+      },
+      port: {
+        doc: 'Port für WigiDash API (Standard: 47900)',
+        format: 'port',
+        default: 47900,
+        env: 'WIGIDASH_API_PORT'
+      },
+      path: {
+        doc: 'URL-Pfad für WigiDash Status-Endpunkt',
+        format: String,
+        default: '/status',
+        env: 'WIGIDASH_API_PATH'
+      },
+      targetUserId: {
+        doc: 'Discord-Benutzer-ID des zu verfolgenden Benutzers (leer = aktueller Bot-Owner)',
+        format: String,
+        default: '',
+        env: 'WIGIDASH_TARGET_USER_ID'
+      },
+      targetGuildId: {
+        doc: 'Optionale Guild-ID zum Filtern (leer = beliebiger Server)',
+        format: String,
+        default: '',
+        env: 'WIGIDASH_TARGET_GUILD_ID'
+      },
+      apiKey: {
+        doc: 'Optionaler API-Schlüssel für Netzwerk-Zugriff (leer = kein Auth nötig für 127.0.0.1)',
+        format: String,
+        default: '',
+        env: 'WIGIDASH_API_KEY',
+        sensitive: true
+      }
     }
   },
   cloudflare: {

@@ -1716,6 +1716,52 @@
             </div>
           </div>
         </div>
+        <!-- WigiDash Status-API Section -->
+        <div class="cfg-section">
+          <div class="cfg-section-header" onclick="toggleConfigSection(this)">
+            <div class="cfg-section-header-title">
+              <span class="cfg-section-toggle">▾</span>
+              <span>📟 WigiDash Status-API</span>
+            </div>
+          </div>
+          <div class="cfg-section-content">
+            <div class="cfg-section-body">
+              <div class="cfg-field">
+                <label class="cfg-label" for="cfgWigiDashEnabled">WigiDash API aktivieren</label>
+                <label style="display:flex;align-items:center;gap:8px;color:var(--muted);font-size:12px">
+                  <input type="checkbox" id="cfgWigiDashEnabled" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
+                  Status-Endpunkt bereitstellen
+                </label>
+              </div>
+              <div class="cfg-field">
+                <label class="cfg-label" for="cfgWigiDashHost">Bind-Adresse</label>
+                <input class="cfg-input" id="cfgWigiDashHost" type="text" autocomplete="off" placeholder="127.0.0.1 oder 0.0.0.0">
+                <div class="cfg-hint"><code>127.0.0.1</code> nur lokal; <code>0.0.0.0</code> erlaubt Zugriff vom WigiDash-PC im Netzwerk.</div>
+              </div>
+              <div class="cfg-field">
+                <label class="cfg-label" for="cfgWigiDashPort">API-Port</label>
+                <input class="cfg-input" id="cfgWigiDashPort" type="number" min="1" max="65535" placeholder="47900">
+              </div>
+              <div class="cfg-field">
+                <label class="cfg-label" for="cfgWigiDashPath">API-Pfad</label>
+                <input class="cfg-input" id="cfgWigiDashPath" type="text" autocomplete="off" placeholder="/status">
+              </div>
+              <div class="cfg-field">
+                <label class="cfg-label" for="cfgWigiDashUserId">Zielbenutzer-ID</label>
+                <input class="cfg-input" id="cfgWigiDashUserId" type="text" inputmode="numeric" autocomplete="off" placeholder="Discord-Benutzer-ID">
+              </div>
+              <div class="cfg-field">
+                <label class="cfg-label" for="cfgWigiDashGuildId">Ziel-Guild-ID (optional)</label>
+                <input class="cfg-input" id="cfgWigiDashGuildId" type="text" inputmode="numeric" autocomplete="off" placeholder="Leer = beliebiger Server">
+              </div>
+              <div class="cfg-field" style="margin-bottom:0">
+                <label class="cfg-label" for="cfgWigiDashApiKey">API-Key für Netzwerkzugriff</label>
+                <input class="cfg-input" id="cfgWigiDashApiKey" type="password" autocomplete="off" placeholder="Neuen API-Key eingeben (leer lassen = unverändert)">
+                <div class="cfg-hint">Bei Zugriff über die Pi-IP einen langen zufälligen Schlüssel setzen.</div>
+              </div>
+            </div>
+          </div>
+        </div>
         <!-- Translator & Dashboard Section -->
         <div class="cfg-section">
           <div class="cfg-section-header" onclick="toggleConfigSection(this)">
@@ -4793,6 +4839,7 @@
       setCfg('cfgTranslateApiKeySecurity', '');
       setCfg('cfgWebhookUrl', '');
       setCfg('cfgDashPassword', '');
+      setCfg('cfgWigiDashApiKey', '');
 
       document.getElementById('cfgToken').dataset.initialValue = d.DISCORD_TOKEN ? '__MASKED__' : '';
       document.getElementById('cfgApiKey').dataset.initialValue = d.UPTIME_KUMA_API_KEY ? '__MASKED__' : '';
@@ -4801,6 +4848,7 @@
       document.getElementById('cfgTranslateApiKeySecurity').dataset.initialValue = d.DISCORD_TRANSLATE_API_KEY ? '__MASKED__' : '';
       document.getElementById('cfgWebhookUrl').dataset.initialValue = d.DISCORD_STATUS_WEBHOOK_URL ? '__MASKED__' : '';
       document.getElementById('cfgDashPassword').dataset.initialValue = d.DASHBOARD_PASSWORD ? '__MASKED__' : '';
+      document.getElementById('cfgWigiDashApiKey').dataset.initialValue = d.WIGIDASH_API_KEY ? '__MASKED__' : '';
 
       setCfg('cfgStatusCh', d.STATUS_CHANNEL_ID || '');
       setCfg('cfgBotName', d.DISCORD_BOT_NAME || '');
@@ -4820,6 +4868,11 @@
       setCfg('cfgTranslateApiUrlSecurity', d.DISCORD_TRANSLATE_API_URL || 'http://localhost:5000/translate');
       setCfg('cfgTranslateAllowedGuildIds', d.DISCORD_TRANSLATE_ALLOWED_GUILD_IDS || '');
       setCfg('cfgTranslateMaxTextLength', d.DISCORD_TRANSLATE_MAX_TEXT_LENGTH || '1800');
+      setCfg('cfgWigiDashHost', d.WIGIDASH_API_HOST || '127.0.0.1');
+      setCfg('cfgWigiDashPort', d.WIGIDASH_API_PORT || '47900');
+      setCfg('cfgWigiDashPath', d.WIGIDASH_API_PATH || '/status');
+      setCfg('cfgWigiDashUserId', d.WIGIDASH_TARGET_USER_ID || '');
+      setCfg('cfgWigiDashGuildId', d.WIGIDASH_TARGET_GUILD_ID || '');
       updateTranslateProviderStatus();
       setCfg('cfgNotifCh', d.DISCORD_NOTIFICATION_CHANNEL || '');
       setCfg('cfgKumaUrl', d.UPTIME_KUMA_URL || '');
@@ -4868,6 +4921,9 @@
       document.getElementById('cfgDashPassword').placeholder = d.DASHBOARD_PASSWORD
         ? `Aktuell: ${d.DASHBOARD_PASSWORD} — leer lassen = unverändert`
         : 'Neues Passwort eingeben (optional)';
+      document.getElementById('cfgWigiDashApiKey').placeholder = d.WIGIDASH_API_KEY
+        ? `Aktuell: ${d.WIGIDASH_API_KEY} — leer lassen = unverändert`
+        : 'Neuen API-Key eingeben (leer lassen = unverändert)';
 
       setCheckboxValue('cfgChannelIndicator', (d.CHANNEL_STATUS_INDICATOR || 'true') !== 'false', { force });
       setCheckboxValue('cfgMsgCleanupEnabled', (d.MESSAGE_CLEANUP_ENABLED || 'false') === 'true', { force });
@@ -4877,6 +4933,7 @@
       setCheckboxValue('cfgServiceChannelDebug', (d.SERVICE_CHANNEL_DEBUG || 'false') === 'true', { force });
       setCheckboxValue('cfgAutoReactionEnabled', (d.DISCORD_AUTO_REACTION_ENABLED || 'false') === 'true', { force });
       setCheckboxValue('cfgTranslateEnabled', (d.DISCORD_TRANSLATE_ENABLED || 'false') === 'true', { force });
+      setCheckboxValue('cfgWigiDashEnabled', (d.WIGIDASH_API_ENABLED || 'true') === 'true', { force });
 
       // Willkommen & Auto-Reply
       setCheckboxValue('cfgWelcomeEnabled', (d.DISCORD_WELCOME_ENABLED || 'false') === 'true', { force });
@@ -5096,6 +5153,15 @@
     maybeSetChangedAny(body, 'DISCORD_TRANSLATE_API_KEY', ['cfgTranslateApiKey', 'cfgTranslateApiKeySecurity'], { allowEmpty: true });
     maybeSetChanged(body, 'DISCORD_TRANSLATE_ALLOWED_GUILD_IDS', 'cfgTranslateAllowedGuildIds', { allowEmpty: true });
     maybeSetChanged(body, 'DISCORD_TRANSLATE_MAX_TEXT_LENGTH', 'cfgTranslateMaxTextLength');
+    const wigiDashEnabledEl = document.getElementById('cfgWigiDashEnabled');
+    const curWigiDashEnabled = wigiDashEnabledEl.checked ? 'true' : 'false';
+    if (curWigiDashEnabled !== (wigiDashEnabledEl.dataset.initialValue || 'true')) body.WIGIDASH_API_ENABLED = curWigiDashEnabled;
+    maybeSetChanged(body, 'WIGIDASH_API_HOST', 'cfgWigiDashHost');
+    maybeSetChanged(body, 'WIGIDASH_API_PORT', 'cfgWigiDashPort');
+    maybeSetChanged(body, 'WIGIDASH_API_PATH', 'cfgWigiDashPath');
+    maybeSetChanged(body, 'WIGIDASH_TARGET_USER_ID', 'cfgWigiDashUserId', { allowEmpty: true });
+    maybeSetChanged(body, 'WIGIDASH_TARGET_GUILD_ID', 'cfgWigiDashGuildId', { allowEmpty: true });
+    maybeSetChanged(body, 'WIGIDASH_API_KEY', 'cfgWigiDashApiKey', { allowEmpty: true });
     maybeSetChanged(body, 'STATUS_CHANNEL_ID', 'cfgStatusCh');
     maybeSetChanged(body, 'DISCORD_NOTIFICATION_CHANNEL', 'cfgNotifCh');
     maybeSetChanged(body, 'MESSAGE_CLEANUP_CHANNEL_IDS', 'cfgMsgCleanupChannelIds', { allowEmpty: true });
