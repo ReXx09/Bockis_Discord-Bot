@@ -70,6 +70,17 @@ printf 'Bot-Verzeichnis: %s\n\n' "$BOT_DIR"
 [[ -f "$BOT_DIR/package.json" ]] && ok "package.json vorhanden" || fail "package.json fehlt"
 [[ -f "$ENV_FILE" ]] && ok ".env vorhanden" || fail ".env fehlt"
 
+wigi_code_ok=true
+if ! grep -q '^function getWigiDashStatus' "$BOT_DIR/bot.js" 2>/dev/null \
+  || ! grep -q 'getWigiDashStatus, rootDir' "$BOT_DIR/bot.js" 2>/dev/null \
+  || ! grep -q 'getWigiDashStatus,' "$BOT_DIR/web/routes.js" 2>/dev/null \
+  || ! grep -q 'const status = getWigiDashStatus()' "$BOT_DIR/web/routes.js" 2>/dev/null; then
+  wigi_code_ok=false
+  fail "WigiDash-Code unvollständig: getWigiDashStatus ist nicht korrekt verdrahtet"
+else
+  ok "WigiDash-Code korrekt verdrahtet"
+fi
+
 if command -v node >/dev/null 2>&1; then
   node_version="$(node -v 2>/dev/null || true)"
   ok "Node.js ${node_version} gefunden"
@@ -125,6 +136,11 @@ printf '\nReparaturmodus\n'
 
 if [[ ! -f "$ENV_FILE" || ! -f "$BOT_DIR/package.json" ]]; then
   fail "Grundlegende Dateien fehlen; automatische Reparatur abgebrochen"
+  exit 1
+fi
+
+if [[ "$wigi_code_ok" != true ]]; then
+  fail "Bitte zuerst die aktuelle bot.js und web/routes.js auf den Pi übertragen"
   exit 1
 fi
 
