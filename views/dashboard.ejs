@@ -2405,7 +2405,7 @@
 <div class="card" id="repairDiagCard" data-span="12" data-pane="diagnostics">
   <div class="card-title">🔧 Reparatur (Schnellzugriff)</div>
   <div class="mb12" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px">
-    <button class="btn btn-red" id="btnRepairDiagFull" onclick="runRepair('full', 'btnRepairDiagFull', 'diag')">🔧 Automatisch prüfen und reparieren</button>
+    <button class="btn btn-red" id="btnRepairDiagFull" onclick="runRepair('full', 'btnRepairDiagFull')">🔧 Automatisch prüfen und reparieren</button>
   </div>
   <div id="repairLogDiag" style="display:none;margin-top:12px"></div>
 </div>
@@ -2458,18 +2458,6 @@
   </div>
   <div id="sysDepsList"></div>
   <div id="sysInstallLog" style="display:none;margin-top:12px"></div>
-</div>
-
-<!-- ── REPARATUR KACHEL ──────────────────────────────── -->
-<div class="card" id="repairCard" data-span="12" data-pane="updates">
-  <div class="card-title">🔧 Reparatur</div>
-  <div class="mb12" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px">
-    <button class="btn btn-red" id="btnRepairFull" onclick="runRepair('full', 'btnRepairFull')">🔧 Automatisch prüfen und reparieren</button>
-  </div>
-  <div class="muted" style="font-size:12px;margin-bottom:8px">
-    Diagnose: Bot-Prozesse und Ports prüfen → erkannte Fehler beheben → Service und WigiDash-Endpunkt testen
-  </div>
-  <div id="repairLog" style="display:none;margin-top:12px"></div>
 </div>
 
 </div><!-- /.dashboard-grid -->
@@ -3553,21 +3541,14 @@
     'full': '🔧 Automatische Diagnose und Reparatur',
   };
 
-  const REPAIR_UI_GROUPS = {
-    updates: {
-      logId: 'repairLog',
-      buttons: ['btnRepairFull'],
-      keyMap: { btnRepairFull: 'full' },
-    },
-    diag: {
-      logId: 'repairLogDiag',
-      buttons: ['btnRepairDiagFull'],
-      keyMap: { btnRepairDiagFull: 'full' },
-    },
+  const REPAIR_UI = {
+    logId: 'repairLogDiag',
+    buttons: ['btnRepairDiagFull'],
+    keyMap: { btnRepairDiagFull: 'full' },
   };
 
-  async function runRepair(action, sourceBtnId, group = 'updates') {
-    const ui = REPAIR_UI_GROUPS[group] || REPAIR_UI_GROUPS.updates;
+  async function runRepair(action, sourceBtnId) {
+    const ui = REPAIR_UI;
     const allBtns = ui.buttons.map(id => document.getElementById(id)).filter(Boolean);
     const btn     = document.getElementById(sourceBtnId);
     const logEl   = document.getElementById(ui.logId);
@@ -3640,13 +3621,8 @@
         }
       }
     } catch (e) {
-      if (e.name === 'TypeError' && allBtns.some(b => b.id.endsWith('Restart') && b.disabled)) {
-        addLine('→ Verbindung getrennt — Service wurde neugestartet', 'ul-warn');
-        toast('Service neugestartet', 'ok');
-      } else {
-        addLine('Verbindungsfehler: ' + e.message, 'ul-err');
-        toast('Fehler: ' + e.message, 'err');
-      }
+      addLine('Verbindungsfehler: ' + e.message, 'ul-err');
+      toast('Fehler: ' + e.message, 'err');
     } finally {
       allBtns.forEach(b => {
         b.disabled = false;
