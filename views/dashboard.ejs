@@ -438,6 +438,9 @@
       font-family: 'SFMono-Regular', Consolas, monospace;
       font-size: 12px;
       line-height: 1.65;
+      user-select: text;
+      -webkit-user-select: text;
+      cursor: text;
     }
     .ll { color: var(--muted); padding: 1px 0; white-space: pre-wrap; word-break: break-all; }
     .ll.e { color: var(--red); }
@@ -2379,7 +2382,12 @@
 
 <!-- ── ROW 3: LOGS ────────────────────────────────────── -->
 <div class="card" id="logsCard" data-span="12" data-pane="diagnostics">
-  <div class="card-title">📄 Bot-Logs <span class="muted" id="logFile" style="font-size:11px;font-weight:400;text-transform:none;letter-spacing:0;margin-left:8px">–</span> <span class="muted" id="logTimeContext" style="font-size:11px;font-weight:400;text-transform:none;letter-spacing:0;margin-left:8px">Zeit: –</span></div>
+  <div class="card-title" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+    <span>📄 Bot-Logs</span>
+    <span class="muted" id="logFile" style="font-size:11px;font-weight:400;text-transform:none;letter-spacing:0">–</span>
+    <span class="muted" id="logTimeContext" style="font-size:11px;font-weight:400;text-transform:none;letter-spacing:0">Zeit: –</span>
+    <button class="btn" type="button" id="btnCopyLogs" onclick="copyBotLogs()" title="Alle angezeigten Bot-Logs kopieren">📋 Logs kopieren</button>
+  </div>
   <div class="log-viewer" id="logViewer">
     <span class="muted">Lade Logs…</span>
   </div>
@@ -2872,6 +2880,36 @@
       const safe = line.replace(/</g, '&lt;').replace(/>/g, '&gt;');
       return `<div class="${cls}">${safe}</div>`;
     }).join('');
+  }
+
+  async function copyBotLogs() {
+    const viewer = document.getElementById('logViewer');
+    const text = viewer?.innerText?.trim() || '';
+    if (!text || /Keine Log-Einträge gefunden/i.test(text)) {
+      toast('Keine Logs zum Kopieren vorhanden', 'warn');
+      return;
+    }
+
+    try {
+      if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const tmp = document.createElement('textarea');
+        tmp.value = text;
+        tmp.setAttribute('readonly', '');
+        tmp.style.position = 'fixed';
+        tmp.style.opacity = '0';
+        document.body.appendChild(tmp);
+        tmp.focus();
+        tmp.select();
+        const ok = document.execCommand('copy');
+        document.body.removeChild(tmp);
+        if (!ok) throw new Error('Clipboard API nicht verfügbar');
+      }
+      toast('Logs kopiert', 'ok');
+    } catch (e) {
+      toast('Kopieren fehlgeschlagen: ' + e.message, 'err');
+    }
   }
 
   function renderLogTimeContext(d) {
