@@ -3580,8 +3580,11 @@
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: res.statusText }));
-        addLine('Fehler: ' + (err.error || res.statusText), 'ul-err');
-        toast('Reparatur fehlgeschlagen: ' + (err.error || ''), 'err');
+        const message = res.status === 404
+          ? 'Reparatur-API nicht gefunden. Das laufende Backend ist vermutlich veraltet; bitte web/routes.js übertragen und bockis-bot neu starten.'
+          : (err.error || res.statusText);
+        addLine('Fehler: ' + message, 'ul-err');
+        toast('Reparatur fehlgeschlagen: ' + message, 'err');
         return;
       }
 
