@@ -115,7 +115,15 @@ for port in "$web_port" "$wigi_port"; do
   fi
 done
 
-mapfile -t NODE_PROCS < <(pgrep -af "node .*${BOT_DIR}/bot\.js" 2>/dev/null | awk '{print $1}' || true)
+mapfile -t NODE_PROCS < <(
+  for pid in $(pgrep -x node 2>/dev/null || true); do
+    proc_cwd="$(readlink -f "/proc/${pid}/cwd" 2>/dev/null || true)"
+    proc_cmd="$(tr '\0' ' ' < "/proc/${pid}/cmdline" 2>/dev/null || true)"
+    if [[ "$proc_cwd" == "$BOT_DIR" && "$proc_cmd" =~ /bot\.js([[:space:]]|$) ]]; then
+      printf '%s\n' "$pid"
+    fi
+  done
+)
 if (( ${#NODE_PROCS[@]} > 1 )); then
   warn "Mehrere Bot-Prozesse gefunden: ${NODE_PROCS[*]}"
 else
