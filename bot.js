@@ -266,7 +266,8 @@ const _wigiDashCache = {
   VoiceChannel: '',
   Guild: '',
   Users: [],
-  OnlineCount: 0
+  OnlineCount: 0,
+  LastMessage: null
 };
 
 function updateWigiDashCache() {
@@ -280,7 +281,7 @@ function updateWigiDashCache() {
     // Für Listen-Widgets: alle Mitglieder mit sichtbarer Discord-Präsenz sammeln.
     _wigiDashCache.Users = [];
     _wigiDashCache.OnlineCount = 0;
-    if (targetGuildId && !targetUserId) {
+    if (targetGuildId) {
       const guild = client.guilds.cache.get(targetGuildId);
       if (guild) {
         _wigiDashCache.Users = Array.from(guild.members.cache.values())
@@ -309,10 +310,14 @@ function updateWigiDashCache() {
       for (const guild of client.guilds.cache.values()) {
         if (targetGuildId && guild.id !== targetGuildId) continue;
         for (const member of guild.members.cache.values()) {
-          if (!targetUserId || member.user.id === targetUserId) {
+          const isVisiblePresence = ['online', 'idle', 'dnd'].includes(member.presence?.status);
+          if (targetUserId && member.user.id === targetUserId) {
             targetUser = member.user;
             break;
           }
+          // Ohne feste Ziel-ID den ersten tatsächlich anwesenden Benutzer
+          // für ältere Einzelbenutzer-Widgets als Kompatibilitätswert nutzen.
+          if (!targetUserId && isVisiblePresence && !targetUser) targetUser = member.user;
         }
         if (targetUser) break;
       }
@@ -380,10 +385,40 @@ function getWigiDashStatus() {
     VoiceChannel: _wigiDashCache.VoiceChannel,
     Guild: _wigiDashCache.Guild,
     Users: _wigiDashCache.Users,
-    OnlineCount: _wigiDashCache.OnlineCount
+    OnlineCount: _wigiDashCache.OnlineCount,
+    LastMessage: _wigiDashCache.LastMessage
   };
 }
 // #endregion
+
+function captureWigiDashMessage(message) {
+  try {
+    const wigiConfig = config.get('discord.wigiDashApi');
+    if (!wigiConfig?.enabled || !wigiConfig.messageEnabled) return;
+    if (!message?.inGuild?.() || message.author?.bot || message.system) return;
+
+    const guildId = wigiConfig.targetGuildId?.trim() || '';
+    const channelId = wigiConfig.targetChannelId?.trim() || '';
+    const userId = wigiConfig.targetUserId?.trim() || '';
+    if (guildId && message.guildId !== guildId) return;
+
+    const matchesChannel = channelId && message.channelId === channelId;
+    const matchesUser = userId && message.author?.id === userId;
+    if (!matchesChannel && !matchesUser) return;
+
+    _wigiDashCache.LastMessage = {
+      Author: message.member?.displayName || message.author?.username || '',
+      AuthorId: message.author?.id || '',
+      Channel: message.channel?.name || '',
+      ChannelId: message.channelId || '',
+      Content: String(message.content || '').slice(0, 500),
+      AttachmentCount: message.attachments?.size || 0,
+      Timestamp: message.createdAt?.toISOString?.() || new Date().toISOString()
+    };
+  } catch (err) {
+    logger.warn(`WigiDash Nachrichten-Cache Fehler: ${err.message}`);
+  }
+}
 
 function formatDurationShort(ms) {
   const totalSeconds = Math.max(1, Math.floor(ms / 1000));
@@ -3972,6 +4007,10 @@ async function _askOpenAI(userContent, userName) {
   );
   return res.data?.choices?.[0]?.message?.content?.trim() || null;
 }
+
+client.on('messageCreate', (message) => {
+  captureWigiDashMessage(message);
+});
 
 client.on('messageCreate', async (message) => {
   if (message.author?.bot) return;

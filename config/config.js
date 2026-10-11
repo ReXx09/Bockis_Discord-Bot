@@ -433,6 +433,18 @@ const config = convict({
         default: '',
         env: 'WIGIDASH_TARGET_GUILD_ID'
       },
+      targetChannelId: {
+        doc: 'Optionale Kanal-ID für WigiDash-Nachrichten',
+        format: String,
+        default: '',
+        env: 'WIGIDASH_TARGET_CHANNEL_ID'
+      },
+      messageEnabled: {
+        doc: 'Letzte passende Discord-Nachricht an WigiDash übertragen',
+        format: Boolean,
+        default: false,
+        env: 'WIGIDASH_MESSAGE_ENABLED'
+      },
       apiKey: {
         doc: 'Optionaler API-Schlüssel für Netzwerk-Zugriff (leer = kein Auth nötig für 127.0.0.1)',
         format: String,

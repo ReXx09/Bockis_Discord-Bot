@@ -10,6 +10,7 @@ Der Bot stellt einen HTTP-Endpunkt bereit, der aktuelle Discord-Status-Daten lie
 - **Activity**: Aktuelle Aktivität/Spielname
 - **VoiceChannel**: Name des aktuellen Sprachkanals
 - **Guild**: Name des Discord-Servers
+- **LastMessage**: Letzte passende Nachricht, wenn die Nachrichtenanzeige aktiviert ist
 
 ## Aktivierung & Konfiguration
 
@@ -31,22 +32,30 @@ WIGIDASH_API_PORT=47900
 # URL-Pfad (Standard: /status)
 WIGIDASH_API_PATH=/status
 
-# Discord-Benutzer-ID des zu verfolgenden Nutzers (leer = nicht konfiguriert)
-# Leer lassen, wenn alle online/idle/dnd-Mitglieder der Guild geliefert werden sollen
+# Discord-Benutzer-ID für den persönlichen Einzelstatus (optional)
 WIGIDASH_TARGET_USER_ID=
 
 # Optionale Guild-ID zum Filtern (leer = beliebiger Server)
 WIGIDASH_TARGET_GUILD_ID=
 
+# Nachrichtenanzeige ausdrücklich aktivieren
+WIGIDASH_MESSAGE_ENABLED=false
+
+# Optionaler Kanalfilter für Nachrichten
+WIGIDASH_TARGET_CHANNEL_ID=
+
 # API-Schlüssel für Netzwerk-Zugriff (nur falls WIGIDASH_API_HOST=0.0.0.0)
 WIGIDASH_API_KEY=
 ```
 
-Wenn `WIGIDASH_TARGET_USER_ID` leer bleibt und `WIGIDASH_TARGET_GUILD_ID` gesetzt ist,
-enthält die API zusätzlich `Users` mit allen aktuell online, idle oder dnd-Mitgliedern
-der Guild sowie `OnlineCount`. Das bisherige Einzelbenutzerformat bleibt für ältere
-Widgets erhalten. Das WigiDash-Widget muss `Users` ausdrücklich als Liste auswerten,
-sonst zeigt es weiterhin nur den einzelnen Kompatibilitätswert an.
+Wenn `WIGIDASH_TARGET_GUILD_ID` gesetzt ist, enthält die API zusätzlich `Users` mit
+allen aktuell online, idle oder dnd-Mitgliedern der Guild sowie `OnlineCount`.
+`WIGIDASH_TARGET_USER_ID` kann gleichzeitig gesetzt bleiben und liefert deinen
+persönlichen Einzelstatus für ältere Widgets. Das WigiDash-Widget muss `Users`
+ausdrücklich als Liste auswerten, wenn mehrere Benutzer angezeigt werden sollen.
+Bei aktivierter `WIGIDASH_MESSAGE_ENABLED` wird `LastMessage` aktualisiert, wenn
+eine Nachricht vom Zieluser oder aus dem Zielkanal eingeht. Der Nachrichtentext
+wird lokal auf 500 Zeichen begrenzt und nicht an externe Dienste gesendet.
 
 ### 2. Benutzer-ID ermitteln
 

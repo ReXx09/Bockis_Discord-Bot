@@ -1,178 +1,193 @@
-# Discord-Bot um lokale WigiDash-Status-API erweitern
+# WigiDash-Integration: Aufgabenliste
 
-## Ziel
+Stand: 2026-10-11
 
-Der bestehende Discord-Bot soll einen kleinen lokalen HTTP-Endpunkt bereitstellen. Das WigiDash-HWiNFO-Widget liest diesen Endpunkt regelmaessig aus und zeigt Discord-Statusdaten im linken 4x4-Bereich an.
+Diese Datei ist die gemeinsame Arbeitsliste fuer das Bot-Repository und das
+separate WigiDash-Widget-Repository. Erledigte Punkte bleiben dokumentiert,
+damit die naechsten Arbeiten im Widget-Repository ohne Rueckfragen fortgesetzt
+werden koennen.
 
-Die Discord-Anmeldung und der Discord-Token bleiben ausschliesslich im Bot. Das WigiDash-Widget bekommt keinen Bot-Token und greift nicht direkt auf die Discord-API zu.
+## Architektur und Datenschutz
 
-## Erwarteter Endpunkt
+- [x] Der Discord-Token bleibt ausschliesslich im Bot.
+- [x] Das WigiDash greift nicht direkt auf die Discord-API zu.
+- [x] Der Bot stellt eine lokale HTTP-API bereit.
+- [x] Standard-Endpunkt: `GET http://<PI-IP>:47900/status`.
+- [x] Port und Pfad sind ueber `.env` konfigurierbar.
+- [x] Die WigiDash-API ist optional und standardmaessig deaktiviert.
+- [x] Nachrichten werden nur bei aktivierter Nachrichtenanzeige erfasst.
+- [x] Nachrichtentexte werden lokal auf 500 Zeichen begrenzt.
+- [ ] Im WigiDash-Widget eine sichtbare Datenschutz-/Lokalanzeige ergaenzen.
 
-Der Bot soll standardmaessig diesen Endpunkt anbieten:
+## Im Bot bereits abgeschlossen
 
-```text
-GET http://127.0.0.1:47900/status
-```
+### Statusdaten
 
-Der Port und der Pfad sollen nach Moeglichkeit ueber eine Konfiguration anpassbar sein.
+- [x] `Username`: Discord-Anzeigename des Zielbenutzers.
+- [x] `Status`: `online`, `idle`, `dnd` oder `offline`.
+- [x] `Activity`: aktuelle Aktivitaet oder Spielname.
+- [x] `VoiceChannel`: aktueller Sprachkanal.
+- [x] `Guild`: Name der relevanten Discord-Guild.
+- [x] Ereignisbasierte Aktualisierung bei Presence-, Voice- und Member-Events.
+- [x] Stabiler Cache statt Discord-REST-Abfrage bei jeder HTTP-Anfrage.
 
-### Erfolgsantwort
+### Mehrere Benutzer
 
-HTTP-Status `200` und JSON mit folgendem Format:
+- [x] `WIGIDASH_TARGET_USER_ID` fuer den persoenlichen Einzelstatus.
+- [x] `WIGIDASH_TARGET_GUILD_ID` fuer anwesende Guild-Mitglieder.
+- [x] `Users` mit online-, idle- und dnd-Mitgliedern.
+- [x] `OnlineCount` als Anzahl der erkannten anwesenden Mitglieder.
+- [x] Zieluser und Guild-Liste koennen gleichzeitig aktiv sein.
+- [ ] `WIGIDASH_TARGET_CHANNEL_ID` als echte Sprachkanal-Mitgliederliste auswerten.
 
-```json
-{
-  "Username": "ReXx09",
-  "Status": "online",
-  "Activity": "Minecraft",
-  "VoiceChannel": "Gaming",
-  "Guild": "Meine Community"
-}
-```
+### Nachrichtenanzeige
 
-Alle Felder sind Strings. Wenn ein Wert nicht verfuegbar ist, soll ein leerer String zurueckgegeben werden.
+- [x] `WIGIDASH_MESSAGE_ENABLED` als ausdruecklicher Aktivierungsschalter.
+- [x] `WIGIDASH_TARGET_CHANNEL_ID` als Nachrichtenfilter.
+- [x] Nachrichten des Zielusers koennen erfasst werden.
+- [x] Nachrichten aus dem Zielkanal koennen erfasst werden.
+- [x] Guild-Filter wird vor der Speicherung angewendet.
+- [x] `LastMessage` wird ueber `/status` bereitgestellt.
+- [x] Gespeichert werden Autor, Autor-ID, Kanal, Kanal-ID, Inhalt, Anhanganzeige
+      und Zeitstempel.
+- [x] Bot- und Systemnachrichten werden nicht als Benutzernachricht gespeichert.
 
-Zulaessige Werte fuer `Status` sind vorzugsweise:
-
-- `online`
-- `idle`
-- `dnd`
-- `offline`
-
-`Status` darf bei Bedarf auch als Discord-kompatibler anderer Statuswert geliefert werden. Das WigiDash-Widget behandelt unbekannte Werte als offline/neutral.
-
-### Fehlerantwort
-
-Wenn der Bot noch keine Discord-Daten hat, soll der Endpunkt trotzdem antworten:
-
-```json
-{
-  "Username": "",
-  "Status": "offline",
-  "Activity": "",
-  "VoiceChannel": "",
-  "Guild": ""
-}
-```
-
-Der HTTP-Endpunkt soll nicht bei jedem fehlenden Discord-Event mit `500` antworten. Ein temporaer nicht verfuegbarer Discord-Status ist ein normaler Zustand.
-
-## Zu ermittelnde Discord-Daten
-
-Der Bot soll aus seinem bestehenden Discord-Zustand folgende Werte ableiten:
-
-- `Username`: Anzeigename des Zielbenutzers
-- `Status`: Online-, Idle-, DND- oder Offline-Status
-- `Activity`: aktuelle Aktivitaet bzw. Spielname; leer, wenn keine Aktivitaet vorhanden ist
-- `VoiceChannel`: aktueller Sprachkanal; leer, wenn der Benutzer nicht in einem Sprachkanal ist
-- `Guild`: Servername des relevanten Servers
-
-Falls der Bot mehrere Server oder Benutzer verwaltet, soll der Zielbenutzer ueber die bestehende Bot-Konfiguration eindeutig festgelegt werden. Keine harte Benutzer-ID direkt im Quellcode einbauen, wenn bereits eine Konfigurationsdatei vorhanden ist.
-
-## Discord-Intents
-
-Pruefen, welche Intents der Bot bereits verwendet. Fuer Presence- und Member-Daten koennen je nach verwendeter Bibliothek erforderlich sein:
-
-- `GuildPresences`
-- `GuildMembers`
-- gegebenenfalls `Guilds`
-- gegebenenfalls `GuildVoiceStates`
-
-Die notwendigen Privileged Intents muessen sowohl im Code als auch im Discord Developer Portal aktiviert werden. Nur die wirklich benoetigten Intents aktivieren.
-
-## HTTP-Server
-
-Die Implementierung soll zum bestehenden Bot-Framework passen.
-
-Anforderungen:
-
-- Server nur an `127.0.0.1` binden, wenn Bot und WigiDash auf demselben Rechner laufen.
-- Nicht standardmaessig an `0.0.0.0` binden.
-- Keine Discord-Tokens oder OAuth-Tokens in HTTP-Antworten ausgeben.
-- Fuer lokale Nutzung ist keine CORS-Unterstuetzung erforderlich.
-- `Content-Type: application/json; charset=utf-8` setzen.
-- HTTP-Anfragen schnell beantworten und nicht auf neue Discord-Events warten.
-- Den zuletzt bekannten Status thread-sicher aus einem Cache lesen.
-- Der Bot darf nicht beendet werden, wenn der lokale HTTP-Server nicht gestartet werden kann. Der Fehler soll geloggt werden.
-- Beim Herunterfahren des Bots den HTTP-Server sauber beenden.
-
-Wenn der Endpunkt aus dem LAN erreichbar sein muss, soll mindestens ein konfigurierbarer API-Schluessel oder eine vergleichbare Zugriffskontrolle vorgesehen werden. Der API-Schluessel darf nicht im Repository committed werden.
-
-## Konfiguration
-
-Falls das Bot-Projekt bereits eine Konfigurationsdatei besitzt, dort einen Abschnitt ergaenzen, zum Beispiel:
+Beispiel:
 
 ```json
 {
-  "WigiDashApi": {
-    "Enabled": true,
-    "Host": "127.0.0.1",
-    "Port": 47900,
-    "Path": "/status",
-    "TargetUserId": "DISCORD_USER_ID"
+  "LastMessage": {
+    "Author": "Max",
+    "AuthorId": "123456789012345678",
+    "Channel": "allgemein",
+    "ChannelId": "987654321098765432",
+    "Content": "Hallo!",
+    "AttachmentCount": 0,
+    "Timestamp": "2026-10-11T18:30:00.000Z"
   }
 }
 ```
 
-Die genaue Konfigurationsstruktur an die bestehende Architektur anpassen. Keine zweite konkurrierende Konfigurationslogik einfuehren.
+## Aktuelle Konfiguration
 
-## Caching und Aktualisierung
+```env
+WIGIDASH_API_ENABLED=true
+WIGIDASH_API_HOST=0.0.0.0
+WIGIDASH_API_PORT=47900
+WIGIDASH_API_PATH=/status
 
-Der Bot soll die Daten ereignisbasiert aktualisieren, wenn Discord Presence-, Voice- oder Member-Events eintreffen. Der HTTP-Endpunkt liefert immer den zuletzt bekannten konsistenten Snapshot.
+# Persoenlicher Status, optional
+WIGIDASH_TARGET_USER_ID=
 
-Optional kann ein kurzer Fallback-Timer verwendet werden. Der Endpunkt selbst soll niemals fuer jede Anfrage Discord-REST-Aufrufe ausfuehren.
+# Guild fuer die Benutzerliste und Nachrichtenbegrenzung
+WIGIDASH_TARGET_GUILD_ID=
 
-## Tests
+# Letzte passende Nachricht uebertragen
+WIGIDASH_MESSAGE_ENABLED=false
 
-Mindestens folgende Tests oder manuelle Pruefungen ergaenzen:
+# Optionaler Kanalfilter fuer Nachrichten
+WIGIDASH_TARGET_CHANNEL_ID=
 
-1. Bot startet mit aktivierter WigiDash-API.
-2. `GET http://127.0.0.1:47900/status` liefert HTTP `200`.
-3. JSON enthaelt alle fuenf Felder exakt mit den Namen `Username`, `Status`, `Activity`, `VoiceChannel` und `Guild`.
-4. Ein Benutzer ohne Aktivitaet liefert `Activity: ""`.
-5. Ein Benutzer ausserhalb eines Sprachkanals liefert `VoiceChannel: ""`.
-6. Offline- oder noch nicht geladene Daten liefern einen gueltigen Offline-Snapshot statt HTTP `500`.
-7. Mehrere parallele Statusanfragen verursachen keine Exception.
-8. Der Bot beendet sich sauber und gibt den Port wieder frei.
-9. Bei deaktivierter API wird kein HTTP-Port geoeffnet.
-10. Es werden keine Tokens, Cookies oder geheimen Konfigurationswerte geloggt.
-
-Beispieltest mit PowerShell:
-
-```powershell
-Invoke-RestMethod http://127.0.0.1:47900/status | ConvertTo-Json
+# Nur bei LAN-Zugriff setzen; niemals committen
+WIGIDASH_API_KEY=
 ```
 
-## WigiDash-Kompatibilitaet
+Hinweis: `WIGIDASH_TARGET_CHANNEL_ID` ist aktuell ein Nachrichtenfilter. Eine
+separate Filterung der `Users`-Liste auf Mitglieder eines Sprachkanals ist noch
+offen.
 
-Das vorhandene WigiDash-Widget verwendet standardmaessig:
+## Fuer das WigiDash-Widget-Repository offen
 
-```text
-http://127.0.0.1:47900/status
+### API-Datenquelle
+
+- [ ] URL-Feld auf `http://<PI-IP>:47900/status` konfigurieren.
+- [ ] HTTP-Timeout von etwa 3 bis 5 Sekunden setzen.
+- [ ] Polling-Intervall festlegen, empfohlen 5 bis 15 Sekunden.
+- [ ] Fehlerzustand bei Timeout oder ungueltigem JSON anzeigen.
+- [ ] Keine Discord-Zugangsdaten im Widget speichern.
+
+### Mehrere Benutzer darstellen
+
+- [ ] JSON-Feld `Users` auslesen.
+- [ ] Pro Benutzer Name und Status anzeigen.
+- [ ] Statusfarben fuer online, idle, dnd und offline definieren.
+- [ ] `OnlineCount` als Zaehler anzeigen.
+- [ ] Leere Benutzerliste als „Keine Benutzer online“ darstellen.
+- [ ] Lange Namen und viele Benutzer ohne Layout-Spruenge darstellen.
+- [ ] Benutzerliste fuer D-Pad-/Tastaturbedienung fokussierbar machen.
+
+### Nachrichtendarstellung
+
+- [ ] `LastMessage` auslesen.
+- [ ] Autor, Kanal und relative Zeit anzeigen.
+- [ ] Nachrichtentext in einem begrenzten Textfeld darstellen.
+- [ ] Neue Nachricht optisch markieren, zum Beispiel Rahmen, Farbe oder kurze
+      Animation.
+- [ ] Alte Nachricht nach einem definierten Zeitraum ausblenden oder als alt
+      markieren.
+- [ ] Nachrichtenwechsel anhand von `Timestamp` erkennen.
+- [ ] Fehlende `LastMessage` sauber als „Keine neue Nachricht“ behandeln.
+- [ ] Sonderzeichen, Zeilenumbrueche und sehr lange Texte sicher darstellen.
+- [ ] Keine HTML-Auswertung aus dem Nachrichtentext zulassen.
+
+### Widget-Interaktion
+
+- [ ] Bestehende Einzelstatusfelder weiter unterstuetzen.
+- [ ] Mehrbenutzeransicht optional ein- und ausblendbar machen.
+- [ ] Nachrichtenanzeige optional ein- und ausblendbar machen.
+- [ ] WigiDash-Layout fuer 4x4-Anzeige testen.
+- [ ] Darstellung bei Offline-Bot, leerer Antwort und API-Fehler testen.
+- [ ] Discord-Schaltflaeche unveraendert mit `discord://-/` testen.
+
+## Discord- und Bot-Voraussetzungen
+
+- [x] `GuildPresences` im Bot aktiviert.
+- [x] `GuildMembers` im Bot aktiviert.
+- [x] `GuildVoiceStates` im Bot aktiviert.
+- [x] `GuildMessages` und `MessageContent` im Bot aktiviert.
+- [ ] Im Discord Developer Portal Presence Intent aktivieren.
+- [ ] Im Discord Developer Portal Server Members Intent aktivieren.
+- [ ] Im Discord Developer Portal Message Content Intent aktivieren.
+- [ ] Bot-Berechtigungen fuer die Ziel-Guild und den Zielkanal pruefen.
+
+## Testaufgaben
+
+- [x] Bot-Syntax mit `node --check bot.js` pruefen.
+- [x] API-Syntax mit `node --check web/routes.js` pruefen.
+- [x] Dashboard-Template kompilieren.
+- [x] Bei deaktivierter WigiDash-API wird kein Port geoeffnet.
+- [ ] `curl http://127.0.0.1:47900/status` auf dem Pi testen.
+- [ ] Antwort bei gesetzter Zieluser-ID pruefen.
+- [ ] Antwort mit `Users` und `OnlineCount` pruefen.
+- [ ] Nachricht vom Zieluser testen.
+- [ ] Nachricht aus dem Zielkanal testen.
+- [ ] Nachricht ausserhalb des Filters darf nicht erscheinen.
+- [ ] Neustart des Bots und Cache-Verhalten pruefen.
+- [ ] WigiDash-Widget mit leerem, fehlerhaftem und vollstaendigem JSON testen.
+- [ ] Keine Tokens, API-Keys oder Cookies in der Antwort pruefen.
+
+Beispieltests auf dem Pi:
+
+```bash
+curl -sS http://127.0.0.1:47900/status | jq
+sudo ss -ltnp | grep 47900
+sudo journalctl -u bockis-bot -n 80 --no-pager
 ```
 
-Die URL kann im Widget unter den Seiten-Einstellungen angepasst werden. Das Widget erwartet keine Discord-Authentifizierung und keinen speziellen Header fuer die lokale Standardkonfiguration.
+## Abnahmekriterien
 
-Der Discord-Button im Widget verwendet standardmaessig:
+- [ ] Das Widget zeigt den persoenlichen Zieluser korrekt an.
+- [ ] Das Widget zeigt die Guild-Mitgliederliste korrekt an.
+- [ ] Das Widget zeigt neue passende Nachrichten optisch erkennbar an.
+- [ ] Falsche oder nicht passende Nachrichten werden nicht angezeigt.
+- [ ] API-Ausfall und Bot-Neustart fuehren zu einem definierten Fehlerzustand.
+- [ ] Keine Geheimnisse werden an das Widget oder in Logs uebertragen.
+- [ ] Die Anzeige funktioniert auf dem vorgesehenen 4x4-WigiDash-Layout.
 
-```text
-discord://-/
-```
+## Bewusst nicht Bestandteil dieser Aufgabenliste
 
-Die Oeffnen-URL kann im Widget ebenfalls angepasst werden.
-
-## Abschlusskriterien
-
-Die Arbeit ist abgeschlossen, wenn:
-
-- der Bot die lokale Status-API bereitstellt,
-- der Status-Endpunkt das oben definierte JSON liefert,
-- die Daten aus echten Discord-Events stammen,
-- die Konfiguration dokumentiert ist,
-- Start, Fehlerfall und Shutdown getestet sind,
-- keine Geheimnisse im Repository oder in Logs landen,
-- und das WigiDash-Widget die Antwort ohne weitere Codeaenderung anzeigen kann.
-
-## Wichtiger Hinweis
-
-Die API soll nur den Status liefern. Aktionen wie Discord oeffnen, Server wechseln, Mikrofon stummschalten oder Voice-Kanaele steuern sind ein separater Ausbauschritt und sollen nicht ungefragt in diesen ersten Status-Endpunkt eingebaut werden.
+- Discord-Nachrichten senden oder loeschen.
+- Server wechseln oder Discord-Aktionen aus dem Widget ausfuehren.
+- Mikrofon- oder Voice-Steuerung.
+- Weitergabe des Discord-Tokens an das WigiDash.
+- Oeffentliche Bereitstellung der Nachrichten-API ueber Cloudflare.

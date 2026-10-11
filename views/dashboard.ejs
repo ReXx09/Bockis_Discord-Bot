@@ -1760,6 +1760,18 @@
                 <label class="cfg-label" for="cfgWigiDashGuildId">Ziel-Guild-ID (optional)</label>
                 <input class="cfg-input" id="cfgWigiDashGuildId" type="text" inputmode="numeric" autocomplete="off" placeholder="Leer = beliebiger Server">
               </div>
+              <div class="cfg-field">
+                <label class="cfg-label" for="cfgWigiDashMessagesEnabled">Nachrichtenanzeige</label>
+                <label style="display:flex;align-items:center;gap:8px;color:var(--muted);font-size:12px">
+                  <input type="checkbox" id="cfgWigiDashMessagesEnabled" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
+                  Letzte passende Nachricht an WigiDash übertragen
+                </label>
+              </div>
+              <div class="cfg-field">
+                <label class="cfg-label" for="cfgWigiDashChannelId">Ziel-Kanal-ID (optional)</label>
+                <input class="cfg-input" id="cfgWigiDashChannelId" type="text" inputmode="numeric" autocomplete="off" placeholder="Discord-Kanal-ID">
+                <div class="cfg-hint">Filtert Nachrichten zusätzlich auf diesen Kanal. Ohne Kanal-ID greift der Zieluser-Filter.</div>
+              </div>
               <div class="cfg-field" style="margin-bottom:0">
                 <label class="cfg-label" for="cfgWigiDashApiKey">API-Key für Netzwerkzugriff</label>
                 <input class="cfg-input" id="cfgWigiDashApiKey" type="password" autocomplete="off" placeholder="Neuen API-Key eingeben (leer lassen = unverändert)">
@@ -3810,6 +3822,13 @@
               toast('✓ Bot erfolgreich aktualisiert!', 'ok');
               document.getElementById('updateBanner').classList.add('hidden');
               if (state) state.textContent = 'Update erfolgreich abgeschlossen';
+            } else if (code === 'null' && willRestart) {
+              // systemd beendet den SSE-Prozess zusammen mit dem alten Bot.
+              // Der Update-Lauf war bis zum geplanten Neustart erfolgreich.
+              handledByRestart = true;
+              addLine('→ Service wird neu gestartet — warte auf Wiederherstellung…', 'ul-warn');
+              if (state) state.textContent = 'Service neugestartet — warte…';
+              _waitForServerReconnect(state);
             } else {
               addLine(`✗ Update fehlgeschlagen (Exit-Code ${code})`, 'ul-err');
               toast('Update fehlgeschlagen', 'err');
@@ -4919,6 +4938,7 @@
       setCfg('cfgWigiDashPath', d.WIGIDASH_API_PATH || '/status');
       setCfg('cfgWigiDashUserId', d.WIGIDASH_TARGET_USER_ID || '');
       setCfg('cfgWigiDashGuildId', d.WIGIDASH_TARGET_GUILD_ID || '');
+      setCfg('cfgWigiDashChannelId', d.WIGIDASH_TARGET_CHANNEL_ID || '');
       updateTranslateProviderStatus();
       setCfg('cfgNotifCh', d.DISCORD_NOTIFICATION_CHANNEL || '');
       setCfg('cfgKumaUrl', d.UPTIME_KUMA_URL || '');
@@ -4979,7 +4999,8 @@
       setCheckboxValue('cfgServiceChannelDebug', (d.SERVICE_CHANNEL_DEBUG || 'false') === 'true', { force });
       setCheckboxValue('cfgAutoReactionEnabled', (d.DISCORD_AUTO_REACTION_ENABLED || 'false') === 'true', { force });
       setCheckboxValue('cfgTranslateEnabled', (d.DISCORD_TRANSLATE_ENABLED || 'false') === 'true', { force });
-      setCheckboxValue('cfgWigiDashEnabled', (d.WIGIDASH_API_ENABLED || 'true') === 'true', { force });
+      setCheckboxValue('cfgWigiDashEnabled', (d.WIGIDASH_API_ENABLED || 'false') === 'true', { force });
+      setCheckboxValue('cfgWigiDashMessagesEnabled', (d.WIGIDASH_MESSAGE_ENABLED || 'false') === 'true', { force });
 
       // Willkommen & Auto-Reply
       setCheckboxValue('cfgWelcomeEnabled', (d.DISCORD_WELCOME_ENABLED || 'false') === 'true', { force });
@@ -5201,12 +5222,16 @@
     maybeSetChanged(body, 'DISCORD_TRANSLATE_MAX_TEXT_LENGTH', 'cfgTranslateMaxTextLength');
     const wigiDashEnabledEl = document.getElementById('cfgWigiDashEnabled');
     const curWigiDashEnabled = wigiDashEnabledEl.checked ? 'true' : 'false';
-    if (curWigiDashEnabled !== (wigiDashEnabledEl.dataset.initialValue || 'true')) body.WIGIDASH_API_ENABLED = curWigiDashEnabled;
+    if (curWigiDashEnabled !== (wigiDashEnabledEl.dataset.initialValue || 'false')) body.WIGIDASH_API_ENABLED = curWigiDashEnabled;
     maybeSetChanged(body, 'WIGIDASH_API_HOST', 'cfgWigiDashHost');
     maybeSetChanged(body, 'WIGIDASH_API_PORT', 'cfgWigiDashPort');
     maybeSetChanged(body, 'WIGIDASH_API_PATH', 'cfgWigiDashPath');
     maybeSetChanged(body, 'WIGIDASH_TARGET_USER_ID', 'cfgWigiDashUserId', { allowEmpty: true });
     maybeSetChanged(body, 'WIGIDASH_TARGET_GUILD_ID', 'cfgWigiDashGuildId', { allowEmpty: true });
+    const wigiMessagesEnabledEl = document.getElementById('cfgWigiDashMessagesEnabled');
+    const curWigiMessagesEnabled = wigiMessagesEnabledEl.checked ? 'true' : 'false';
+    if (curWigiMessagesEnabled !== (wigiMessagesEnabledEl.dataset.initialValue || 'false')) body.WIGIDASH_MESSAGE_ENABLED = curWigiMessagesEnabled;
+    maybeSetChanged(body, 'WIGIDASH_TARGET_CHANNEL_ID', 'cfgWigiDashChannelId', { allowEmpty: true });
     maybeSetChanged(body, 'WIGIDASH_API_KEY', 'cfgWigiDashApiKey', { allowEmpty: true });
     maybeSetChanged(body, 'STATUS_CHANNEL_ID', 'cfgStatusCh');
     maybeSetChanged(body, 'DISCORD_NOTIFICATION_CHANNEL', 'cfgNotifCh');

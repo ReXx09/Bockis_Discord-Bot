@@ -529,6 +529,8 @@ async function finalize(rl, discord, kuma, optional) {
     'WIGIDASH_API_PATH=/status',
     'WIGIDASH_TARGET_USER_ID=',
     'WIGIDASH_TARGET_GUILD_ID=',
+    'WIGIDASH_MESSAGE_ENABLED=false',
+    'WIGIDASH_TARGET_CHANNEL_ID=',
     'WIGIDASH_API_KEY=',
     '',
     '# ── Datenbank ────────────────────────────────────────────────────────────────',
