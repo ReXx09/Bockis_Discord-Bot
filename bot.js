@@ -264,7 +264,9 @@ const _wigiDashCache = {
   Status: 'offline',
   Activity: '',
   VoiceChannel: '',
-  Guild: ''
+  Guild: '',
+  Users: [],
+  OnlineCount: 0
 };
 
 function updateWigiDashCache() {
@@ -274,6 +276,27 @@ function updateWigiDashCache() {
 
     const targetUserId = wigiConfig.targetUserId?.trim() || '';
     const targetGuildId = wigiConfig.targetGuildId?.trim() || '';
+
+    // Für Listen-Widgets: alle Mitglieder mit sichtbarer Discord-Präsenz sammeln.
+    _wigiDashCache.Users = [];
+    _wigiDashCache.OnlineCount = 0;
+    if (targetGuildId && !targetUserId) {
+      const guild = client.guilds.cache.get(targetGuildId);
+      if (guild) {
+        _wigiDashCache.Users = Array.from(guild.members.cache.values())
+          .filter(member => ['online', 'idle', 'dnd'].includes(member.presence?.status))
+          .map(member => ({
+            Username: member.displayName || member.user.username || '',
+            UserId: member.user.id,
+            Status: member.presence.status,
+            Activity: member.presence.activities?.[0]?.name || '',
+            VoiceChannel: member.voice?.channel?.name || '',
+            Guild: guild.name || ''
+          }))
+          .sort((a, b) => a.Username.localeCompare(b.Username));
+        _wigiDashCache.OnlineCount = _wigiDashCache.Users.length;
+      }
+    }
 
     // Finde Ziel-Benutzer
     let targetUser = null;
@@ -355,7 +378,9 @@ function getWigiDashStatus() {
     Status: _wigiDashCache.Status,
     Activity: _wigiDashCache.Activity,
     VoiceChannel: _wigiDashCache.VoiceChannel,
-    Guild: _wigiDashCache.Guild
+    Guild: _wigiDashCache.Guild,
+    Users: _wigiDashCache.Users,
+    OnlineCount: _wigiDashCache.OnlineCount
   };
 }
 // #endregion

@@ -32,6 +32,7 @@ WIGIDASH_API_PORT=47900
 WIGIDASH_API_PATH=/status
 
 # Discord-Benutzer-ID des zu verfolgenden Nutzers (leer = nicht konfiguriert)
+# Leer lassen, wenn alle online/idle/dnd-Mitglieder der Guild geliefert werden sollen
 WIGIDASH_TARGET_USER_ID=
 
 # Optionale Guild-ID zum Filtern (leer = beliebiger Server)
@@ -40,6 +41,12 @@ WIGIDASH_TARGET_GUILD_ID=
 # API-Schlüssel für Netzwerk-Zugriff (nur falls WIGIDASH_API_HOST=0.0.0.0)
 WIGIDASH_API_KEY=
 ```
+
+Wenn `WIGIDASH_TARGET_USER_ID` leer bleibt und `WIGIDASH_TARGET_GUILD_ID` gesetzt ist,
+enthält die API zusätzlich `Users` mit allen aktuell online, idle oder dnd-Mitgliedern
+der Guild sowie `OnlineCount`. Das bisherige Einzelbenutzerformat bleibt für ältere
+Widgets erhalten. Das WigiDash-Widget muss `Users` ausdrücklich als Liste auswerten,
+sonst zeigt es weiterhin nur den einzelnen Kompatibilitätswert an.
 
 ### 2. Benutzer-ID ermitteln
 
