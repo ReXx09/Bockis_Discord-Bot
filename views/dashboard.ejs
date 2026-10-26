@@ -2259,6 +2259,16 @@
             <span id="modelStats"></span>
             <button type="button" id="btnRefreshModels" style="margin-left: 15px; padding: 5px 10px; cursor: pointer; background: var(--blue); color: white; border: none; border-radius: 4px;">🔄 Modelle neu laden</button>
           </div>
+          <div id="openRouterModelTools" style="display:none;margin-top:8px">
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+              <input class="cfg-input" id="openRouterModelSearch" type="search" placeholder="Live nach Modell oder Anbieter suchen..." style="flex:1;min-width:240px">
+              <label style="display:flex;align-items:center;gap:6px;color:var(--muted);font-size:12px;white-space:nowrap">
+                <input type="checkbox" id="openRouterFreeOnly" checked>
+                nur kostenlose Modelle
+              </label>
+            </div>
+            <div id="openRouterModelResults" style="max-height:220px;overflow:auto;margin-top:8px"></div>
+          </div>
         </div>
         <div class="cfg-field">
           <label class="cfg-label" for="cfgOpenaiPersonaName">Bot-Name / Persönlichkeit</label>
@@ -2898,6 +2908,20 @@
     }).join('');
   }
 
+  function renderRepairLog(d) {
+    const viewer = document.getElementById('repairLogDiag');
+    if (!viewer || !d?.ok || !d.lines?.length) return;
+    viewer.style.display = 'block';
+    viewer.className = 'update-log visible';
+    viewer.innerHTML = d.lines.map(line => {
+      let cls = 'ul-line';
+      if (/FAIL|ERROR|fehler/i.test(line)) cls += ' ul-err';
+      else if (/WARN|warn/i.test(line)) cls += ' ul-warn';
+      else if (/\[ OK \]|erfolgreich/i.test(line)) cls += ' ul-ok';
+      return `<div class="${cls}">${line.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>`;
+    }).join('');
+  }
+
   async function copyBotLogs() {
     const viewer = document.getElementById('logViewer');
     const text = viewer?.innerText?.trim() || '';
@@ -3005,10 +3029,11 @@
     if (_fetchAllInFlight) return;
     _fetchAllInFlight = true;
     try {
-      const [bot, status, logs, raspi, timeCtx] = await Promise.all([
+      const [bot, status, logs, repairLog, raspi, timeCtx] = await Promise.all([
         fetchJsonSafe('/api/bot-info'),
         fetchJsonSafe('/api/status'),
         fetchJsonSafe('/api/logs', 6000),
+        fetchJsonSafe('/api/repair-log', 6000),
         fetchJsonSafe('/api/raspi-status'),
         fetchJsonSafe('/api/time-context')
       ]);
@@ -3016,6 +3041,7 @@
       renderHwMetrics(raspi?.ok ? raspi : null);
       if (status.ok) renderMonitors(status.monitors);
       if (logs.ok)   renderLogs(logs);
+      if (repairLog.ok) renderRepairLog(repairLog);
       renderLogTimeContext(timeCtx);
     } catch (e) {
       toast('Verbindungsfehler – ' + e.message, 'err');
@@ -5857,10 +5883,40 @@
   const _origFetchAll = window.fetchAll;
   window.fetchAll = function() { _origFetchAll?.call(this); setTimeout(initCardSystem, 150); };
 
-  // 🔍 Lade verfügbare OpenRouter-Modelle
+  let _openRouterModels = [];
+
+  function renderOpenRouterModelResults() {
+    const results = document.getElementById('openRouterModelResults');
+    const search = document.getElementById('openRouterModelSearch');
+    const freeOnly = document.getElementById('openRouterFreeOnly');
+    if (!results || !search || !freeOnly) return;
+
+    const query = search.value.trim().toLowerCase();
+    const filtered = _openRouterModels
+      .filter(model => !freeOnly.checked || model.isFree)
+      .filter(model => !query || `${model.id} ${model.name}`.toLowerCase().includes(query))
+      .slice(0, 100);
+
+    if (!filtered.length) {
+      results.innerHTML = '<span class="muted">Keine passenden Modelle gefunden.</span>';
+      return;
+    }
+
+    results.innerHTML = filtered.map(model => {
+      const id = String(model.id).replace(/"/g, '&quot;');
+      const name = String(model.name || model.id).replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      const badge = model.isFree ? '🟢 free' : '💳 kostenpflichtig';
+      return `<button type="button" class="btn" data-openrouter-model="${id}" style="display:block;width:100%;text-align:left;margin:4px 0;padding:6px 10px">${name} <span class="muted">${badge}</span></button>`;
+    }).join('');
+  }
+
+  // 🔍 Lade verfügbare OpenRouter-Modelle live
   async function loadOpenRouterModels() {
     try {
       const statusEl = document.getElementById('modelHealthStatus');
+      const tools = document.getElementById('openRouterModelTools');
+      const baseUrl = document.getElementById('cfgOpenaiBaseUrl')?.value || '';
+      if (tools) tools.style.display = baseUrl.includes('openrouter') ? 'block' : 'none';
       statusEl.textContent = '⏳ Lädt...';
       statusEl.style.color = '#999';
 
@@ -5875,8 +5931,32 @@
 
       const { freeModels, count } = res;
 
+      if (res.message === 'OpenRouter nicht konfiguriert') {
+        statusEl.textContent = 'ℹ️ Provider ohne OpenRouter-Prüfung';
+        statusEl.style.color = '#999';
+        document.getElementById('modelStats').textContent = 'Modellprüfung für diesen Provider nicht verfügbar.';
+        return;
+      }
+
+      _openRouterModels = Array.isArray(res.allModels) ? res.allModels : [];
+      renderOpenRouterModelResults();
+
+      if (res.modelAvailable === false) {
+        statusEl.textContent = '❌ Modell nicht gefunden';
+        statusEl.style.color = '#f04747';
+        document.getElementById('modelStats').textContent = `"${res.currentModel || 'Kein Modell'}" ist bei OpenRouter nicht verfügbar.`;
+        return;
+      }
+
+      if (res.modelIsFree === false) {
+        statusEl.textContent = '⚠️ Nicht kostenlos';
+        statusEl.style.color = '#faa61a';
+      }
+
       // Status aktualisieren
-      if (freeModels.length > 0) {
+      if (res.modelIsFree === false) {
+        // Der ausgewählte kostenpflichtige Providerstatus wurde oben gesetzt.
+      } else if (freeModels.length > 0) {
         statusEl.innerHTML = `✅ ${count.free} kostenlos`;
         statusEl.style.color = '#43b581';
       } else {
@@ -5933,6 +6013,18 @@
         loadOpenRouterModels();
       });
     }
+    document.getElementById('openRouterModelSearch')?.addEventListener('input', renderOpenRouterModelResults);
+    document.getElementById('openRouterFreeOnly')?.addEventListener('change', renderOpenRouterModelResults);
+    document.getElementById('openRouterModelResults')?.addEventListener('click', (event) => {
+      const button = event.target.closest('[data-openrouter-model]');
+      if (!button) return;
+      const modelInput = document.getElementById('cfgOpenaiModel');
+      if (modelInput) {
+        modelInput.value = button.dataset.openrouterModel;
+        modelInput.dispatchEvent(new Event('input', { bubbles: true }));
+        modelInput.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+    });
   });
 </script>
 </body>

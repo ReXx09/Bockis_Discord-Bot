@@ -721,7 +721,7 @@ module.exports = function startWebServer({
       const logDir = path.join(rootDir, 'logs');
       const files = fs.existsSync(logDir)
         ? fs.readdirSync(logDir)
-          .filter(f => f.endsWith('.log') && (f.startsWith('bot-') || f === 'repair.log'))
+          .filter(f => f.endsWith('.log') && f.startsWith('bot-'))
           .sort()
           .reverse()
         : [];
@@ -729,7 +729,7 @@ module.exports = function startWebServer({
       for (const file of files.slice(0, 2)) {
         const content = fs.readFileSync(path.join(logDir, file), 'utf8');
         const fileLines = content.split('\n').filter(Boolean).slice(-100);
-        lines.push(...fileLines.map(line => file === 'repair.log' ? `[REPAIR] ${line}` : line));
+        lines.push(...fileLines);
       }
 
       let journalLines = [];
@@ -751,6 +751,22 @@ module.exports = function startWebServer({
       });
     } catch (err) {
       logger.error(`/api/logs Fehler: ${err.message}`);
+      res.json({ ok: false, error: err.message, lines: [], file: null });
+    }
+  });
+
+  // ── API: Separates Reparatur-Log ──────────────────────────────────────────
+  app.get('/api/repair-log', dashboardAuth, (req, res) => {
+    try {
+      const repairLogPath = path.join(rootDir, 'logs', 'repair.log');
+      if (!fs.existsSync(repairLogPath)) {
+        return res.json({ ok: true, lines: [], file: null });
+      }
+      const lines = fs.readFileSync(repairLogPath, 'utf8')
+        .split('\n').filter(Boolean).slice(-250).reverse();
+      res.json({ ok: true, lines, file: 'repair.log' });
+    } catch (err) {
+      logger.error(`/api/repair-log Fehler: ${err.message}`);
       res.json({ ok: false, error: err.message, lines: [], file: null });
     }
   });
@@ -2450,19 +2466,26 @@ module.exports = function startWebServer({
     try {
       const apiKey = config.get('openai.apiKey');
       const baseUrl = String(config.get('openai.baseUrl') || '').trim();
+      const currentModel = String(config.get('openai.model') || '').trim();
 
       // Nur für OpenRouter
-      if (!baseUrl.includes('openrouter') || !apiKey) {
+      if (!baseUrl.includes('openrouter')) {
         return res.json({ 
           ok: true, 
           models: [],
+          freeModels: [],
+          allModels: [],
+          count: { free: 0, paid: 0, total: 0 },
+          currentModel,
+          modelAvailable: null,
+          modelIsFree: null,
           message: 'OpenRouter nicht konfiguriert'
         });
       }
 
       const models = await axios.get('https://openrouter.ai/api/v1/models', {
         timeout: 5000,
-        headers: { Authorization: `Bearer ${apiKey}` }
+        headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {}
       });
 
       const allModels = models.data?.data || [];
@@ -2490,12 +2513,21 @@ module.exports = function startWebServer({
         .sort((a, b) => a.name.localeCompare(b.name));
 
       logger.info(`🔍 OpenRouter Health-Check: ${freeModels.length} kostenlos, ${paidModels.length} kostenpflichtig`);
+      const selectedModel = allModels.find(model => model.id === currentModel);
+      const selectedModelIsFree = Boolean(
+        selectedModel
+        && selectedModel.pricing?.prompt === '0'
+        && selectedModel.pricing?.completion === '0'
+      );
 
       res.json({
         ok: true,
         freeModels,
         allModels: [...freeModels, ...paidModels],
-        count: { free: freeModels.length, paid: paidModels.length, total: allModels.length }
+        count: { free: freeModels.length, paid: paidModels.length, total: allModels.length },
+        currentModel,
+        modelAvailable: Boolean(selectedModel),
+        modelIsFree: selectedModel ? selectedModelIsFree : null
       });
     } catch (err) {
       logger.warn(`⚠️  OpenRouter Modelle abrufen fehlgeschlagen: ${err.message}`);
