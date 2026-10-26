@@ -1566,11 +1566,13 @@ async function convertSvgToPngBuffer(svgContent) {
 
   fs.writeFileSync(svgFilePath, svgContent, 'utf8');
   const widthMatch = svgContent.match(/<svg\b[^>]*\bwidth="(\d+)"/i);
-  const renderWidth = widthMatch ? widthMatch[1] : '1000';
+  const renderWidth = widthMatch ? widthMatch[1] : '1200';
 
   try {
     await new Promise((resolve, reject) => {
-      execFile('rsvg-convert', ['-w', renderWidth, svgFilePath, '-o', pngFilePath], { timeout: 12_000 }, (err, stdout, stderr) => {
+      // Höhere DPI für schärfere Schrift: -d 192 (2x) oder -d 288 (3x)
+      // -w setzt Zielbreite, -d setzt DPI (Standard 96)
+      execFile('rsvg-convert', ['-w', renderWidth, '-d', '192', svgFilePath, '-o', pngFilePath], { timeout: 12_000 }, (err, stdout, stderr) => {
         if (err) {
           const details = (stderr || stdout || err.message || '').toString().trim();
           reject(new Error(details || 'rsvg-convert fehlgeschlagen'));
@@ -2592,7 +2594,19 @@ function buildCommandTileSvg() {
   const enabled = new Set(getEnabledSlashCommands());
   const tileScale = config.get('discord.commandTileScale');
   const scale = { compact: 0.88, normal: 1.12, large: 1.38 }[tileScale] || 1.38;
-  const font = size => Math.round(size * scale);
+  // Basis-Schriftgrößen für gute Lesbarkeit nach Discord-Skalierung (~400-500px Embed-Breite)
+  // Ziel: effektive 24-28px bei 1200px Renderbreite = lesbar nach 3-4x Downscale
+  const baseFont = {
+    title: 32,
+    subtitle: 18,
+    badgeLabel: 14,
+    badgeValue: 22,
+    sectionTitle: 18,
+    cmdName: 20,
+    cmdLabel: 16,
+    footer: 14
+  };
+  const font = key => Math.round(baseFont[key] * scale);
   const sections = [
     { key: 'info', title: 'INFO & VERWALTUNG', color: '#67b7ff' },
     { key: 'fun', title: 'FUN & GADGETS', color: '#e3a341' },
@@ -2602,15 +2616,18 @@ function buildCommandTileSvg() {
     commands: COMMAND_TILE_CATEGORIES[section.key].filter(command => enabled.has(command))
   })).filter(section => section.commands.length);
 
-  const width = { compact: 1100, normal: 1000, large: 900 }[tileScale] || 900;
+  // Breitere Basis für bessere Lesbarkeit: Discord skaliert Embed-Bilder auf ~400-500px runter
+  // Bei 1200px Renderbreite und 3x Downscale = 400px Anzeige -> Schrift muss entsprechend groß sein
+  const width = { compact: 1100, normal: 1200, large: 1400 }[tileScale] || 1400;
   const headerHeight = Math.round(142 * scale);
   const sectionHeaderHeight = 42;
-  const rowHeight = Math.round(42 * scale);
-  const sectionGap = 22;
-  const totalHeight = Math.max(260, headerHeight + sections.reduce((height, section) => {
-    return height + sectionHeaderHeight + Math.ceil(section.commands.length / 2) * rowHeight + sectionGap;
-  }, 0) + 32);
-  const cardWidth = (width - 72) / 2;
+  const rowHeight = Math.round(48 * scale);
+  const sectionGap = 28;
+  // Ein-Spalten-Layout für bessere Lesbarkeit, keine Text-Truncation nötig
+  const totalHeight = Math.max(300, headerHeight + sections.reduce((height, section) => {
+    return height + sectionHeaderHeight + section.commands.length * rowHeight + sectionGap;
+  }, 0) + 40);
+  const cardWidth = width - 72; // volle Breite, eine Spalte
 
   let svg = `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${totalHeight}" viewBox="0 0 ${width} ${totalHeight}">
@@ -2624,40 +2641,42 @@ function buildCommandTileSvg() {
   <rect x="18" y="18" width="${width - 36}" height="${totalHeight - 36}" rx="18" fill="#181e2a" stroke="#2d3748" filter="url(#shadow)"/>
   <rect x="18" y="18" width="${width - 36}" height="${headerHeight}" rx="18" fill="url(#header)"/>
   <circle cx="58" cy="67" r="24" fill="#5865f2"/>
-  <text x="58" y="76" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="${font(25)}" font-weight="700" fill="#ffffff">B</text>
-  <text x="96" y="62" font-family="Segoe UI, Arial, sans-serif" font-size="${font(29)}" font-weight="700" fill="#ffffff">Bockis Bot</text>
-  <text x="96" y="91" font-family="Segoe UI, Arial, sans-serif" font-size="${font(16)}" fill="#b9c5e8">Befehle und Funktionen</text>
-  <rect x="${width - 282}" y="47" width="218" height="48" rx="12" fill="#111827" fill-opacity=".65" stroke="#6e8eea"/>
-  <text x="${width - 173}" y="69" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="${font(12)}" fill="#aebbd7">AKTIVIERT</text>
-  <text x="${width - 173}" y="87" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="${font(18)}" font-weight="700" fill="#ffffff">${enabled.size} COMMANDS</text>`;
+  <text x="58" y="76" text-anchor="middle" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="${font('title')}" font-weight="700" fill="#ffffff">B</text>
+  <text x="96" y="62" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="${font('title')}" font-weight="700" fill="#ffffff">Bockis Bot</text>
+  <text x="96" y="96" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="${font('subtitle')}" fill="#b9c5e8">Befehle und Funktionen</text>
+  <!-- Badge rechts im Header -->
+  <rect x="${width - 260}" y="42" width="220" height="70" rx="14" fill="#111827" fill-opacity=".7" stroke="#6e8eea"/>
+  <text x="${width - 150}" y="70" text-anchor="middle" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="${font('badgeLabel')}" font-weight="600" fill="#aebbd7">AKTIVIERT</text>
+  <text x="${width - 150}" y="96" text-anchor="middle" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="${font('badgeValue')}" font-weight="700" fill="#ffffff">${enabled.size} COMMANDS</text>`;
 
-  let currentY = headerHeight + 38;
+  let currentY = headerHeight + 30;
   for (const section of sections) {
-    const rows = Math.ceil(section.commands.length / 2);
     svg += `
-  <text x="36" y="${currentY}" font-family="Segoe UI, Arial, sans-serif" font-size="${font(15)}" font-weight="700" letter-spacing="1" fill="${section.color}">${_escapeSvgText(section.title)}</text>
-  <line x1="36" y1="${currentY + 12}" x2="${width - 36}" y2="${currentY + 12}" stroke="#303b4d"/>`;
+  <text x="36" y="${currentY}" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="${font('sectionTitle')}" font-weight="700" letter-spacing="0.5" fill="${section.color}">${_escapeSvgText(section.title)}</text>
+  <line x1="36" y1="${currentY + 10}" x2="${width - 36}" y2="${currentY + 10}" stroke="#303b4d"/>`;
     currentY += sectionHeaderHeight;
-    for (let row = 0; row < rows; row++) {
-      for (let column = 0; column < 2; column++) {
-        const command = section.commands[row + column * rows];
-        if (!command) continue;
-        const x = 36 + column * (cardWidth + 18);
-        const y = currentY + row * rowHeight;
-        const display = `/${getSlashCommandDisplayName(command, 'de')}`;
-        const label = COMMAND_TILE_LABELS[command] || 'verfügbar';
-        svg += `
-  <rect x="${x}" y="${y - 24}" width="${cardWidth}" height="32" rx="8" fill="#202938"/>
-  <circle cx="${x + 16}" cy="${y - 8}" r="5" fill="${section.color}"/>
-  <text x="${x + 30}" y="${y - 3}" font-family="Segoe UI, Arial, sans-serif" font-size="${font(15)}" font-weight="700" fill="#f3f6fc">${_escapeSvgText(display)}</text>
-  <text x="${x + 190}" y="${y - 3}" font-family="Segoe UI, Arial, sans-serif" font-size="${font(14)}" fill="#aeb8ca">${_escapeSvgText(label)}</text>`;
-      }
+    for (const command of section.commands) {
+      const x = 36;
+      const y = currentY;
+      const display = `/${getSlashCommandDisplayName(command, 'de')}`;
+      const label = COMMAND_TILE_LABELS[command] || 'verfügbar';
+      // Text-Längen begrenzen für saubere Darstellung
+      const maxCmdChars = Math.floor((cardWidth - 60) / (font('cmdName') * 0.55));
+      const maxLabelChars = Math.floor((cardWidth - 60) / (font('cmdLabel') * 0.5));
+      const truncCmd = display.length > maxCmdChars ? display.slice(0, maxCmdChars - 1) + '…' : display;
+      const truncLabel = label.length > maxLabelChars ? label.slice(0, maxLabelChars - 1) + '…' : label;
+      svg += `
+  <rect x="${x}" y="${y - 28}" width="${cardWidth}" height="40" rx="10" fill="#202938"/>
+  <circle cx="${x + 20}" cy="${y - 8}" r="6" fill="${section.color}"/>
+  <text x="${x + 40}" y="${y + 2}" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="${font('cmdName')}" font-weight="700" fill="#f3f6fc">${_escapeSvgText(truncCmd)}</text>
+  <text x="${x + 40}" y="${y + 24}" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="${font('cmdLabel')}" fill="#aeb8ca">${_escapeSvgText(truncLabel)}</text>`;
+      currentY += rowHeight;
     }
-    currentY += rows * rowHeight + sectionGap;
+    currentY += sectionGap;
   }
 
   svg += `
-  <text x="36" y="${totalHeight - 24}" font-family="Segoe UI, Arial, sans-serif" font-size="${font(12)}" fill="#7f8ba1">Mit /hilfe erhältst du diese Übersicht privat · automatisch aktualisiert</text>
+  <text x="36" y="${totalHeight - 20}" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="${font('footer')}" fill="#7f8ba1">Mit /hilfe erhältst du diese Übersicht privat · automatisch aktualisiert</text>
 </svg>`;
   return svg;
 }
