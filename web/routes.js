@@ -1586,6 +1586,7 @@ module.exports = function startWebServer({
         WIGIDASH_API_KEY:               maskSecret(get('WIGIDASH_API_KEY')),
         STATUS_CHANNEL_ID:            get('STATUS_CHANNEL_ID'),
         DISCORD_NOTIFICATION_CHANNEL: get('DISCORD_NOTIFICATION_CHANNEL'),
+        DISCORD_COMMANDS_CHANNEL_ID:  get('DISCORD_COMMANDS_CHANNEL_ID') || '',
         DISCORD_STATUS_RENDER_MODE:   get('DISCORD_STATUS_RENDER_MODE') || 'auto',
         DISCORD_STATUS_MESSAGE_TITLE: get('DISCORD_STATUS_MESSAGE_TITLE') || '',
         DISCORD_STATUS_BUTTON_LABEL:  get('DISCORD_STATUS_BUTTON_LABEL') || 'Statusseite öffnen',
@@ -1679,12 +1680,14 @@ module.exports = function startWebServer({
       'DISCORD_WELCOME_MESSAGE_TEMPLATE',
       'STATUS_CHANNEL_ID',
       'DISCORD_NOTIFICATION_CHANNEL',
+      'DISCORD_COMMANDS_CHANNEL_ID',
       'DISCORD_STATUS_RENDER_MODE',
       'DISCORD_STATUS_MESSAGE_TITLE',
       'DISCORD_STATUS_BUTTON_LABEL',
       'DISCORD_WEBUI_BUTTON_LABEL',
       'DISCORD_BOT_NAME',
       'DISCORD_STATUS_WEBHOOK_URL',
+      'DISCORD_COMMANDS_CHANNEL_ID',
       'DISCORD_GITHUB_WATCH_ENABLED',
       'DISCORD_GITHUB_CHANNEL_ID',
       'DISCORD_GITHUB_REPOS',
@@ -1856,7 +1859,7 @@ module.exports = function startWebServer({
         return res.json({ ok: false, error: 'WIGIDASH_API_PATH muss mit / beginnen und darf nur URL-Pfadzeichen enthalten' });
       if ((key === 'WIGIDASH_TARGET_USER_ID' || key === 'WIGIDASH_TARGET_GUILD_ID') && val && !/^\d+$/.test(val))
         return res.json({ ok: false, error: `${key} muss eine Discord-ID oder leer sein` });
-      if ((key === 'STATUS_CHANNEL_ID' || key === 'DISCORD_NOTIFICATION_CHANNEL') && !/^\d+$/.test(val))
+      if ((key === 'STATUS_CHANNEL_ID' || key === 'DISCORD_NOTIFICATION_CHANNEL' || key === 'DISCORD_COMMANDS_CHANNEL_ID') && !/^\d+$/.test(val))
         return res.json({ ok: false, error: `${key}: Nur Zahlen erlaubt (Discord ID)` });
       if (key === 'DISCORD_STATUS_RENDER_MODE' && !['auto', 'direct', 'graphical', 'svg_attachment', 'webhook_ascii', 'embed', 'link_preview'].includes(val))
         return res.json({ ok: false, error: 'DISCORD_STATUS_RENDER_MODE muss auto, direct, graphical, svg_attachment, webhook_ascii, embed oder link_preview sein' });

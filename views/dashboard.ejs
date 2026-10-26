@@ -755,6 +755,28 @@
       white-space: nowrap;
     }
     #cfgDirtyState.show { display: inline; }
+    #cfgDirtyDetailsToggle {
+      display: none;
+      font-size: 11px;
+      padding: 5px 8px;
+    }
+    #cfgDirtyDetailsToggle.show { display: inline-block; }
+    #cfgDirtyDetails {
+      display: none;
+      flex-basis: 100%;
+      max-height: 220px;
+      overflow: auto;
+      margin-top: 2px;
+      padding: 8px 10px;
+      border: 1px solid rgba(212,182,13,.35);
+      border-radius: 6px;
+      background: rgba(212,182,13,.05);
+      font-size: 11px;
+    }
+    #cfgDirtyDetails.show { display: block; }
+    #cfgDirtyDetails ul { margin: 0; padding-left: 18px; }
+    #cfgDirtyDetails li { margin: 3px 0; }
+    #cfgDirtyDetails code { color: var(--muted); }
 
     .diag-hints { margin-top: 10px; }
     .diag-hints .ll { border-left: 2px solid transparent; padding-left: 8px; }
@@ -936,6 +958,8 @@
             <button class="btn btn-green" id="btnCfgSave" onclick="saveConfig()">💾 Speichern &amp; Neu starten</button>
             <button class="btn" onclick="confirmResetConfig()" title="Lädt alle Eingaben aus der gespeicherten Konfiguration neu">↺ Zurücksetzen</button>
             <span id="cfgDirtyState" title="Ungespeicherte lokale Änderungen in den Einstellungen">● Ungespeicherte Änderungen</span>
+            <button class="btn" id="cfgDirtyDetailsToggle" type="button" onclick="toggleConfigDirtyDetails()">Änderungen anzeigen</button>
+            <div id="cfgDirtyDetails" aria-live="polite"></div>
           </div>
           <span id="cfgStatus"></span>
         </div>
@@ -1016,6 +1040,12 @@
                 <label class="cfg-label" for="cfgNotifCh">Benachrichtigungs-Channel ID</label>
                 <input class="cfg-input" id="cfgNotifCh" type="text" autocomplete="off"
                        placeholder="z. B. 123456789012345678">
+              </div>
+              <div class="cfg-field" style="margin-bottom:0">
+                <label class="cfg-label" for="cfgCommandsCh">Öffentliche Befehls-Kachel: Channel ID</label>
+                <input class="cfg-input" id="cfgCommandsCh" type="text" autocomplete="off"
+                       placeholder="Leer = deaktiviert">
+                <div class="cfg-hint">In diesem Kanal wird die gepinnte Übersicht der Bot-Befehle erstellt und automatisch wiederhergestellt.</div>
               </div>
             </div>
           </div>
@@ -4091,15 +4121,61 @@
 
   function refreshConfigDirtyIndicator() {
     const dirtyEl = document.getElementById('cfgDirtyState');
-    if (!dirtyEl) return;
     const fields = document.querySelectorAll('#cfgCard .cfg-input, #cfgCard input[type="checkbox"], #cfgCard select, #cfgCard textarea');
-    const count = Array.from(fields).filter((el) => el.dataset.dirty === '1').length;
+    const dirtyFields = Array.from(fields).filter((el) => el.dataset.dirty === '1');
+    const count = dirtyFields.length;
+    const detailsToggle = document.getElementById('cfgDirtyDetailsToggle');
+    if (detailsToggle) detailsToggle.classList.toggle('show', count > 0);
     if (count > 0) {
-      dirtyEl.textContent = `● ${count} ungespeicherte Änderung${count === 1 ? '' : 'en'}`;
-      dirtyEl.classList.add('show');
+      if (dirtyEl) {
+        dirtyEl.textContent = `● ${count} ungespeicherte Änderung${count === 1 ? '' : 'en'}`;
+        dirtyEl.classList.add('show');
+      }
     } else {
-      dirtyEl.classList.remove('show');
-      dirtyEl.textContent = '● Ungespeicherte Änderungen';
+      if (dirtyEl) {
+        dirtyEl.classList.remove('show');
+        dirtyEl.textContent = '● Ungespeicherte Änderungen';
+      }
+      const details = document.getElementById('cfgDirtyDetails');
+      if (details) {
+        details.classList.remove('show');
+        details.innerHTML = '';
+      }
+    }
+    const details = document.getElementById('cfgDirtyDetails');
+    if (details?.classList.contains('show')) renderConfigDirtyDetails(dirtyFields, details);
+  }
+
+  function renderConfigDirtyDetails(dirtyFields, container) {
+    const secretIds = new Set(['cfgToken', 'cfgApiKey', 'cfgDeepLApiKey', 'cfgTranslateApiKey', 'cfgTranslateApiKeySecurity', 'cfgWebhookUrl', 'cfgDashPassword', 'cfgWigiDashApiKey', 'cfgOpenaiApiKey']);
+    const mask = (value, id) => secretIds.has(id) && value ? '••••••••' : (value || '(leer)');
+    container.replaceChildren();
+    const list = document.createElement('ul');
+    dirtyFields.forEach((el) => {
+      const label = el.closest('.cfg-field')?.querySelector('.cfg-label')?.textContent?.trim() || el.id || 'Unbenanntes Feld';
+      const initial = Object.prototype.hasOwnProperty.call(el.dataset, 'initialValue') ? el.dataset.initialValue : '(nicht geladen)';
+      const current = el.type === 'checkbox' ? (el.checked ? 'true' : 'false') : String(el.value ?? '');
+      const item = document.createElement('li');
+      const strong = document.createElement('strong');
+      strong.textContent = label;
+      const oldValue = document.createElement('code');
+      oldValue.textContent = mask(initial, el.id);
+      const newValue = document.createElement('code');
+      newValue.textContent = mask(current, el.id);
+      item.append(strong, ': ', oldValue, ' → ', newValue);
+      list.appendChild(item);
+    });
+    container.appendChild(list);
+  }
+
+  function toggleConfigDirtyDetails() {
+    const details = document.getElementById('cfgDirtyDetails');
+    if (!details) return;
+    const willShow = !details.classList.contains('show');
+    details.classList.toggle('show', willShow);
+    if (willShow) {
+      const fields = document.querySelectorAll('#cfgCard .cfg-input, #cfgCard input[type="checkbox"], #cfgCard select, #cfgCard textarea');
+      renderConfigDirtyDetails(Array.from(fields).filter((el) => el.dataset.dirty === '1'), details);
     }
   }
 
@@ -4132,6 +4208,9 @@
     fields.forEach((el) => {
       if (el.dataset.dirtyBound === '1') return;
       el.dataset.dirtyBound = '1';
+      if (!Object.prototype.hasOwnProperty.call(el.dataset, 'initialValue')) {
+        el.dataset.initialValue = el.type === 'checkbox' ? (el.checked ? 'true' : 'false') : String(el.value ?? '');
+      }
       const markDirty = () => {
         _setDirtyState(el, _isFieldDirty(el));
         refreshConfigDirtyIndicator();
@@ -4971,6 +5050,7 @@
       document.getElementById('cfgWigiDashApiKey').dataset.initialValue = d.WIGIDASH_API_KEY ? '__MASKED__' : '';
 
       setCfg('cfgStatusCh', d.STATUS_CHANNEL_ID || '');
+      setCfg('cfgCommandsCh', d.DISCORD_COMMANDS_CHANNEL_ID || '');
       setCfg('cfgBotName', d.DISCORD_BOT_NAME || '');
       setCfg('cfgPresenceText', d.DISCORD_PRESENCE_TEXT || 'Service Health');
       setCfg('cfgPresenceRotateMs', d.DISCORD_PRESENCE_ROTATE_MS || '90000');
@@ -5290,6 +5370,7 @@
     maybeSetChanged(body, 'WIGIDASH_API_KEY', 'cfgWigiDashApiKey', { allowEmpty: true });
     maybeSetChanged(body, 'STATUS_CHANNEL_ID', 'cfgStatusCh');
     maybeSetChanged(body, 'DISCORD_NOTIFICATION_CHANNEL', 'cfgNotifCh');
+    maybeSetChanged(body, 'DISCORD_COMMANDS_CHANNEL_ID', 'cfgCommandsCh', { allowEmpty: true });
     maybeSetChanged(body, 'MESSAGE_CLEANUP_CHANNEL_IDS', 'cfgMsgCleanupChannelIds', { allowEmpty: true });
     maybeSetChanged(body, 'MESSAGE_CLEANUP_MAX_MESSAGES', 'cfgMsgCleanupMaxMessages');
     maybeSetChanged(body, 'MESSAGE_CLEANUP_MAX_AGE_HOURS', 'cfgMsgCleanupMaxAgeHours');
@@ -5552,8 +5633,7 @@
   }
 
   // Config beim Start laden
-  initConfigDirtyTracking();
-  loadConfig();
+  loadConfig().finally(() => initConfigDirtyTracking());
   loadSystemLocalization();
   setActiveSettingsPane('bot');
 
@@ -5711,8 +5791,8 @@
               grid.insertBefore(dropPlaceholder, card);
             }
           } else {
-            if (card.nextSibling !== dropPlaceholder) {
-              grid.insertBefore(dropPlaceholder, card.nextSibling);
+            if (card.nextElementSibling !== dropPlaceholder) {
+              grid.insertBefore(dropPlaceholder, card.nextElementSibling);
             }
           }
           lastDragOverCard = card;
