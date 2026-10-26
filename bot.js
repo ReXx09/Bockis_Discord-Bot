@@ -4124,7 +4124,8 @@ function _loadAutoReplyRules() {
     const content = fs.readFileSync(filePath, 'utf8');
     const rules = JSON.parse(content);
     return Array.isArray(rules) ? rules : [];
-  } catch {
+  } catch (err) {
+    logger.warn(`Auto-Reply-Regeln konnten nicht geladen werden: ${err.message}`);
     return [];
   }
 }
@@ -4219,12 +4220,6 @@ function _matchAutoReplyRule(content, rule) {
   const text = String(content ?? '');
 
 
-  if (commandName === 'triggerinfo') {
-    const publishPublic = getSlashBooleanOption(interaction, 'triggerinfo', 'oeffentlich');
-    const isPublic = publishPublic !== false;
-    const embeds = _buildAutoReplyTriggerInfoEmbeds(interactionLocale);
-    return interaction.reply({ embeds, ephemeral: !isPublic });
-  }
   try {
     if (effectiveMode === 'regex') {
       const flags = caseSensitive ? 'u' : 'iu';

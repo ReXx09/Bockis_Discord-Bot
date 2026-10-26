@@ -223,10 +223,22 @@ fi
 if command -v curl >/dev/null 2>&1; then
   if [[ "$wigi_enabled" != "true" ]]; then
     info "WigiDash-Status-Endpunkt nicht geprüft (API deaktiviert)"
-  elif curl -fsS --max-time 5 "http://127.0.0.1:${wigi_port}${wigi_path}" >/dev/null; then
-    ok "WigiDash-Status-Endpunkt antwortet"
   else
-    warn "WigiDash-Status-Endpunkt antwortet nicht: http://127.0.0.1:${wigi_port}${wigi_path}"
+    wigi_url="http://127.0.0.1:${wigi_port}${wigi_path}"
+    wigi_reachable=false
+    # systemd kann bereits aktiv melden, waehrend Node den zweiten Listener noch bindet.
+    for attempt in {1..15}; do
+      if curl -sS --max-time 2 "$wigi_url" >/dev/null 2>&1; then
+        wigi_reachable=true
+        break
+      fi
+      sleep 1
+    done
+    if [[ "$wigi_reachable" == "true" ]]; then
+      ok "WigiDash-Status-Endpunkt antwortet"
+    else
+      warn "WigiDash-Status-Endpunkt antwortet nicht: $wigi_url"
+    fi
   fi
 fi
 
