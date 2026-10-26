@@ -87,6 +87,22 @@ module.exports = function startWebServer({
     }
   });
 
+  // ── API: GitHub Release Watcher manuell triggern ────────────────────────────
+  app.post('/api/github-watcher/check', dashboardAuth, async (req, res) => {
+    try {
+      const { runGitHubReleaseCheck } = require(path.join(rootDir, 'bot.js'));
+      if (typeof runGitHubReleaseCheck !== 'function') {
+        return res.status(503).json({ ok: false, error: 'GitHub-Watcher nicht verfügbar' });
+      }
+      // notify=true sendet auch bei bereits bekannten Releases (force send)
+      await runGitHubReleaseCheck({ notify: true });
+      res.json({ ok: true, message: 'GitHub-Watcher manuell ausgeführt' });
+    } catch (err) {
+      logger.error(`/api/github-watcher/check Fehler: ${err.message}`);
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
   let dashboardBuildId = 'unknown';
   try {
     dashboardBuildId = execFileSync('git', ['rev-parse', '--short', 'HEAD'], { cwd: rootDir }).toString().trim();

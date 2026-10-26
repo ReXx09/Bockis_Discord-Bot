@@ -2267,6 +2267,7 @@
         <div class="cfg-field" style="border-top:1px solid var(--border);padding-top:12px">
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
             <button class="btn" type="button" onclick="loadGitHubReleasePreview()">👁 Release-Ansicht Vorschau</button>
+            <button class="btn" type="button" onclick="triggerGitHubWatcherCheck()" style="background:#1f6feb">🔄 Jetzt prüfen & senden</button>
             <span class="muted" id="githubPreviewStatus"></span>
           </div>
           <div id="githubPreviewWrap" style="display:none;margin-top:12px">
@@ -5068,6 +5069,26 @@
     image.onload = () => { wrap.style.display = 'block'; if (status) status.textContent = repository; };
     image.onerror = () => { wrap.style.display = 'none'; if (status) status.textContent = 'Release nicht gefunden oder Vorschau nicht verfügbar'; };
     image.src = `/api/previews/github-release.png?repo=${encodeURIComponent(repository)}&v=${Date.now()}`;
+  }
+
+  async function triggerGitHubWatcherCheck() {
+    const btn = event?.target;
+    const status = document.getElementById('githubPreviewStatus');
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ Prüfe…'; }
+    if (status) status.textContent = 'GitHub-Watcher läuft…';
+    try {
+      const res = await fetch('/api/github-watcher/check', { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+      const data = await res.json();
+      if (data.ok) {
+        if (status) status.textContent = '✅ ' + (data.message || 'Erledigt');
+      } else {
+        if (status) status.textContent = '❌ ' + (data.error || 'Fehler');
+      }
+    } catch (err) {
+      if (status) status.textContent = '❌ Netzwerkfehler: ' + err.message;
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = '🔄 Jetzt prüfen & senden'; }
+    }
   }
 
   async function loadConfig({ force = false } = {}) {

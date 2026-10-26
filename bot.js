@@ -4934,7 +4934,7 @@ if (process.env.NODE_ENV === 'test') {
       return { checksPerformed: monitors?.length ?? 0 };
     }
   };
-  module.exports = { client, sequelize, testSuite };
+  module.exports = { client, sequelize, testSuite, runGitHubReleaseCheck };
 }
 // #endregion
 
