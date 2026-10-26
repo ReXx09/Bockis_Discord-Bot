@@ -247,6 +247,7 @@ let lastChannelStatus      = _initState.lastChannelStatus  ?? null;
 let lastChannelNameMs      = _initState.lastChannelNameMs  ?? 0;
 let serviceCategoryId      = _initState.serviceCategoryId  ?? null;
 let serviceChannels        = _initState.serviceChannels     ?? {};  // { monitorName: channelId }
+let cleanupInfoMessageIds  = _initState.cleanupInfoMessageIds ?? {}; // { channelId: messageId }
 let userSubscriptions      = _initState.userSubscriptions   ?? {};  // { monitorId: [userId, ...] }
 let savedQuotes            = Array.isArray(_initState.quotes) ? _initState.quotes : [];
 let pendingReminders       = Array.isArray(_initState.reminders) ? _initState.reminders : [];
@@ -262,6 +263,7 @@ function persistState() {
     lastChannelNameMs,
     serviceCategoryId,
     serviceChannels,
+    cleanupInfoMessageIds,
     userSubscriptions,
     quotes: savedQuotes,
     reminders: pendingReminders,
@@ -1132,6 +1134,43 @@ function getMessageCleanupOptions(overrides = {}) {
   };
 }
 
+async function ensureCleanupInfoMessage(channel, options) {
+  if (config.get('discord.messageCleanupInfoEnabled') !== true) return;
+  if (!channel?.isTextBased?.() || typeof channel.send !== 'function') return;
+  const statusChannelId = String(config.get('discord.statusChannelId') || '').trim();
+  if (channel.id === statusChannelId) return;
+
+  const maxMessages = _toNonNegativeInt(options.maxMessages, 0);
+  const maxAgeHours = _toNonNegativeInt(options.maxAgeHours, 0);
+  const policy = [
+    maxMessages > 0 ? `maximal ${maxMessages} Bot-Nachrichten` : '',
+    maxAgeHours > 0 ? `älter als ${maxAgeHours} Stunde(n)` : ''
+  ].filter(Boolean).join(' oder ');
+  const content = `ℹ️ **Automatische Kanalbereinigung**\nIn diesem Kanal werden ${policy || 'alte Bot-Nachrichten'} automatisch entfernt. Diese Info bleibt erhalten und wird vom Bot gepflegt.`;
+
+  let message = null;
+  const savedMessageId = cleanupInfoMessageIds[channel.id];
+  if (savedMessageId) {
+    try { message = await channel.messages.fetch(savedMessageId); } catch { message = null; }
+  }
+  try {
+    if (message) {
+      await message.edit({ content, allowedMentions: { parse: [] } });
+    } else {
+      message = await channel.send({ content, allowedMentions: { parse: [] } });
+      cleanupInfoMessageIds[channel.id] = message.id;
+      persistState();
+    }
+    if (!message.pinned) {
+      try { await message.pin('Hinweis zur automatischen Kanalbereinigung'); } catch (err) {
+        logger.warn(`Cleanup-Info in #${channel.name || channel.id} konnte nicht angeheftet werden: ${err.message}`);
+      }
+    }
+  } catch (err) {
+    logger.warn(`Cleanup-Info in #${channel.name || channel.id} konnte nicht erstellt werden: ${err.message}`);
+  }
+}
+
 async function cleanupMessagesInChannel(channel, options = {}) {
   if (!channel || !channel.isTextBased?.()) {
     return { scanned: 0, eligible: 0, candidates: 0, deleted: 0, skipped: 0, reason: 'no-text-channel' };
@@ -1164,6 +1203,7 @@ async function cleanupMessagesInChannel(channel, options = {}) {
     for (const msg of batch.values()) {
       scanned++;
       if (msg.pinned) continue;
+      if (cleanupInfoMessageIds[channel.id] === msg.id) continue;
       if (onlyBotMessages && !msg.author?.bot) continue;
 
       eligible++;
@@ -1216,6 +1256,7 @@ async function runConfiguredMessageCleanup() {
         }
       }
 
+      await ensureCleanupInfoMessage(channel, channelOptions);
       const result = await cleanupMessagesInChannel(channel, channelOptions);
       totalDeleted += result.deleted;
       if (result.deleted > 0 || result.skipped > 0) {
@@ -2543,6 +2584,91 @@ function buildCommandTileEmbed() {
     .setTimestamp();
 }
 
+function buildCommandTileSvg() {
+  const enabled = new Set(getEnabledSlashCommands());
+  const sections = [
+    { key: 'info', title: 'INFO & VERWALTUNG', color: '#67b7ff' },
+    { key: 'fun', title: 'FUN & GADGETS', color: '#e3a341' },
+    { key: 'admin', title: 'ADMIN & DEBUG', color: '#f85149' }
+  ].map(section => ({
+    ...section,
+    commands: COMMAND_TILE_CATEGORIES[section.key].filter(command => enabled.has(command))
+  })).filter(section => section.commands.length);
+
+  const width = 1200;
+  const headerHeight = 142;
+  const sectionHeaderHeight = 42;
+  const rowHeight = 42;
+  const sectionGap = 22;
+  const totalHeight = Math.max(260, headerHeight + sections.reduce((height, section) => {
+    return height + sectionHeaderHeight + Math.ceil(section.commands.length / 2) * rowHeight + sectionGap;
+  }, 0) + 32);
+  const cardWidth = (width - 72) / 2;
+
+  let svg = `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${totalHeight}" viewBox="0 0 ${width} ${totalHeight}">
+  <defs>
+    <linearGradient id="header" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#263b73"/><stop offset="1" stop-color="#17213f"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%"><feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#000000" flood-opacity=".28"/></filter>
+  </defs>
+  <rect width="${width}" height="${totalHeight}" fill="#10141d"/>
+  <rect x="18" y="18" width="${width - 36}" height="${totalHeight - 36}" rx="18" fill="#181e2a" stroke="#2d3748" filter="url(#shadow)"/>
+  <rect x="18" y="18" width="${width - 36}" height="${headerHeight}" rx="18" fill="url(#header)"/>
+  <circle cx="58" cy="67" r="24" fill="#5865f2"/>
+  <text x="58" y="76" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="25" font-weight="700" fill="#ffffff">B</text>
+  <text x="96" y="62" font-family="Segoe UI, Arial, sans-serif" font-size="29" font-weight="700" fill="#ffffff">Bockis Bot</text>
+  <text x="96" y="91" font-family="Segoe UI, Arial, sans-serif" font-size="16" fill="#b9c5e8">Befehle und Funktionen</text>
+  <rect x="${width - 282}" y="47" width="218" height="48" rx="12" fill="#111827" fill-opacity=".65" stroke="#6e8eea"/>
+  <text x="${width - 173}" y="69" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="12" fill="#aebbd7">AKTIVIERT</text>
+  <text x="${width - 173}" y="87" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="18" font-weight="700" fill="#ffffff">${enabled.size} COMMANDS</text>`;
+
+  let currentY = headerHeight + 38;
+  for (const section of sections) {
+    const rows = Math.ceil(section.commands.length / 2);
+    svg += `
+  <text x="36" y="${currentY}" font-family="Segoe UI, Arial, sans-serif" font-size="15" font-weight="700" letter-spacing="1" fill="${section.color}">${_escapeSvgText(section.title)}</text>
+  <line x1="36" y1="${currentY + 12}" x2="${width - 36}" y2="${currentY + 12}" stroke="#303b4d"/>`;
+    currentY += sectionHeaderHeight;
+    for (let row = 0; row < rows; row++) {
+      for (let column = 0; column < 2; column++) {
+        const command = section.commands[row + column * rows];
+        if (!command) continue;
+        const x = 36 + column * (cardWidth + 18);
+        const y = currentY + row * rowHeight;
+        const display = `/${getSlashCommandDisplayName(command, 'de')}`;
+        const label = COMMAND_TILE_LABELS[command] || 'verfügbar';
+        svg += `
+  <rect x="${x}" y="${y - 24}" width="${cardWidth}" height="32" rx="8" fill="#202938"/>
+  <circle cx="${x + 16}" cy="${y - 8}" r="5" fill="${section.color}"/>
+  <text x="${x + 30}" y="${y - 3}" font-family="Segoe UI, Arial, sans-serif" font-size="15" font-weight="700" fill="#f3f6fc">${_escapeSvgText(display)}</text>
+  <text x="${x + 190}" y="${y - 3}" font-family="Segoe UI, Arial, sans-serif" font-size="14" fill="#aeb8ca">${_escapeSvgText(label)}</text>`;
+      }
+    }
+    currentY += rows * rowHeight + sectionGap;
+  }
+
+  svg += `
+  <text x="36" y="${totalHeight - 24}" font-family="Segoe UI, Arial, sans-serif" font-size="12" fill="#7f8ba1">Mit /hilfe erhältst du diese Übersicht privat · automatisch aktualisiert</text>
+</svg>`;
+  return svg;
+}
+
+async function buildCommandTileAttachmentPayload() {
+  const pngBuffer = await convertSvgToPngBuffer(buildCommandTileSvg());
+  const attachment = new AttachmentBuilder(pngBuffer, { name: 'commands.png' });
+  return {
+    embeds: [new EmbedBuilder()
+      .setColor(0x5865F2)
+      .setDescription('Die aktuell aktivierten Bot-Befehle auf einen Blick. Mit `/hilfe` bekommst du die Übersicht privat.')
+      .setImage('attachment://commands.png')
+      .setFooter({ text: 'Automatisch aus DISCORD_ENABLED_COMMANDS erzeugt.' })
+      .setTimestamp()],
+    files: [attachment]
+  };
+}
+
 let commandTileRecoveryRunning = false;
 async function ensureCommandTile() {
   const channelId = String(config.get('discord.commandsChannelId') || '').trim();
@@ -2560,10 +2686,17 @@ async function ensureCommandTile() {
     if (commandTileMessageId) {
       try { message = await channel.messages.fetch(commandTileMessageId); } catch { message = null; }
     }
+    let payload;
+    try {
+      payload = await buildCommandTileAttachmentPayload();
+    } catch (err) {
+      logger.warn(`Befehls-Kachel-SVG nicht verfügbar, Textdarstellung wird verwendet: ${err.message}`);
+      payload = { embeds: [buildCommandTileEmbed()] };
+    }
     if (message) {
-      await message.edit({ embeds: [buildCommandTileEmbed()] });
+      await message.edit(payload);
     } else {
-      message = await channel.send({ embeds: [buildCommandTileEmbed()] });
+      message = await channel.send(payload);
       commandTileMessageId = message.id;
       persistState();
     }

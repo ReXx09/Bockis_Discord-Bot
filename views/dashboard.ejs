@@ -1236,6 +1236,10 @@
                   <span>Auto-Cleanup aktivieren</span>
                 </label>
                 <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px">
+                  <input type="checkbox" id="cfgMsgCleanupInfoEnabled" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
+                  <span>Info für Nutzer anzeigen</span>
+                </label>
+                <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px">
                   <input type="checkbox" id="cfgMsgCleanupOnlyBot" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
                   <span>Nur Bot-Nachrichten löschen</span>
                 </label>
@@ -5128,6 +5132,7 @@
 
       setCheckboxValue('cfgChannelIndicator', (d.CHANNEL_STATUS_INDICATOR || 'true') !== 'false', { force });
       setCheckboxValue('cfgMsgCleanupEnabled', (d.MESSAGE_CLEANUP_ENABLED || 'false') === 'true', { force });
+      setCheckboxValue('cfgMsgCleanupInfoEnabled', (d.MESSAGE_CLEANUP_INFO_ENABLED || 'true') !== 'false', { force });
       setCheckboxValue('cfgMsgCleanupOnlyBot', (d.MESSAGE_CLEANUP_ONLY_BOT_MESSAGES || 'true') !== 'false', { force });
       setCheckboxValue('cfgServiceAutoCreate', (d.SERVICE_CHANNEL_AUTO_CREATE || 'true') !== 'false', { force });
       setCheckboxValue('cfgServiceAutoQuiet', (d.SERVICE_CHANNEL_AUTO_QUIET || 'true') !== 'false', { force });
@@ -5473,6 +5478,13 @@
     const initialMsgCleanupEnabled = msgCleanupEnabledEl.dataset.initialValue || 'false';
     if (currentMsgCleanupEnabled !== initialMsgCleanupEnabled) {
       body.MESSAGE_CLEANUP_ENABLED = currentMsgCleanupEnabled;
+    }
+
+    const msgCleanupInfoEnabledEl = document.getElementById('cfgMsgCleanupInfoEnabled');
+    const currentMsgCleanupInfoEnabled = msgCleanupInfoEnabledEl.checked ? 'true' : 'false';
+    const initialMsgCleanupInfoEnabled = msgCleanupInfoEnabledEl.dataset.initialValue || 'true';
+    if (currentMsgCleanupInfoEnabled !== initialMsgCleanupInfoEnabled) {
+      body.MESSAGE_CLEANUP_INFO_ENABLED = currentMsgCleanupInfoEnabled;
     }
 
     const msgCleanupOnlyBotEl = document.getElementById('cfgMsgCleanupOnlyBot');

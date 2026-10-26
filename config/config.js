@@ -262,6 +262,12 @@ const config = convict({
       default: false,
       env: 'MESSAGE_CLEANUP_ENABLED'
     },
+    messageCleanupInfoEnabled: {
+      doc: 'Hinweis-Nachricht für Nutzer in automatischen Cleanup-Kanälen anzeigen',
+      format: Boolean,
+      default: true,
+      env: 'MESSAGE_CLEANUP_INFO_ENABLED'
+    },
     messageCleanupChannelIds: {
       doc: 'Komma-/Semikolon-getrennte Channel-IDs fuer Cleanup (leer = DISCORD_NOTIFICATION_CHANNEL)',
       format: String,

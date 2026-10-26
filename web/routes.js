@@ -1607,6 +1607,7 @@ module.exports = function startWebServer({
         SERVICE_CHANNEL_MAP:          get('SERVICE_CHANNEL_MAP') || '',
         MONITORED_SERVICES:           get('MONITORED_SERVICES'),
         MESSAGE_CLEANUP_ENABLED:      get('MESSAGE_CLEANUP_ENABLED') || 'false',
+        MESSAGE_CLEANUP_INFO_ENABLED: get('MESSAGE_CLEANUP_INFO_ENABLED') || 'true',
         MESSAGE_CLEANUP_CHANNEL_IDS:  get('MESSAGE_CLEANUP_CHANNEL_IDS') || '',
         MESSAGE_CLEANUP_MAX_MESSAGES: get('MESSAGE_CLEANUP_MAX_MESSAGES') || '4',
         MESSAGE_CLEANUP_MAX_AGE_HOURS:get('MESSAGE_CLEANUP_MAX_AGE_HOURS') || '12',
@@ -1709,6 +1710,7 @@ module.exports = function startWebServer({
       'SERVICE_CHANNEL_MAP',
       'MONITORED_SERVICES',
       'MESSAGE_CLEANUP_ENABLED',
+      'MESSAGE_CLEANUP_INFO_ENABLED',
       'MESSAGE_CLEANUP_CHANNEL_IDS',
       'MESSAGE_CLEANUP_MAX_MESSAGES',
       'MESSAGE_CLEANUP_MAX_AGE_HOURS',
@@ -1889,6 +1891,8 @@ module.exports = function startWebServer({
         return res.json({ ok: false, error: 'SERVICE_CHANNEL_AUTO_QUIET muss true oder false sein' });
       if (key === 'MESSAGE_CLEANUP_ENABLED' && !['true', 'false'].includes(val))
         return res.json({ ok: false, error: 'MESSAGE_CLEANUP_ENABLED muss true oder false sein' });
+      if (key === 'MESSAGE_CLEANUP_INFO_ENABLED' && !['true', 'false'].includes(val))
+        return res.json({ ok: false, error: 'MESSAGE_CLEANUP_INFO_ENABLED muss true oder false sein' });
       if (key === 'MESSAGE_CLEANUP_ONLY_BOT_MESSAGES' && !['true', 'false'].includes(val))
         return res.json({ ok: false, error: 'MESSAGE_CLEANUP_ONLY_BOT_MESSAGES muss true oder false sein' });
       if (key === 'MESSAGE_CLEANUP_CHANNEL_IDS') {

@@ -494,6 +494,7 @@ bash ~/bockis-bot/start-bot.sh
 | Variable | Pflicht | Beschreibung |
 |----------|---------|-------------|
 | `MESSAGE_CLEANUP_ENABLED` | ❌ | Automatisches Nachrichten-Cleanup aktivieren |
+| `MESSAGE_CLEANUP_INFO_ENABLED` | ❌ | Info-Nachricht für Nutzer in Cleanup-Kanälen anzeigen (`true`/`false`) |
 | `MESSAGE_CLEANUP_CHANNEL_IDS` | ❌ | Zielkanäle für Cleanup (leer = Notification-Channel) |
 | `MESSAGE_CLEANUP_MAX_MESSAGES` | ❌ | Maximal erlaubte Nachrichten pro Kanal |
 | `MESSAGE_CLEANUP_MAX_AGE_HOURS` | ❌ | Nachrichten älter als X Stunden löschen |
