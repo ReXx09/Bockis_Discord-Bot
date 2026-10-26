@@ -248,6 +248,7 @@ let lastChannelNameMs      = _initState.lastChannelNameMs  ?? 0;
 let serviceCategoryId      = _initState.serviceCategoryId  ?? null;
 let serviceChannels        = _initState.serviceChannels     ?? {};  // { monitorName: channelId }
 let cleanupInfoMessageIds  = _initState.cleanupInfoMessageIds ?? {}; // { channelId: messageId }
+let githubWatchState        = _initState.githubWatchState ?? {}; // { repo: { releaseId, release } }
 let userSubscriptions      = _initState.userSubscriptions   ?? {};  // { monitorId: [userId, ...] }
 let savedQuotes            = Array.isArray(_initState.quotes) ? _initState.quotes : [];
 let pendingReminders       = Array.isArray(_initState.reminders) ? _initState.reminders : [];
@@ -264,6 +265,7 @@ function persistState() {
     serviceCategoryId,
     serviceChannels,
     cleanupInfoMessageIds,
+    githubWatchState,
     userSubscriptions,
     quotes: savedQuotes,
     reminders: pendingReminders,
@@ -2586,6 +2588,8 @@ function buildCommandTileEmbed() {
 
 function buildCommandTileSvg() {
   const enabled = new Set(getEnabledSlashCommands());
+  const scale = { compact: 0.88, normal: 1.12, large: 1.38 }[config.get('discord.commandTileScale')] || 1.38;
+  const font = size => Math.round(size * scale);
   const sections = [
     { key: 'info', title: 'INFO & VERWALTUNG', color: '#67b7ff' },
     { key: 'fun', title: 'FUN & GADGETS', color: '#e3a341' },
@@ -2596,9 +2600,9 @@ function buildCommandTileSvg() {
   })).filter(section => section.commands.length);
 
   const width = 1200;
-  const headerHeight = 142;
+  const headerHeight = Math.round(142 * scale);
   const sectionHeaderHeight = 42;
-  const rowHeight = 42;
+  const rowHeight = Math.round(42 * scale);
   const sectionGap = 22;
   const totalHeight = Math.max(260, headerHeight + sections.reduce((height, section) => {
     return height + sectionHeaderHeight + Math.ceil(section.commands.length / 2) * rowHeight + sectionGap;
@@ -2617,18 +2621,18 @@ function buildCommandTileSvg() {
   <rect x="18" y="18" width="${width - 36}" height="${totalHeight - 36}" rx="18" fill="#181e2a" stroke="#2d3748" filter="url(#shadow)"/>
   <rect x="18" y="18" width="${width - 36}" height="${headerHeight}" rx="18" fill="url(#header)"/>
   <circle cx="58" cy="67" r="24" fill="#5865f2"/>
-  <text x="58" y="76" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="25" font-weight="700" fill="#ffffff">B</text>
-  <text x="96" y="62" font-family="Segoe UI, Arial, sans-serif" font-size="29" font-weight="700" fill="#ffffff">Bockis Bot</text>
-  <text x="96" y="91" font-family="Segoe UI, Arial, sans-serif" font-size="16" fill="#b9c5e8">Befehle und Funktionen</text>
+  <text x="58" y="76" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="${font(25)}" font-weight="700" fill="#ffffff">B</text>
+  <text x="96" y="62" font-family="Segoe UI, Arial, sans-serif" font-size="${font(29)}" font-weight="700" fill="#ffffff">Bockis Bot</text>
+  <text x="96" y="91" font-family="Segoe UI, Arial, sans-serif" font-size="${font(16)}" fill="#b9c5e8">Befehle und Funktionen</text>
   <rect x="${width - 282}" y="47" width="218" height="48" rx="12" fill="#111827" fill-opacity=".65" stroke="#6e8eea"/>
-  <text x="${width - 173}" y="69" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="12" fill="#aebbd7">AKTIVIERT</text>
-  <text x="${width - 173}" y="87" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="18" font-weight="700" fill="#ffffff">${enabled.size} COMMANDS</text>`;
+  <text x="${width - 173}" y="69" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="${font(12)}" fill="#aebbd7">AKTIVIERT</text>
+  <text x="${width - 173}" y="87" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="${font(18)}" font-weight="700" fill="#ffffff">${enabled.size} COMMANDS</text>`;
 
   let currentY = headerHeight + 38;
   for (const section of sections) {
     const rows = Math.ceil(section.commands.length / 2);
     svg += `
-  <text x="36" y="${currentY}" font-family="Segoe UI, Arial, sans-serif" font-size="15" font-weight="700" letter-spacing="1" fill="${section.color}">${_escapeSvgText(section.title)}</text>
+  <text x="36" y="${currentY}" font-family="Segoe UI, Arial, sans-serif" font-size="${font(15)}" font-weight="700" letter-spacing="1" fill="${section.color}">${_escapeSvgText(section.title)}</text>
   <line x1="36" y1="${currentY + 12}" x2="${width - 36}" y2="${currentY + 12}" stroke="#303b4d"/>`;
     currentY += sectionHeaderHeight;
     for (let row = 0; row < rows; row++) {
@@ -2642,15 +2646,15 @@ function buildCommandTileSvg() {
         svg += `
   <rect x="${x}" y="${y - 24}" width="${cardWidth}" height="32" rx="8" fill="#202938"/>
   <circle cx="${x + 16}" cy="${y - 8}" r="5" fill="${section.color}"/>
-  <text x="${x + 30}" y="${y - 3}" font-family="Segoe UI, Arial, sans-serif" font-size="15" font-weight="700" fill="#f3f6fc">${_escapeSvgText(display)}</text>
-  <text x="${x + 190}" y="${y - 3}" font-family="Segoe UI, Arial, sans-serif" font-size="14" fill="#aeb8ca">${_escapeSvgText(label)}</text>`;
+  <text x="${x + 30}" y="${y - 3}" font-family="Segoe UI, Arial, sans-serif" font-size="${font(15)}" font-weight="700" fill="#f3f6fc">${_escapeSvgText(display)}</text>
+  <text x="${x + 190}" y="${y - 3}" font-family="Segoe UI, Arial, sans-serif" font-size="${font(14)}" fill="#aeb8ca">${_escapeSvgText(label)}</text>`;
       }
     }
     currentY += rows * rowHeight + sectionGap;
   }
 
   svg += `
-  <text x="36" y="${totalHeight - 24}" font-family="Segoe UI, Arial, sans-serif" font-size="12" fill="#7f8ba1">Mit /hilfe erhältst du diese Übersicht privat · automatisch aktualisiert</text>
+  <text x="36" y="${totalHeight - 24}" font-family="Segoe UI, Arial, sans-serif" font-size="${font(12)}" fill="#7f8ba1">Mit /hilfe erhältst du diese Übersicht privat · automatisch aktualisiert</text>
 </svg>`;
   return svg;
 }
@@ -2667,6 +2671,144 @@ async function buildCommandTileAttachmentPayload() {
       .setTimestamp()],
     files: [attachment]
   };
+}
+
+function _releasePlainText(value) {
+  return String(value || '')
+    .replace(/```[\s\S]*?```/g, 'Codeblock')
+    .replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+    .replace(/[`*_>#~-]/g, '')
+    .replace(/\r/g, '')
+    .split('\n')
+    .map(line => line.replace(/\s+/g, ' ').trim())
+    .filter(Boolean)
+    .slice(0, 14);
+}
+
+function buildReleaseNotesSvg(release) {
+  const width = 1200;
+  const notes = _releasePlainText(release?.body);
+  const noteLines = notes.length ? notes : ['Keine Release Notes vorhanden.'];
+  const lineHeight = 34;
+  const headerHeight = 184;
+  const totalHeight = Math.max(390, headerHeight + noteLines.length * lineHeight + 92);
+  const tag = release?.tag_name || 'Release';
+  const title = release?.name || tag;
+  const published = release?.published_at ? new Date(release.published_at).toLocaleString('de-DE', { dateStyle: 'medium', timeStyle: 'short' }) : 'unbekannt';
+  const repo = release?.repository || 'GitHub';
+
+  let svg = `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${totalHeight}" viewBox="0 0 ${width} ${totalHeight}">
+  <defs><linearGradient id="releaseHeader" x1="0" x2="1" y1="0" y2="1"><stop offset="0" stop-color="#1f6feb"/><stop offset="1" stop-color="#19315f"/></linearGradient><filter id="releaseShadow"><feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#000" flood-opacity=".3"/></filter></defs>
+  <rect width="${width}" height="${totalHeight}" fill="#10141d"/>
+  <rect x="18" y="18" width="${width - 36}" height="${totalHeight - 36}" rx="18" fill="#181e2a" stroke="#2d3748" filter="url(#releaseShadow)"/>
+  <rect x="18" y="18" width="${width - 36}" height="${headerHeight}" rx="18" fill="url(#releaseHeader)"/>
+  <circle cx="64" cy="72" r="26" fill="#ffffff" fill-opacity=".15"/><text x="64" y="82" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="28" font-weight="700" fill="#fff">↗</text>
+  <text x="108" y="62" font-family="Segoe UI, Arial, sans-serif" font-size="16" font-weight="700" letter-spacing="1" fill="#bcd6ff">NEUER GITHUB RELEASE</text>
+  <text x="108" y="99" font-family="Segoe UI, Arial, sans-serif" font-size="30" font-weight="700" fill="#fff">${_escapeSvgText(title).slice(0, 70)}</text>
+  <text x="108" y="132" font-family="Segoe UI, Arial, sans-serif" font-size="16" fill="#d5e4ff">${_escapeSvgText(repo)} · ${_escapeSvgText(tag)} · ${_escapeSvgText(published)}</text>
+  <rect x="${width - 226}" y="54" width="154" height="50" rx="12" fill="#111827" fill-opacity=".55" stroke="#7eb1ff"/>
+  <text x="${width - 149}" y="84" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="16" font-weight="700" fill="#fff">RELEASE NOTES</text>`;
+
+  let currentY = headerHeight + 46;
+  svg += `\n  <text x="52" y="${currentY}" font-family="Segoe UI, Arial, sans-serif" font-size="18" font-weight="700" fill="#67b7ff">WAS IST NEU?</text>\n  <line x1="52" y1="${currentY + 16}" x2="${width - 52}" y2="${currentY + 16}" stroke="#303b4d"/>`;
+  currentY += 58;
+  for (const note of noteLines) {
+    const clipped = note.length > 112 ? `${note.slice(0, 109)}...` : note;
+    svg += `\n  <circle cx="62" cy="${currentY - 7}" r="5" fill="#67b7ff"/><text x="82" y="${currentY}" font-family="Segoe UI, Arial, sans-serif" font-size="17" fill="#e8eef9">${_escapeSvgText(clipped)}</text>`;
+    currentY += lineHeight;
+  }
+  svg += `\n  <text x="52" y="${totalHeight - 28}" font-family="Segoe UI, Arial, sans-serif" font-size="12" fill="#7f8ba1">Automatisch von GitHub geladen · Release öffnen: ${_escapeSvgText(release?.html_url || 'URL nicht verfügbar')}</text>\n</svg>`;
+  return svg;
+}
+
+async function buildReleaseNotesAttachmentPayload(release) {
+  const pngBuffer = await convertSvgToPngBuffer(buildReleaseNotesSvg(release));
+  const attachment = new AttachmentBuilder(pngBuffer, { name: 'release-notes.png' });
+  const embed = new EmbedBuilder()
+    .setColor(0x1f6feb)
+    .setTitle(`Neuer Release: ${release.name || release.tag_name || 'GitHub'}`)
+    .setURL(release.html_url || null)
+    .setImage('attachment://release-notes.png')
+    .setFooter({ text: `${release.repository || 'GitHub'} · automatisch erkannt` })
+    .setTimestamp();
+  return { embeds: [embed], files: [attachment], allowedMentions: { parse: [] } };
+}
+
+function parseGitHubRepositories() {
+  return String(config.get('discord.githubRepos') || '')
+    .split(/[;,\s]+/).map(repo => repo.trim().toLowerCase())
+    .filter(repo => /^[a-z0-9_.-]+\/[a-z0-9_.-]+$/.test(repo));
+}
+
+async function fetchGitHubLatestRelease(repository) {
+  const token = String(config.get('discord.githubToken') || '').trim();
+  const headers = { Accept: 'application/vnd.github+json', 'User-Agent': 'Bockis-Discord-Bot' };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const response = await axios.get(`https://api.github.com/repos/${repository}/releases/latest`, { headers, timeout: 12_000 });
+  const data = response.data || {};
+  return {
+    id: data.id,
+    repository,
+    tag_name: data.tag_name || '',
+    name: data.name || data.tag_name || 'GitHub Release',
+    body: data.body || '',
+    html_url: data.html_url || `https://github.com/${repository}/releases`,
+    published_at: data.published_at || data.created_at || null,
+    prerelease: data.prerelease === true
+  };
+}
+
+async function runGitHubReleaseCheck({ notify = true } = {}) {
+  if (config.get('discord.githubWatchEnabled') !== true) return;
+  const repositories = parseGitHubRepositories();
+  const channelId = String(config.get('discord.githubChannelId') || '').trim();
+  if (!repositories.length || !channelId) return;
+  let channel = client.channels.cache.get(channelId);
+  if (!channel) channel = await client.channels.fetch(channelId);
+  if (!channel?.isTextBased?.() || typeof channel.send !== 'function') throw new Error('GitHub-Kanal ist kein beschreibbarer Textkanal');
+
+  for (const repository of repositories) {
+    try {
+      const release = await fetchGitHubLatestRelease(repository);
+      const previous = githubWatchState[repository];
+      const changed = previous && String(previous.releaseId) !== String(release.id);
+      githubWatchState[repository] = { releaseId: release.id, release, checkedAt: new Date().toISOString() };
+      persistState();
+      if (notify && changed) {
+        let payload;
+        try { payload = await buildReleaseNotesAttachmentPayload(release); }
+        catch (err) {
+          logger.warn(`GitHub-Release-Grafik für ${repository} nicht verfügbar: ${err.message}`);
+          payload = { embeds: [new EmbedBuilder().setColor(0x1f6feb).setTitle(`Neuer Release: ${release.name}`).setURL(release.html_url).setDescription(_releasePlainText(release.body).join('\n').slice(0, 4000))], allowedMentions: { parse: [] } };
+        }
+        await channel.send(payload);
+        logger.info(`GitHub-Watcher: neuer Release ${repository} ${release.tag_name} gemeldet`);
+      }
+    } catch (err) {
+      logger.warn(`GitHub-Watcher: ${repository} konnte nicht geprüft werden: ${err.message}`);
+    }
+  }
+}
+
+function initializeGitHubWatcher() {
+  if (config.get('discord.githubWatchEnabled') !== true) return;
+  const interval = Math.max(60_000, Number(config.get('discord.githubPollIntervalMs')) || 300_000);
+  runGitHubReleaseCheck({ notify: true });
+  setInterval(() => runGitHubReleaseCheck({ notify: true }), interval);
+  logger.info(`GitHub-Watcher gestartet (alle ${Math.round(interval / 1000)}s)`);
+}
+
+async function getCommandTilePreviewPng() {
+  return convertSvgToPngBuffer(buildCommandTileSvg());
+}
+
+async function getGitHubReleasePreviewPng(repository) {
+  const repo = String(repository || '').trim().toLowerCase();
+  if (!/^[a-z0-9_.-]+\/[a-z0-9_.-]+$/.test(repo)) throw new Error('Ungültiges Repository-Format');
+  const release = githubWatchState[repo]?.release || await fetchGitHubLatestRelease(repo);
+  return convertSvgToPngBuffer(buildReleaseNotesSvg(release));
 }
 
 let commandTileRecoveryRunning = false;
@@ -4651,7 +4793,7 @@ function initializeUpdateCycle() {
 // #region 23. STARTUP
 // Webserver SOFORT starten — unabhängig vom Discord-Login
 // Damit ist das Dashboard auch erreichbar wenn der Token noch nicht stimmt
-const _webDeps = { config, logger, client, sequelize, prom, getMonitorData, updateStatusMessage, getWigiDashStatus, rootDir: __dirname };
+const _webDeps = { config, logger, client, sequelize, prom, getMonitorData, updateStatusMessage, getWigiDashStatus, getCommandTilePreviewPng, getGitHubReleasePreviewPng, rootDir: __dirname };
 let _httpServer = null;
 initializeDatabase().then(() => { _httpServer = startWebServer(_webDeps); }).catch(err => {
   logger.error(`DB/Webserver-Startfehler: ${err.message}`);
@@ -4664,6 +4806,7 @@ client.once('ready', async () => {
   startPresenceRotation();
   await registerSlashCommands();
   await ensureCommandTile();
+  initializeGitHubWatcher();
   reschedulePendingReminders();
   initializeUpdateCycle();
   

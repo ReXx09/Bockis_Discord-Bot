@@ -1648,6 +1648,22 @@
             </label>
           </div>
           <input type="hidden" id="cfgEnabledCommands" value="status,uptime,refresh,help,triggerinfo,coinflip,dice,eightball,cleanup,translate,ping,botinfo,serverstatus,ki,wetter,subscribe,remind,quote,poll,avatar,userinfo,testreply">
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:12px">
+            <button class="btn" type="button" onclick="loadCommandPreview()">👁 Befehlsansicht Vorschau</button>
+            <span class="muted" id="commandPreviewStatus"></span>
+          </div>
+          <div class="cfg-field" style="margin-top:12px;margin-bottom:0">
+            <label class="cfg-label" for="cfgCommandTileScale">Grafikgröße der Befehlsansicht</label>
+            <select class="cfg-input" id="cfgCommandTileScale" style="max-width:260px">
+              <option value="compact">Kompakt</option>
+              <option value="normal">Normal</option>
+              <option value="large">Groß und gut lesbar</option>
+            </select>
+            <div class="cfg-hint">Große Darstellung verwendet größere Schrift und mehr Abstand. Nach dem Speichern wird die angeheftete Karte aktualisiert.</div>
+          </div>
+          <div id="commandPreviewWrap" style="display:none;margin-top:12px">
+            <img id="commandPreviewImage" alt="Vorschau der Befehlsansicht" style="display:block;width:100%;max-height:520px;object-fit:contain;background:#10141d;border:1px solid var(--border);border-radius:8px">
+          </div>
           <div class="cfg-hint">Mindestens ein Kommando muss aktiv bleiben. Änderungen werden beim Neustart neu registriert.</div>
               </div>
             </div>
@@ -2192,7 +2208,7 @@
           <div class="cfg-section-header" onclick="toggleConfigSection(this)">
             <div class="cfg-section-header-title">
               <span class="cfg-section-toggle">▾</span>
-              <span>👀 Update-Überwachung</span>
+              <span>👀 Release-Überwachung</span>
             </div>
           </div>
           <div class="cfg-section-content">
@@ -2202,7 +2218,7 @@
           <div style="display:flex;align-items:center;gap:12px;margin-top:2px">
             <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px">
               <input type="checkbox" id="cfgGithubWatchEnabled" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
-              <span>Neue Releases &amp; Commits von GitHub in einen Discord-Kanal posten</span>
+              <span>Neue GitHub-Releases mit Notes in einen Discord-Kanal posten</span>
             </label>
           </div>
         </div>
@@ -2214,7 +2230,7 @@
         <div class="cfg-field">
           <label class="cfg-label" for="cfgGithubRepos">Repos (Format: owner/repo)</label>
           <input class="cfg-input" id="cfgGithubRepos" type="text" autocomplete="off" placeholder="ReXx09/Bockis_Discord-Bot;anderer/repo">
-          <div class="cfg-hint">Mehrere Repos mit <code>;</code> oder <code>,</code> trennen. Maximal 20. Nur öffentliche Repos ohne Token.</div>
+          <div class="cfg-hint">Mehrere Repos mit <code>;</code> oder <code>,</code> trennen. Die Release-Notes werden als grafische Karte dargestellt.</div>
         </div>
         <div class="cfg-field">
           <label class="cfg-label" for="cfgGithubMode">Überwachungs-Modus</label>
@@ -2243,6 +2259,15 @@
                  placeholder="Leer lassen = unverändert">
           <div class="cfg-hint">Erhöht das Rate-Limit von 60 auf 5000 Anfragen/Stunde. Scope: <code>public_repo</code> reicht aus.</div>
               </div>
+        <div class="cfg-field" style="border-top:1px solid var(--border);padding-top:12px">
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <button class="btn" type="button" onclick="loadGitHubReleasePreview()">👁 Release-Ansicht Vorschau</button>
+            <span class="muted" id="githubPreviewStatus"></span>
+          </div>
+          <div id="githubPreviewWrap" style="display:none;margin-top:12px">
+            <img id="githubPreviewImage" alt="Vorschau der GitHub-Release-Ansicht" style="display:block;width:100%;max-height:560px;object-fit:contain;background:#10141d;border:1px solid var(--border);border-radius:8px">
+          </div>
+        </div>
             </div>
           </div>
         </div>
@@ -5016,6 +5041,30 @@
   
 
   // ── Config laden ─────────────────────────────────────
+  function loadCommandPreview() {
+    const wrap = document.getElementById('commandPreviewWrap');
+    const image = document.getElementById('commandPreviewImage');
+    const status = document.getElementById('commandPreviewStatus');
+    if (!wrap || !image) return;
+    if (status) status.textContent = 'Lade Vorschau…';
+    image.onload = () => { wrap.style.display = 'block'; if (status) status.textContent = 'Gespeicherte Konfiguration'; };
+    image.onerror = () => { wrap.style.display = 'none'; if (status) status.textContent = 'Vorschau nicht verfügbar'; };
+    image.src = `/api/previews/commands.png?v=${Date.now()}`;
+  }
+
+  function loadGitHubReleasePreview() {
+    const repository = String(document.getElementById('cfgGithubRepos')?.value || '')
+      .split(/[;,\s]+/).map(value => value.trim()).find(value => /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(value));
+    const status = document.getElementById('githubPreviewStatus');
+    const wrap = document.getElementById('githubPreviewWrap');
+    const image = document.getElementById('githubPreviewImage');
+    if (!repository) { if (status) status.textContent = 'Bitte zuerst owner/repo eintragen.'; return; }
+    if (status) status.textContent = 'Lade Release…';
+    image.onload = () => { wrap.style.display = 'block'; if (status) status.textContent = repository; };
+    image.onerror = () => { wrap.style.display = 'none'; if (status) status.textContent = 'Release nicht gefunden oder Vorschau nicht verfügbar'; };
+    image.src = `/api/previews/github-release.png?repo=${encodeURIComponent(repository)}&v=${Date.now()}`;
+  }
+
   async function loadConfig({ force = false } = {}) {
     try {
       const d = await fetch('/api/config').then(r => r.json());
@@ -5054,6 +5103,7 @@
       document.getElementById('cfgWigiDashApiKey').dataset.initialValue = d.WIGIDASH_API_KEY ? '__MASKED__' : '';
 
       setCfg('cfgStatusCh', d.STATUS_CHANNEL_ID || '');
+      setCfg('cfgCommandTileScale', d.DISCORD_COMMAND_TILE_SCALE || 'large');
       setCfg('cfgCommandsCh', d.DISCORD_COMMANDS_CHANNEL_ID || '');
       setCfg('cfgBotName', d.DISCORD_BOT_NAME || '');
       setCfg('cfgPresenceText', d.DISCORD_PRESENCE_TEXT || 'Service Health');
@@ -5375,6 +5425,7 @@
     maybeSetChanged(body, 'WIGIDASH_API_KEY', 'cfgWigiDashApiKey', { allowEmpty: true });
     maybeSetChanged(body, 'STATUS_CHANNEL_ID', 'cfgStatusCh');
     maybeSetChanged(body, 'DISCORD_NOTIFICATION_CHANNEL', 'cfgNotifCh');
+    maybeSetChanged(body, 'DISCORD_COMMAND_TILE_SCALE', 'cfgCommandTileScale');
     maybeSetChanged(body, 'DISCORD_COMMANDS_CHANNEL_ID', 'cfgCommandsCh', { allowEmpty: true });
     maybeSetChanged(body, 'MESSAGE_CLEANUP_CHANNEL_IDS', 'cfgMsgCleanupChannelIds', { allowEmpty: true });
     maybeSetChanged(body, 'MESSAGE_CLEANUP_MAX_MESSAGES', 'cfgMsgCleanupMaxMessages');

@@ -104,6 +104,12 @@ const config = convict({
       default: 'status,uptime,refresh,help,triggerinfo,coinflip,dice,eightball,cleanup,translate,ping,botinfo,serverstatus,ki,wetter,subscribe,remind,quote,poll,avatar,userinfo,testreply',
       env: 'DISCORD_ENABLED_COMMANDS'
     },
+    commandTileScale: {
+      doc: 'Darstellungsgröße der grafischen Befehls-Kachel',
+      format: ['compact', 'normal', 'large'],
+      default: 'large',
+      env: 'DISCORD_COMMAND_TILE_SCALE'
+    },
     translateEnabled: {
       doc: 'Aktiviert den /translate Slash-Command',
       format: Boolean,

@@ -50,6 +50,8 @@ module.exports = function startWebServer({
   getMonitorData,
   updateStatusMessage,
   getWigiDashStatus,
+  getCommandTilePreviewPng,
+  getGitHubReleasePreviewPng,
   rootDir           // = __dirname aus bot.js (Projektwurzel)
 }) {
   // ── Express-App erstellen ───────────────────────────────────────────────────
@@ -58,6 +60,32 @@ module.exports = function startWebServer({
   app.set('views', path.join(rootDir, 'views'));  // absoluter Pfad, CWD-unabhängig
   app.use(express.json());
   app.use(express.static(path.join(rootDir, 'public')));
+
+  app.get('/api/previews/commands.png', dashboardAuth, async (req, res) => {
+    try {
+      if (typeof getCommandTilePreviewPng !== 'function') throw new Error('Befehlsvorschau nicht verfügbar');
+      const png = await getCommandTilePreviewPng();
+      res.set('Cache-Control', 'no-store').type('png').send(png);
+    } catch (err) {
+      logger.error(`/api/previews/commands.png Fehler: ${err.message}`);
+      res.status(503).json({ ok: false, error: err.message });
+    }
+  });
+
+  app.get('/api/previews/github-release.png', dashboardAuth, async (req, res) => {
+    try {
+      if (typeof getGitHubReleasePreviewPng !== 'function') throw new Error('Release-Vorschau nicht verfügbar');
+      const repository = String(req.query.repo || '').trim().toLowerCase();
+      if (!/^[a-z0-9_.-]+\/[a-z0-9_.-]+$/.test(repository)) {
+        return res.status(400).json({ ok: false, error: 'Repository muss owner/repo sein' });
+      }
+      const png = await getGitHubReleasePreviewPng(repository);
+      res.set('Cache-Control', 'no-store').type('png').send(png);
+    } catch (err) {
+      logger.error(`/api/previews/github-release.png Fehler: ${err.message}`);
+      res.status(503).json({ ok: false, error: err.message });
+    }
+  });
 
   let dashboardBuildId = 'unknown';
   try {
@@ -1565,6 +1593,7 @@ module.exports = function startWebServer({
         DISCORD_GITHUB_POLL_INTERVAL_MS: get('DISCORD_GITHUB_POLL_INTERVAL_MS') || '300000',
         GITHUB_TOKEN:                 maskSecret(get('GITHUB_TOKEN')),
         DISCORD_ENABLED_COMMANDS:     get('DISCORD_ENABLED_COMMANDS') || 'status,uptime,refresh,help,triggerinfo,coinflip,dice,eightball,cleanup,translate,ping,botinfo,serverstatus,ki,wetter,subscribe,remind,quote,poll,avatar,userinfo,testreply',
+        DISCORD_COMMAND_TILE_SCALE:   get('DISCORD_COMMAND_TILE_SCALE') || 'large',
         DISCORD_TRANSLATE_ENABLED:    get('DISCORD_TRANSLATE_ENABLED') || 'false',
         DISCORD_TRANSLATE_DEFAULT_TARGET: get('DISCORD_TRANSLATE_DEFAULT_TARGET') || 'de',
         DISCORD_TRANSLATE_DEFAULT_SOURCE: get('DISCORD_TRANSLATE_DEFAULT_SOURCE') || 'auto',
@@ -1657,6 +1686,7 @@ module.exports = function startWebServer({
       'DISCORD_AUTO_REPLY_RESPONSE_MODE',
       'DISCORD_AUTO_REPLY_CONNECTOR',
       'DISCORD_ENABLED_COMMANDS',
+      'DISCORD_COMMAND_TILE_SCALE',
       'DISCORD_TRANSLATE_ENABLED',
       'DISCORD_TRANSLATE_DEFAULT_TARGET',
       'DISCORD_TRANSLATE_DEFAULT_SOURCE',
@@ -1829,6 +1859,8 @@ module.exports = function startWebServer({
         updates[key] = uniqueEntries.join(',');
         continue;
       }
+      if (key === 'DISCORD_COMMAND_TILE_SCALE' && !['compact', 'normal', 'large'].includes(val))
+        return res.json({ ok: false, error: 'DISCORD_COMMAND_TILE_SCALE muss compact, normal oder large sein' });
       if (key === 'DISCORD_TRANSLATE_ENABLED' && !['true', 'false'].includes(val))
         return res.json({ ok: false, error: 'DISCORD_TRANSLATE_ENABLED muss true oder false sein' });
       if ((key === 'DISCORD_TRANSLATE_DEFAULT_TARGET' || key === 'DISCORD_TRANSLATE_DEFAULT_SOURCE')) {
