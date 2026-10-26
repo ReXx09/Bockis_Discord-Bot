@@ -1588,6 +1588,7 @@ module.exports = function startWebServer({
         DISCORD_WELCOME_MESSAGE_TEMPLATE: get('DISCORD_WELCOME_MESSAGE_TEMPLATE') || 'Willkommen {{user}}!',
         DISCORD_GITHUB_WATCH_ENABLED: get('DISCORD_GITHUB_WATCH_ENABLED') || 'false',
         DISCORD_GITHUB_CHANNEL_ID:    get('DISCORD_GITHUB_CHANNEL_ID') || '',
+        DISCORD_GITHUB_SECONDARY_CHANNEL_ID: get('DISCORD_GITHUB_SECONDARY_CHANNEL_ID') || '',
         DISCORD_GITHUB_REPOS:         get('DISCORD_GITHUB_REPOS') || '',
         DISCORD_GITHUB_MODE:          get('DISCORD_GITHUB_MODE') || 'releases',
         DISCORD_GITHUB_POLL_INTERVAL_MS: get('DISCORD_GITHUB_POLL_INTERVAL_MS') || '300000',
@@ -1721,6 +1722,7 @@ module.exports = function startWebServer({
       'DISCORD_COMMANDS_CHANNEL_ID',
       'DISCORD_GITHUB_WATCH_ENABLED',
       'DISCORD_GITHUB_CHANNEL_ID',
+      'DISCORD_GITHUB_SECONDARY_CHANNEL_ID',
       'DISCORD_GITHUB_REPOS',
       'DISCORD_GITHUB_MODE',
       'DISCORD_GITHUB_POLL_INTERVAL_MS',
@@ -1775,6 +1777,7 @@ module.exports = function startWebServer({
       'DISCORD_WELCOME_CHANNEL_ID',
       'DISCORD_WELCOME_MESSAGE_TEMPLATE',
       'DISCORD_GITHUB_CHANNEL_ID',
+      'DISCORD_GITHUB_SECONDARY_CHANNEL_ID',
       'DISCORD_GITHUB_REPOS',
       'GITHUB_TOKEN',
       'DISCORD_STATUS_MESSAGE_TITLE',
@@ -1893,7 +1896,7 @@ module.exports = function startWebServer({
         return res.json({ ok: false, error: 'WIGIDASH_API_PATH muss mit / beginnen und darf nur URL-Pfadzeichen enthalten' });
       if ((key === 'WIGIDASH_TARGET_USER_ID' || key === 'WIGIDASH_TARGET_GUILD_ID') && val && !/^\d+$/.test(val))
         return res.json({ ok: false, error: `${key} muss eine Discord-ID oder leer sein` });
-      if ((key === 'STATUS_CHANNEL_ID' || key === 'DISCORD_NOTIFICATION_CHANNEL' || key === 'DISCORD_COMMANDS_CHANNEL_ID') && !/^\d+$/.test(val))
+      if ((key === 'STATUS_CHANNEL_ID' || key === 'DISCORD_NOTIFICATION_CHANNEL' || key === 'DISCORD_COMMANDS_CHANNEL_ID' || key === 'DISCORD_GITHUB_CHANNEL_ID' || key === 'DISCORD_GITHUB_SECONDARY_CHANNEL_ID') && !/^\d+$/.test(val))
         return res.json({ ok: false, error: `${key}: Nur Zahlen erlaubt (Discord ID)` });
       if (key === 'DISCORD_STATUS_RENDER_MODE' && !['auto', 'direct', 'graphical', 'svg_attachment', 'webhook_ascii', 'embed', 'link_preview'].includes(val))
         return res.json({ ok: false, error: 'DISCORD_STATUS_RENDER_MODE muss auto, direct, graphical, svg_attachment, webhook_ascii, embed oder link_preview sein' });

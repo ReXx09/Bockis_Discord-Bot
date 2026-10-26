@@ -2228,9 +2228,14 @@
           <div class="cfg-hint">Channel-ID des Discord-Kanals, in dem GitHub-Updates gepostet werden sollen.</div>
         </div>
         <div class="cfg-field">
-          <label class="cfg-label" for="cfgGithubRepos">Repos (Format: owner/repo)</label>
+          <label class="cfg-label" for="cfgGithubSecondaryChannelId">Zusätzlicher Banner-Kanal ID (optional)</label>
+          <input class="cfg-input" id="cfgGithubSecondaryChannelId" type="text" autocomplete="off" placeholder="z. B. 987654321098765432">
+          <div class="cfg-hint">Der gleiche Release-Banner wird parallel in diesen Kanal gesendet. Der Banner verlinkt direkt auf die GitHub Release Notes.</div>
+        </div>
+        <div class="cfg-field">
+          <label class="cfg-label" for="cfgGithubRepos">Repos (Format: owner/repo oder GitHub-URL)</label>
           <input class="cfg-input" id="cfgGithubRepos" type="text" autocomplete="off" placeholder="ReXx09/Bockis_Discord-Bot;anderer/repo">
-          <div class="cfg-hint">Mehrere Repos mit <code>;</code> oder <code>,</code> trennen. Die Release-Notes werden als grafische Karte dargestellt.</div>
+          <div class="cfg-hint">Erlaubt sind <code>owner/repo</code> oder vollständige GitHub-URLs. Mehrere Repos mit <code>;</code> oder <code>,</code> trennen. Die Release-Notes werden als grafische Karte dargestellt.</div>
         </div>
         <div class="cfg-field">
           <label class="cfg-label" for="cfgGithubMode">Überwachungs-Modus</label>
@@ -5207,6 +5212,7 @@
       // GitHub-Watcher
       setCheckboxValue('cfgGithubWatchEnabled', (d.DISCORD_GITHUB_WATCH_ENABLED || 'false') === 'true', { force });
       setCfg('cfgGithubChannelId', d.DISCORD_GITHUB_CHANNEL_ID || '');
+      setCfg('cfgGithubSecondaryChannelId', d.DISCORD_GITHUB_SECONDARY_CHANNEL_ID || '');
       setCfg('cfgGithubRepos', d.DISCORD_GITHUB_REPOS || '');
       setCfg('cfgGithubMode', d.DISCORD_GITHUB_MODE || 'both');
       setCfg('cfgGithubPollIntervalMs', d.DISCORD_GITHUB_POLL_INTERVAL_MS || '600000');
@@ -5475,6 +5481,7 @@
 
     // GitHub-Watcher
     maybeSetChanged(body, 'DISCORD_GITHUB_CHANNEL_ID', 'cfgGithubChannelId', { allowEmpty: true });
+    maybeSetChanged(body, 'DISCORD_GITHUB_SECONDARY_CHANNEL_ID', 'cfgGithubSecondaryChannelId', { allowEmpty: true });
     maybeSetChanged(body, 'DISCORD_GITHUB_REPOS', 'cfgGithubRepos', { allowEmpty: true });
     maybeSetChanged(body, 'DISCORD_GITHUB_MODE', 'cfgGithubMode');
     maybeSetChanged(body, 'DISCORD_GITHUB_POLL_INTERVAL_MS', 'cfgGithubPollIntervalMs');

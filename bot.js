@@ -1565,10 +1565,12 @@ async function convertSvgToPngBuffer(svgContent) {
   const pngFilePath = path.join(tmpDir, `status-${stamp}.png`);
 
   fs.writeFileSync(svgFilePath, svgContent, 'utf8');
+  const widthMatch = svgContent.match(/<svg\b[^>]*\bwidth="(\d+)"/i);
+  const renderWidth = widthMatch ? widthMatch[1] : '1000';
 
   try {
     await new Promise((resolve, reject) => {
-      execFile('rsvg-convert', ['-w', '1000', svgFilePath, '-o', pngFilePath], { timeout: 12_000 }, (err, stdout, stderr) => {
+      execFile('rsvg-convert', ['-w', renderWidth, svgFilePath, '-o', pngFilePath], { timeout: 12_000 }, (err, stdout, stderr) => {
         if (err) {
           const details = (stderr || stdout || err.message || '').toString().trim();
           reject(new Error(details || 'rsvg-convert fehlgeschlagen'));
@@ -2588,7 +2590,8 @@ function buildCommandTileEmbed() {
 
 function buildCommandTileSvg() {
   const enabled = new Set(getEnabledSlashCommands());
-  const scale = { compact: 0.88, normal: 1.12, large: 1.38 }[config.get('discord.commandTileScale')] || 1.38;
+  const tileScale = config.get('discord.commandTileScale');
+  const scale = { compact: 0.88, normal: 1.12, large: 1.38 }[tileScale] || 1.38;
   const font = size => Math.round(size * scale);
   const sections = [
     { key: 'info', title: 'INFO & VERWALTUNG', color: '#67b7ff' },
@@ -2599,7 +2602,7 @@ function buildCommandTileSvg() {
     commands: COMMAND_TILE_CATEGORIES[section.key].filter(command => enabled.has(command))
   })).filter(section => section.commands.length);
 
-  const width = 1200;
+  const width = { compact: 1100, normal: 1000, large: 900 }[tileScale] || 900;
   const headerHeight = Math.round(142 * scale);
   const sectionHeaderHeight = 42;
   const rowHeight = Math.round(42 * scale);
@@ -2736,10 +2739,27 @@ async function buildReleaseNotesAttachmentPayload(release) {
   return { embeds: [embed], files: [attachment], allowedMentions: { parse: [] } };
 }
 
+function normalizeGitHubRepository(value) {
+  let candidate = String(value || '').trim();
+  if (!candidate) return null;
+
+  try {
+    const url = new URL(candidate);
+    if (!['github.com', 'www.github.com'].includes(url.hostname.toLowerCase())) return null;
+    candidate = url.pathname;
+  } catch {
+    candidate = candidate.replace(/^https?:\/\/(?:www\.)?github\.com\//i, '');
+  }
+
+  candidate = candidate.replace(/^\/+|\/+$/g, '').replace(/\.git$/i, '').toLowerCase();
+  return /^[a-z0-9_.-]+\/[a-z0-9_.-]+$/.test(candidate) ? candidate : null;
+}
+
 function parseGitHubRepositories() {
-  return String(config.get('discord.githubRepos') || '')
-    .split(/[;,\s]+/).map(repo => repo.trim().toLowerCase())
-    .filter(repo => /^[a-z0-9_.-]+\/[a-z0-9_.-]+$/.test(repo));
+  return [...new Set(String(config.get('discord.githubRepos') || '')
+    .split(/[;,\s]+/)
+    .map(normalizeGitHubRepository)
+    .filter(Boolean))];
 }
 
 async function fetchGitHubLatestRelease(repository) {
@@ -2764,10 +2784,9 @@ async function runGitHubReleaseCheck({ notify = true } = {}) {
   if (config.get('discord.githubWatchEnabled') !== true) return;
   const repositories = parseGitHubRepositories();
   const channelId = String(config.get('discord.githubChannelId') || '').trim();
-  if (!repositories.length || !channelId) return;
-  let channel = client.channels.cache.get(channelId);
-  if (!channel) channel = await client.channels.fetch(channelId);
-  if (!channel?.isTextBased?.() || typeof channel.send !== 'function') throw new Error('GitHub-Kanal ist kein beschreibbarer Textkanal');
+  const secondaryChannelId = String(config.get('discord.githubSecondaryChannelId') || '').trim();
+  const channelIds = [...new Set([channelId, secondaryChannelId].filter(Boolean))];
+  if (!repositories.length || !channelIds.length) return;
 
   for (const repository of repositories) {
     try {
@@ -2783,8 +2802,19 @@ async function runGitHubReleaseCheck({ notify = true } = {}) {
           logger.warn(`GitHub-Release-Grafik für ${repository} nicht verfügbar: ${err.message}`);
           payload = { embeds: [new EmbedBuilder().setColor(0x1f6feb).setTitle(`Neuer Release: ${release.name}`).setURL(release.html_url).setDescription(_releasePlainText(release.body).join('\n').slice(0, 4000))], allowedMentions: { parse: [] } };
         }
-        await channel.send(payload);
-        logger.info(`GitHub-Watcher: neuer Release ${repository} ${release.tag_name} gemeldet`);
+        for (const targetChannelId of channelIds) {
+          try {
+            let targetChannel = client.channels.cache.get(targetChannelId);
+            if (!targetChannel) targetChannel = await client.channels.fetch(targetChannelId);
+            if (!targetChannel?.isTextBased?.() || typeof targetChannel.send !== 'function') {
+              throw new Error('kein beschreibbarer Textkanal');
+            }
+            await targetChannel.send(payload);
+            logger.info(`GitHub-Watcher: neuer Release ${repository} ${release.tag_name} in ${targetChannelId} gemeldet`);
+          } catch (err) {
+            logger.warn(`GitHub-Watcher: Versand für ${repository} an Kanal ${targetChannelId} fehlgeschlagen: ${err.message}`);
+          }
+        }
       }
     } catch (err) {
       logger.warn(`GitHub-Watcher: ${repository} konnte nicht geprüft werden: ${err.message}`);
@@ -2805,8 +2835,8 @@ async function getCommandTilePreviewPng() {
 }
 
 async function getGitHubReleasePreviewPng(repository) {
-  const repo = String(repository || '').trim().toLowerCase();
-  if (!/^[a-z0-9_.-]+\/[a-z0-9_.-]+$/.test(repo)) throw new Error('Ungültiges Repository-Format');
+  const repo = normalizeGitHubRepository(repository);
+  if (!repo) throw new Error('Ungültiges Repository-Format');
   const release = githubWatchState[repo]?.release || await fetchGitHubLatestRelease(repo);
   return convertSvgToPngBuffer(buildReleaseNotesSvg(release));
 }

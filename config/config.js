@@ -388,6 +388,12 @@ const config = convict({
       default: '',
       env: 'DISCORD_GITHUB_CHANNEL_ID'
     },
+    githubSecondaryChannelId: {
+      doc: 'Optionaler zweiter Kanal für GitHub-Release-Banner',
+      format: String,
+      default: '',
+      env: 'DISCORD_GITHUB_SECONDARY_CHANNEL_ID'
+    },
     githubRepos: {
       doc: 'GitHub Repositories zum Beobachten, Format: owner/repo, getrennt mit , oder ; (z.B. torvalds/linux,nodejs/node)',
       format: String,
