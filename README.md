@@ -414,7 +414,11 @@ bash ~/bockis-bot/start-bot.sh
 | `DISCORD_TOKEN` | ✅ | Bot-Token aus dem [Discord Developer Portal](https://discord.com/developers/applications) |
 | `DISCORD_ENABLED_COMMANDS` | ❌ | Komma-Liste aktiver Slash-Commands (leer = Standard-Set) |
 | `STATUS_CHANNEL_ID` | ✅ | Channel-ID für die Live-Status-Nachricht |
+| `DISCORD_COMMANDS_CHANNEL_ID` | ❌ | Eigener Kanal für die öffentliche, gepinnte Befehls-Kachel; leer = deaktiviert |
 | `DISCORD_NOTIFICATION_CHANNEL` | ✅ | Channel-ID für Statusänderungs-Alerts |
+| `SERVICE_CHANNEL_MAP` | ❌ | Individuelle Zuordnung `Monitorname=Channel-ID;...` für Statusänderungs-Alerts |
+| `SERVICE_CHANNEL_AUTO_CREATE` | ❌ | Fehlende Service-Kanäle automatisch erstellen (`true`/`false`) |
+| `MONITORED_SERVICES` | ❌ | Komma-Liste der Dienste, die eigene Service-Kanäle erhalten |
 | `WEB_PORT` | ❌ | Port für das Dashboard (Standard: `3000`) |
 | `DASHBOARD_PASSWORD` | ❌ | Passwort für `/dashboard` (leer = kein Schutz) |
 | `UPDATE_INTERVAL` | ❌ | Update-Intervall in ms (Standard: `300000` = 5 Min) |
@@ -573,6 +577,7 @@ bash ~/bockis-bot/start-bot.sh
   - `Send Messages`
   - `Embed Links`
   - `Read Message History`
+  - `Manage Messages` (für das Anheften und automatische Wiederherstellen der Befehls-Kachel)
   - `Message Content` (Privileged Intent — für Auto-Reply und KI-Chat erforderlich)
   - Slash-Commands: `applications.commands`
 

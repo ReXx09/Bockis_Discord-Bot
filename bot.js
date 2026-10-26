@@ -178,9 +178,19 @@ class NotificationManager {
 
   async sendNotification(monitor, status) {
     try {
-      const channelId = config.get('discord.notificationChannel');
+      const serviceChannelId = resolveServiceNotificationChannelId(monitor);
+      const fallbackChannelId = String(config.get('discord.notificationChannel') || '').trim();
+      const channelId = serviceChannelId || fallbackChannelId;
       if (!channelId) return;
-      const channel = await client.channels.fetch(channelId);
+      let channel;
+      try {
+        channel = await client.channels.fetch(channelId);
+        if (!channel?.isTextBased() || typeof channel.send !== 'function') throw new Error('kein beschreibbarer Textkanal');
+      } catch (err) {
+        if (!serviceChannelId || !fallbackChannelId || fallbackChannelId === channelId) throw err;
+        logger.warn(`Service-Kanal für "${monitor.name}" nicht erreichbar, gemeinsamer Benachrichtigungskanal wird verwendet: ${err.message}`);
+        channel = await client.channels.fetch(fallbackChannelId);
+      }
       const emoji = status === 'up' ? '\u2705' : '\uD83D\uDEA8';
       const mentions = getSubscriptionMentions(monitor);
       await channel.send({
@@ -232,6 +242,7 @@ function saveState(state) {
 const _initState           = loadState();
 let statusMessageId        = _initState.statusMessageId    ?? null;
 let webhookStatusMessageId = _initState.webhookStatusMessageId ?? null;
+let commandTileMessageId   = _initState.commandTileMessageId ?? null;
 let lastChannelStatus      = _initState.lastChannelStatus  ?? null;
 let lastChannelNameMs      = _initState.lastChannelNameMs  ?? 0;
 let serviceCategoryId      = _initState.serviceCategoryId  ?? null;
@@ -246,6 +257,7 @@ function persistState() {
   saveState({
     statusMessageId,
     webhookStatusMessageId,
+    commandTileMessageId,
     lastChannelStatus,
     lastChannelNameMs,
     serviceCategoryId,
@@ -1879,6 +1891,21 @@ function _normalizeServiceKey(value) {
     .replace(/^-+|-+$/g, '');
 }
 
+function resolveServiceNotificationChannelId(monitor) {
+  const monitorKey = _normalizeServiceKey(monitor?.name);
+  if (!monitorKey) return null;
+  const manualMap = _parseServiceChannelMap(config.get('discord.serviceChannelMap') || '');
+  const stateMatch = Object.entries(serviceChannels)
+    .find(([name]) => _normalizeServiceKey(name) === monitorKey)?.[1];
+  const channelId = manualMap[monitorKey] || serviceChannels[monitor?.name] || serviceChannels[monitorKey] || stateMatch;
+  const statusChannelId = String(config.get('discord.statusChannelId') || '').trim();
+  if (channelId && String(channelId) === statusChannelId) {
+    logger.warn(`Service-Kanal für "${monitor.name}" entspricht dem STATUS_CHANNEL_ID und wird für Benachrichtigungen übersprungen.`);
+    return null;
+  }
+  return channelId ? String(channelId).trim() : null;
+}
+
 async function syncServiceChannels(monitors) {
   const serviceGuildId = String(config.get('discord.serviceGuildId') || '').trim();
   const guildId = serviceGuildId || String(config.get('discord.guildId') || '').trim();
@@ -2475,6 +2502,81 @@ function getEnabledSlashCommands() {
     return [...AVAILABLE_SLASH_COMMANDS];
   }
   return unique.length ? unique : [...AVAILABLE_SLASH_COMMANDS];
+}
+
+const COMMAND_TILE_CATEGORIES = {
+  info: ['status', 'uptime', 'refresh', 'triggerinfo', 'cleanup', 'translate', 'ping', 'botinfo', 'serverstatus', 'ki', 'wetter', 'subscribe', 'remind', 'quote', 'poll', 'avatar', 'userinfo', 'help'],
+  fun: ['coinflip', 'dice', 'eightball'],
+  admin: ['testreply']
+};
+
+const COMMAND_TILE_LABELS = {
+  status: 'aktueller Service-Status', uptime: 'Gesamt-Uptime', refresh: 'manueller Refresh (ManageGuild)',
+  triggerinfo: 'Auto-Reply Trigger-Übersicht posten', cleanup: 'Nachrichten-Cleanup (ManageGuild)',
+  translate: 'Text übersetzen', ping: 'Bot-Latenz', botinfo: 'technische Bot-Infos',
+  serverstatus: 'einzelner Dienst oder Gruppe', ki: 'direkte KI-Frage', wetter: 'Wetter abrufen',
+  subscribe: 'Status-Abos umschalten/anzeigen', remind: 'Erinnerung setzen',
+  quote: 'Zitat speichern oder zufällig anzeigen', poll: 'Umfrage erstellen', avatar: 'Avatar anzeigen',
+  userinfo: 'Nutzerinfos anzeigen', help: 'diese Hilfe anzeigen', coinflip: 'Münzwurf', dice: 'Würfel',
+  eightball: 'magische Antwort', testreply: 'Auto-Reply-Regeln testen (ManageGuild)'
+};
+
+function buildCommandTileEmbed() {
+  const enabled = new Set(getEnabledSlashCommands());
+  const makeLines = (commands) => commands
+    .filter(command => enabled.has(command))
+    .map(command => `**/${getSlashCommandDisplayName(command, 'de')}** - ${COMMAND_TILE_LABELS[command] || 'verfügbar'}`);
+  const infoLines = makeLines(COMMAND_TILE_CATEGORIES.info);
+  const funLines = makeLines(COMMAND_TILE_CATEGORIES.fun);
+  const adminLines = makeLines(COMMAND_TILE_CATEGORIES.admin);
+  const fields = [];
+  if (infoLines.length) fields.push({ name: '📌 Info & Verwaltung', value: infoLines.join('\n'), inline: false });
+  if (funLines.length) fields.push({ name: '🎲 Fun & Gadgets', value: funLines.join('\n'), inline: false });
+  if (adminLines.length) fields.push({ name: '🛠️ Admin & Debug', value: adminLines.join('\n'), inline: false });
+
+  return new EmbedBuilder()
+    .setColor(0x5865F2)
+    .setTitle('🤖 Bockis Bot | Befehle')
+    .setDescription('Alle aktuell aktivierten Befehle auf einen Blick. Mit `/hilfe` bekommst du dieselbe Übersicht privat.')
+    .addFields(fields.length ? fields : [{ name: 'Keine Befehle aktiv', value: 'Aktiviere Befehle über DISCORD_ENABLED_COMMANDS.' }])
+    .setFooter({ text: 'Diese Nachricht wird vom Bot aktualisiert und automatisch wiederhergestellt.' })
+    .setTimestamp();
+}
+
+let commandTileRecoveryRunning = false;
+async function ensureCommandTile() {
+  const channelId = String(config.get('discord.commandsChannelId') || '').trim();
+  if (!channelId || channelId === String(config.get('discord.statusChannelId') || '').trim()) return;
+  if (commandTileRecoveryRunning) return;
+  commandTileRecoveryRunning = true;
+  try {
+    const channel = await client.channels.fetch(channelId);
+    if (!channel?.isTextBased() || typeof channel.send !== 'function') {
+      logger.warn(`Befehls-Kachel: Kanal ${channelId} ist kein geeigneter Textkanal.`);
+      return;
+    }
+
+    let message = null;
+    if (commandTileMessageId) {
+      try { message = await channel.messages.fetch(commandTileMessageId); } catch { message = null; }
+    }
+    if (message) {
+      await message.edit({ embeds: [buildCommandTileEmbed()] });
+    } else {
+      message = await channel.send({ embeds: [buildCommandTileEmbed()] });
+      commandTileMessageId = message.id;
+      persistState();
+    }
+    if (!message.pinned) {
+      try { await message.pin('Bockis Bot Befehls-Kachel'); } catch (err) {
+        logger.warn(`Befehls-Kachel konnte nicht angeheftet werden: ${err.message}`);
+      }
+    }
+  } catch (err) {
+    logger.error(`Befehls-Kachel konnte nicht aktualisiert werden: ${err.message}`);
+  } finally {
+    commandTileRecoveryRunning = false;
+  }
 }
 
 async function registerSlashCommands() {
@@ -4428,12 +4530,20 @@ client.once('ready', async () => {
   await applyConfiguredBotName();
   startPresenceRotation();
   await registerSlashCommands();
+  await ensureCommandTile();
   reschedulePendingReminders();
   initializeUpdateCycle();
   
   // WigiDash: Initialen Status-Cache aktualisieren
   updateWigiDashCache();
   logger.info('WigiDash Status-Cache initialisiert');
+});
+
+client.on('messageDelete', (message) => {
+  if (!commandTileMessageId || message.id !== commandTileMessageId) return;
+  commandTileMessageId = null;
+  persistState();
+  setTimeout(() => ensureCommandTile(), 1000);
 });
 
 // WigiDash: Presence Update Listener

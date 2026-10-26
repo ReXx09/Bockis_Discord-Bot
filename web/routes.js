@@ -771,6 +771,23 @@ module.exports = function startWebServer({
     }
   });
 
+  // ── API: Anwendungslogs zuruecksetzen ─────────────────────────────────────
+  app.post('/api/logs-clear', dashboardAuth, (req, res) => {
+    try {
+      const logDir = path.join(rootDir, 'logs');
+      if (!fs.existsSync(logDir)) return res.json({ ok: true, cleared: 0 });
+
+      const files = fs.readdirSync(logDir)
+        .filter(file => file === 'repair.log' || (file.startsWith('bot-') && file.endsWith('.log')));
+      for (const file of files) fs.truncateSync(path.join(logDir, file), 0);
+
+      res.json({ ok: true, cleared: files.length, systemd: 'nicht geloescht' });
+    } catch (err) {
+      logger.error(`/api/logs-clear Fehler: ${err.message}`);
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
   // ── API: Diagnose Link-Preview / Discord-Unfurl ───────────────────────────
 
   app.get('/api/diagnostics/link-preview', dashboardAuth, async (req, res) => {

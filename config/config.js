@@ -153,6 +153,12 @@ const config = convict({
       default: '',
       env: 'STATUS_CHANNEL_ID'
     },
+    commandsChannelId: {
+      doc: 'Optionaler Channel für die öffentliche, gepinnte Bot-Befehls-Kachel',
+      format: String,
+      default: '',
+      env: 'DISCORD_COMMANDS_CHANNEL_ID'
+    },
     notificationChannel: {
       doc: 'Channel-ID für Statusänderungs-Benachrichtigungen',
       format: String,

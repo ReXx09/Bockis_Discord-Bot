@@ -127,6 +127,9 @@
       min-width: 0;
       grid-column: span 24;
     }
+    .dashboard-grid > .card[data-pane="diagnostics"] {
+      align-self: start;
+    }
     .dashboard-grid > .card[data-span="3"]  { grid-column: span 3; }
     .dashboard-grid > .card[data-span="4"]  { grid-column: span 4; }
     .dashboard-grid > .card[data-span="6"]  { grid-column: span 6; }
@@ -2412,10 +2415,12 @@
     <span class="muted" id="logFile" style="font-size:11px;font-weight:400;text-transform:none;letter-spacing:0">–</span>
     <span class="muted" id="logTimeContext" style="font-size:11px;font-weight:400;text-transform:none;letter-spacing:0">Zeit: –</span>
     <button class="btn" type="button" id="btnCopyLogs" onclick="copyBotLogs()" title="Alle angezeigten Bot-Logs kopieren">📋 Logs kopieren</button>
+    <button class="btn" type="button" id="btnClearLogs" onclick="clearApplicationLogs()" title="Bot- und Reparatur-Logs leeren">🧹 Logs zurücksetzen</button>
   </div>
   <div class="log-viewer" id="logViewer">
     <span class="muted">Lade Logs…</span>
   </div>
+  <div class="muted" style="margin-top:8px;font-size:11px">Setzt Bot- und Reparatur-Logs zurück. Das systemd-Journal bleibt erhalten.</div>
 </div>
 
 <!-- ── DIAGNOSE: LINK PREVIEW ─────────────────────────── -->
@@ -2949,6 +2954,30 @@
       toast('Logs kopiert', 'ok');
     } catch (e) {
       toast('Kopieren fehlgeschlagen: ' + e.message, 'err');
+    }
+  }
+
+  async function clearApplicationLogs() {
+    const confirmed = window.confirm(
+      'Bot- und Reparatur-Logs wirklich leeren? Das systemd-Journal bleibt erhalten.'
+    );
+    if (!confirmed) return;
+
+    const btn = document.getElementById('btnClearLogs');
+    if (btn) btn.disabled = true;
+    try {
+      const response = await fetch('/api/logs-clear', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      const result = await response.json();
+      if (!response.ok || !result.ok) throw new Error(result.error || response.statusText);
+      toast(`✓ ${result.cleared} Logdatei(en) zurückgesetzt`, 'ok');
+      await fetchAll();
+    } catch (e) {
+      toast('Logs konnten nicht zurückgesetzt werden: ' + e.message, 'err');
+    } finally {
+      if (btn) btn.disabled = false;
     }
   }
 
