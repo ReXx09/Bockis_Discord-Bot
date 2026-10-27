@@ -2252,6 +2252,12 @@
           </select>
         </div>
         <div class="cfg-field">
+          <label class="cfg-label" for="cfgGithubReleaseTemplate">Release Notes Template</label>
+          <textarea class="cfg-input" id="cfgGithubReleaseTemplate" rows="6" style="font-family:monospace;font-size:12px;resize:vertical"
+                 placeholder="Template für Release Notes. Platzhalter: {{title}}, {{tag}}, {{repo}}, {{date}}, {{url}}, {{body}}, {{author}}"></textarea>
+          <div class="cfg-hint">Platzhalter: <code>{{title}}</code> (Release-Titel), <code>{{tag}}</code> (Tag), <code>{{repo}}</code> (Repository), <code>{{date}}</code> (Datum), <code>{{url}}</code> (Release-URL), <code>{{body}}</code> (Original Body), <code>{{author}}</code> (Autor). Leer = Standard-Template.</div>
+        </div>
+        <div class="cfg-field">
           <label class="cfg-label" for="cfgGithubPollIntervalMs">Poll-Intervall</label>
           <select class="cfg-input" id="cfgGithubPollIntervalMs">
             <option value="60000">1 Minute</option>
@@ -5261,6 +5267,7 @@
       setCfg('cfgGithubRepos', d.DISCORD_GITHUB_REPOS || '');
       setCfg('cfgGithubMode', d.DISCORD_GITHUB_MODE || 'both');
       setCfg('cfgGithubPollIntervalMs', d.DISCORD_GITHUB_POLL_INTERVAL_MS || '600000');
+      setCfg('cfgGithubReleaseTemplate', d.DISCORD_GITHUB_RELEASE_TEMPLATE || '');
       setCfg('cfgGithubToken', '');
       document.getElementById('cfgGithubToken').dataset.initialValue = d.GITHUB_TOKEN ? '__MASKED__' : '';
       document.getElementById('cfgGithubToken').placeholder = d.GITHUB_TOKEN
@@ -5530,6 +5537,7 @@
     maybeSetChanged(body, 'DISCORD_GITHUB_REPOS', 'cfgGithubRepos', { allowEmpty: true });
     maybeSetChanged(body, 'DISCORD_GITHUB_MODE', 'cfgGithubMode');
     maybeSetChanged(body, 'DISCORD_GITHUB_POLL_INTERVAL_MS', 'cfgGithubPollIntervalMs');
+    maybeSetChanged(body, 'DISCORD_GITHUB_RELEASE_TEMPLATE', 'cfgGithubReleaseTemplate', { allowEmpty: true });
     maybeSetChanged(body, 'GITHUB_TOKEN', 'cfgGithubToken', { allowEmpty: true });
     const githubWatchEl = document.getElementById('cfgGithubWatchEnabled');
     const curGithubWatch = githubWatchEl.checked ? 'true' : 'false';

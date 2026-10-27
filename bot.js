@@ -2710,15 +2710,30 @@ function _releasePlainText(value) {
 
 function buildReleaseNotesSvg(release) {
   const width = 1200;
-  const notes = _releasePlainText(release?.body);
-  const noteLines = notes.length ? notes : ['Keine Release Notes vorhanden.'];
-  const lineHeight = 34;
-  const headerHeight = 184;
-  const totalHeight = Math.max(390, headerHeight + noteLines.length * lineHeight + 92);
-  const tag = release?.tag_name || 'Release';
-  const title = release?.name || tag;
+  const template = config.get('discord.githubReleaseTemplate') || '';
   const published = release?.published_at ? new Date(release.published_at).toLocaleString('de-DE', { dateStyle: 'medium', timeStyle: 'short' }) : 'unbekannt';
   const repo = release?.repository || 'GitHub';
+  const tag = release?.tag_name || 'Release';
+  const title = release?.name || tag;
+  const url = release?.html_url || `https://github.com/${repo}/releases`;
+  const author = release?.author?.login || 'GitHub';
+  const body = release?.body || 'Keine Release Notes vorhanden.';
+
+  // Template rendern
+  const renderedBody = template
+    .replace(/\{\{title\}\}/g, _escapeSvgText(title))
+    .replace(/\{\{tag\}\}/g, _escapeSvgText(tag))
+    .replace(/\{\{repo\}\}/g, _escapeSvgText(repo))
+    .replace(/\{\{date\}\}/g, _escapeSvgText(published))
+    .replace(/\{\{url\}\}/g, _escapeSvgText(url))
+    .replace(/\{\{body\}\}/g, _escapeSvgText(body))
+    .replace(/\{\{author\}\}/g, _escapeSvgText(author));
+
+  // Body in Zeilen splitten für SVG
+  const noteLines = renderedBody.split('\n').filter(line => line.trim().length > 0);
+  const lineHeight = 28;
+  const headerHeight = 160;
+  const totalHeight = Math.max(350, headerHeight + noteLines.length * lineHeight + 80);
 
   let svg = `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${totalHeight}" viewBox="0 0 ${width} ${totalHeight}">
@@ -2726,22 +2741,40 @@ function buildReleaseNotesSvg(release) {
   <rect width="${width}" height="${totalHeight}" fill="#10141d"/>
   <rect x="18" y="18" width="${width - 36}" height="${totalHeight - 36}" rx="18" fill="#181e2a" stroke="#2d3748" filter="url(#releaseShadow)"/>
   <rect x="18" y="18" width="${width - 36}" height="${headerHeight}" rx="18" fill="url(#releaseHeader)"/>
-  <circle cx="64" cy="72" r="26" fill="#ffffff" fill-opacity=".15"/><text x="64" y="82" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="28" font-weight="700" fill="#fff">↗</text>
-  <text x="108" y="62" font-family="Segoe UI, Arial, sans-serif" font-size="16" font-weight="700" letter-spacing="1" fill="#bcd6ff">NEUER GITHUB RELEASE</text>
-  <text x="108" y="99" font-family="Segoe UI, Arial, sans-serif" font-size="30" font-weight="700" fill="#fff">${_escapeSvgText(title).slice(0, 70)}</text>
-  <text x="108" y="132" font-family="Segoe UI, Arial, sans-serif" font-size="16" fill="#d5e4ff">${_escapeSvgText(repo)} · ${_escapeSvgText(tag)} · ${_escapeSvgText(published)}</text>
+  <circle cx="64" cy="72" r="26" fill="#ffffff" fill-opacity=".15"/><text x="64" y="82" text-anchor="middle" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="28" font-weight="700" fill="#fff">↗</text>
+  <text x="108" y="62" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="16" font-weight="700" letter-spacing="1" fill="#bcd6ff">NEUER GITHUB RELEASE</text>
+  <text x="108" y="99" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="30" font-weight="700" fill="#fff">${_escapeSvgText(title).slice(0, 70)}</text>
+  <text x="108" y="132" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="16" fill="#d5e4ff">${_escapeSvgText(repo)} · ${_escapeSvgText(tag)} · ${_escapeSvgText(published)}</text>
   <rect x="${width - 226}" y="54" width="154" height="50" rx="12" fill="#111827" fill-opacity=".55" stroke="#7eb1ff"/>
-  <text x="${width - 149}" y="84" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="16" font-weight="700" fill="#fff">RELEASE NOTES</text>`;
+  <text x="${width - 149}" y="84" text-anchor="middle" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="16" font-weight="700" fill="#fff">RELEASE NOTES</text>`;
 
-  let currentY = headerHeight + 46;
-  svg += `\n  <text x="52" y="${currentY}" font-family="Segoe UI, Arial, sans-serif" font-size="18" font-weight="700" fill="#67b7ff">WAS IST NEU?</text>\n  <line x1="52" y1="${currentY + 16}" x2="${width - 52}" y2="${currentY + 16}" stroke="#303b4d"/>`;
-  currentY += 58;
-  for (const note of noteLines) {
-    const clipped = note.length > 112 ? `${note.slice(0, 109)}...` : note;
-    svg += `\n  <circle cx="62" cy="${currentY - 7}" r="5" fill="#67b7ff"/><text x="82" y="${currentY}" font-family="Segoe UI, Arial, sans-serif" font-size="17" fill="#e8eef9">${_escapeSvgText(clipped)}</text>`;
-    currentY += lineHeight;
+  let currentY = headerHeight + 30;
+  for (const line of noteLines) {
+    // Zeile zu lang? Umbrechen
+    const maxChars = 95;
+    if (line.length <= maxChars) {
+      svg += `\n  <text x="52" y="${currentY}" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="17" fill="#e8eef9">${line}</text>`;
+      currentY += lineHeight;
+    } else {
+      // Einfaches Wort-Wrapping
+      const words = line.split(' ');
+      let currentLine = '';
+      for (const word of words) {
+        if ((currentLine + ' ' + word).length > maxChars) {
+          svg += `\n  <text x="52" y="${currentY}" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="17" fill="#e8eef9">${currentLine.trim()}</text>`;
+          currentY += lineHeight;
+          currentLine = word;
+        } else {
+          currentLine += (currentLine ? ' ' : '') + word;
+        }
+      }
+      if (currentLine) {
+        svg += `\n  <text x="52" y="${currentY}" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="17" fill="#e8eef9">${currentLine.trim()}</text>`;
+        currentY += lineHeight;
+      }
+    }
   }
-  svg += `\n  <text x="52" y="${totalHeight - 28}" font-family="Segoe UI, Arial, sans-serif" font-size="12" fill="#7f8ba1">Automatisch von GitHub geladen · Release öffnen: ${_escapeSvgText(release?.html_url || 'URL nicht verfügbar')}</text>\n</svg>`;
+  svg += `\n  <text x="52" y="${totalHeight - 24}" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="12" fill="#7f8ba1">Automatisch von GitHub geladen · Release öffnen: ${_escapeSvgText(release?.html_url || 'URL nicht verfügbar')}</text>\n</svg>`;
   return svg;
 }
 

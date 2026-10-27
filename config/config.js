@@ -419,6 +419,12 @@ const config = convict({
       env: 'GITHUB_TOKEN',
       sensitive: true
     },
+    githubReleaseTemplate: {
+      doc: 'Template für Release Notes (Platzhalter: {{title}}, {{tag}}, {{repo}}, {{date}}, {{url}}, {{body}}, {{author}})',
+      format: String,
+      default: '## 🚀 {{title}}\n\n{{body}}\n\n---\n📦 **Repository:** {{repo}}\n🏷️ **Tag:** {{tag}}\n📅 **Veröffentlicht:** {{date}}\n🔗 **Release:** {{url}}',
+      env: 'DISCORD_GITHUB_RELEASE_TEMPLATE'
+    },
     wigiDashApi: {
       doc: 'WigiDash Status-API Konfiguration (für Hardware-Monitor-Integration)',
       enabled: {
