@@ -5669,35 +5669,38 @@
           
           // Polling: Versuche alle 500ms die config zu laden bis Bot antwortet
           let retries = 0;
-          const maxRetries = 30; // max 15 Sekunden
+          const maxRetries = 60; // max 30 Sekunden
           let pollBotReady = null;
+          
+          const cleanupPolling = (success) => {
+            if (pollBotReady) {
+              clearInterval(pollBotReady);
+              pollBotReady = null;
+            }
+            btn.disabled = false;
+            btn.textContent = '💾 Speichern & Neu starten';
+            if (success) {
+              clearConfigDirtyTracking();
+              loadConfig({ force: true });
+              fetchAll();
+              fetch('/api/refresh', { method: 'POST' }).catch(() => {});
+              st.textContent = `✓ Bot neu gestartet. Status aktualisiert.`;
+              st.className = 'ok';
+            }
+          };
           
           pollBotReady = setInterval(async () => {
             retries++;
             try {
-              const testRes = await fetch('/api/config', { timeout: 2000 });
+              const testRes = await fetch('/api/config', { timeout: 3000 });
               if (testRes.ok) {
-                clearInterval(pollBotReady);
-                pollBotReady = null;
-                await new Promise(r => setTimeout(r, 500)); // Kurze Pause für Bot-Stabilisierung
-                clearConfigDirtyTracking();
-                loadConfig({ force: true });
-                fetchAll();
-                await fetch('/api/refresh', { method: 'POST' }); // Sofortiger Discord-Update
-                st.textContent = `✓ Bot neu gestartet. Status aktualisiert.`;
-                st.className = 'ok';
-                btn.textContent = '💾 Speichern & Neu starten';
-                btn.disabled = false;
+                cleanupPolling(true);
               }
             } catch (e) {
               if (retries >= maxRetries) {
-                clearInterval(pollBotReady);
-                pollBotReady = null;
-                st.textContent = `⚠ Bot braucht länger als erwartet. Seite in 5s neu laden…`;
+                cleanupPolling(false);
+                st.textContent = `⚠ Bot-Neustart dauert länger. Button wieder aktiv.`;
                 st.className = 'warn';
-                btn.disabled = false;
-                btn.textContent = '💾 Speichern & Neu starten';
-                setTimeout(() => location.reload(), 5000);
               }
             }
           }, 500);
@@ -5718,6 +5721,12 @@
       toast('Verbindungsfehler', 'err');
       btn.disabled = false;
       btn.textContent = '💾 Speichern & Neu starten';
+    } finally {
+      // Sicherheitsnetz: Button NIEMALS dauerhaft disabled lassen
+      if (btn.disabled && !res?.restarted) {
+        btn.disabled = false;
+        btn.textContent = '💾 Speichern & Neu starten';
+      }
     }
   }
 
