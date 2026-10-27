@@ -976,10 +976,16 @@
           <div class="cfg-section-content">
             <div class="cfg-section-body">
               <div class="cfg-field">
-                <label class="cfg-label" for="cfgToken">Discord Bot Token</label>
-                <input class="cfg-input" id="cfgToken" type="password" autocomplete="off"
-                       placeholder="Neuen Token eingeben (leer lassen = unverändert)">
-                <div class="cfg-hint">Leer lassen, um den bestehenden Token zu behalten.</div>
+                <label class="cfg-label" for="cfgToken">Discord Bot Token <span class="badge warn">Pflichtfeld</span></label>
+                <div style="position:relative">
+                  <input class="cfg-input" id="cfgToken" type="password" autocomplete="off"
+                         placeholder="Token HIER eingeben (beim ersten Mal Pflicht!)"
+                         style="padding-right: 44px">
+                  <button type="button" class="btn-icon" onclick="togglePassword('cfgToken')" 
+                          style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;padding:4px"
+                          aria-label="Token anzeigen/verstecken">👁</button>
+                </div>
+                <div class="cfg-hint warn">⚠️ Beim ersten Setup: Token HIER eintragen! Leer lassen behält nur einen bereits gespeicherten Token. Platzhalter "dein_discord_bot_token_hier" funktioniert NICHT.</div>
               </div>
               <div class="cfg-field">
                 <label class="cfg-label" for="cfgBotName">Discord Bot Name</label>
@@ -4472,9 +4478,22 @@
     if (!el) return;
     const value = el.value.trim();
     const initial = (el.dataset.initialValue || '').trim();
+    // Spezialbehandlung für Token: immer senden wenn Wert eingegeben (auch wenn initial __MASKED__)
+    if (key === 'DISCORD_TOKEN' && value && value !== initial) {
+      body[key] = value;
+      return;
+    }
     if (value === initial) return;
     if (!allowEmpty && !value) return;
     body[key] = value;
+  }
+
+  function togglePassword(id) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.type = el.type === 'password' ? 'text' : 'password';
+    const btn = el.nextElementSibling;
+    if (btn) btn.textContent = el.type === 'password' ? '👁' : '🙈';
   }
 
   function maybeSetChangedAny(body, key, ids, { allowEmpty = false } = {}) {
