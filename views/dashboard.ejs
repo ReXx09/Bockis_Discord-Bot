@@ -981,7 +981,7 @@
                   <input class="cfg-input" id="cfgToken" type="password" autocomplete="off"
                          placeholder="Token HIER eingeben (beim ersten Mal Pflicht!)"
                          style="padding-right: 44px">
-                  <button type="button" class="btn-icon" onclick="togglePassword('cfgToken')" 
+                  <button type="button" class="btn-icon" data-for="cfgToken" onclick="window.togglePassword('cfgToken')" 
                           style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;padding:4px"
                           aria-label="Token anzeigen/verstecken">👁</button>
                 </div>
@@ -4488,13 +4488,18 @@
     body[key] = value;
   }
 
-  function togglePassword(id) {
+  // Explizit global für onclick-Handler
+  window.togglePassword = function(id) {
     const el = document.getElementById(id);
     if (!el) return;
     el.type = el.type === 'password' ? 'text' : 'password';
-    const btn = el.nextElementSibling;
+    // Button robust suchen: nächster Element-Sibling ODER Button mit data-for
+    let btn = el.nextElementSibling;
+    if (!btn || btn.tagName !== 'BUTTON') {
+      btn = document.querySelector(`button[data-for="${id}"]`);
+    }
     if (btn) btn.textContent = el.type === 'password' ? '👁' : '🙈';
-  }
+  };
 
   function maybeSetChangedAny(body, key, ids, { allowEmpty = false } = {}) {
     for (const id of ids) {
