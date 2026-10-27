@@ -2570,9 +2570,26 @@ const COMMAND_TILE_LABELS = {
 
 function buildCommandTileEmbed() {
   const enabled = new Set(getEnabledSlashCommands());
+  
+  // Command IDs für echte Slash-Command-Mentions (</command:ID>)
+  // Diese werden aus den registrierten Commands geholt
+  const commandIds = new Map();
+  try {
+    const appCommands = client.application?.commands?.cache;
+    if (appCommands) {
+      for (const [id, cmd] of appCommands) {
+        commandIds.set(cmd.name, id);
+      }
+    }
+  } catch { /* ignore */ }
+  
   const makeLines = (commands) => commands
     .filter(command => enabled.has(command))
-    .map(command => `**/${getSlashCommandDisplayName(command, 'de')}** - ${COMMAND_TILE_LABELS[command] || 'verfügbar'}`);
+    .map(command => {
+      const id = commandIds.get(command);
+      const mention = id ? `</${command}:${id}>` : `/${getSlashCommandDisplayName(command, 'de')}`;
+      return `**${mention}** - ${COMMAND_TILE_LABELS[command] || 'verfügbar'}`;
+    });
   const infoLines = makeLines(COMMAND_TILE_CATEGORIES.info);
   const funLines = makeLines(COMMAND_TILE_CATEGORIES.fun);
   const adminLines = makeLines(COMMAND_TILE_CATEGORIES.admin);
@@ -2584,7 +2601,7 @@ function buildCommandTileEmbed() {
   return new EmbedBuilder()
     .setColor(0x5865F2)
     .setTitle('🤖 Bockis Bot | Befehle')
-    .setDescription('Alle aktuell aktivierten Befehle auf einen Blick. Mit `/hilfe` bekommst du dieselbe Übersicht privat.')
+    .setDescription('Alle aktuell aktivierten Befehle auf einen Blick. Klicke auf einen Befehl zum Ausführen.')
     .addFields(fields.length ? fields : [{ name: 'Keine Befehle aktiv', value: 'Aktiviere Befehle über DISCORD_ENABLED_COMMANDS.' }])
     .setFooter({ text: 'Diese Nachricht wird vom Bot aktualisiert und automatisch wiederhergestellt.' })
     .setTimestamp();
@@ -2682,6 +2699,14 @@ function buildCommandTileSvg() {
 }
 
 async function buildCommandTileAttachmentPayload() {
+  const tileMode = config.get('discord.commandTileMode') || 'text';
+  
+  if (tileMode === 'text') {
+    // Text-Embed: scharf, kopierbar, mit echten Slash-Command-Mentions
+    return { embeds: [buildCommandTileEmbed()], files: [] };
+  }
+  
+  // Image-Modus: SVG als PNG
   const pngBuffer = await convertSvgToPngBuffer(buildCommandTileSvg());
   const attachment = new AttachmentBuilder(pngBuffer, { name: 'commands.png' });
   return {
@@ -2779,16 +2804,37 @@ function buildReleaseNotesSvg(release) {
 }
 
 async function buildReleaseNotesAttachmentPayload(release) {
-  const pngBuffer = await convertSvgToPngBuffer(buildReleaseNotesSvg(release));
-  const attachment = new AttachmentBuilder(pngBuffer, { name: 'release-notes.png' });
-  const embed = new EmbedBuilder()
-    .setColor(0x1f6feb)
-    .setTitle(`Neuer Release: ${release.name || release.tag_name || 'GitHub'}`)
-    .setURL(release.html_url || null)
-    .setImage('attachment://release-notes.png')
-    .setFooter({ text: `${release.repository || 'GitHub'} · automatisch erkannt` })
-    .setTimestamp();
-  return { embeds: [embed], files: [attachment], allowedMentions: { parse: [] } };
+  // Release Notes als Markdown-Embed + Link-Button (statt Grafik)
+  const published = release?.published_at ? new Date(release.published_at).toLocaleString('de-DE', { dateStyle: 'medium', timeStyle: 'short' }) : 'unbekannt';
+  const repo = release?.repository || 'GitHub';
+  const tag = release?.tag_name || 'Release';
+  const title = release?.name || tag;
+  const url = release?.html_url || `https://github.com/${repo}/releases`;
+  const author = release?.author?.login || 'GitHub';
+  const body = release?.body || 'Keine Release Notes vorhanden.';
+  
+  // Body kürzen für Embed (max 4096 Zeichen)
+  const description = body.length > 4000 ? body.slice(0, 3997) + '...' : body;
+  
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setStyle(ButtonStyle.Link)
+      .setLabel('📋 Release Notes auf GitHub öffnen')
+      .setURL(url)
+  );
+  
+  return {
+    embeds: [new EmbedBuilder()
+      .setColor(0x1f6feb)
+      .setTitle(`🚀 Neuer Release: ${title}`)
+      .setURL(url)
+      .setDescription(`**Repository:** ${repo}\n**Tag:** ${tag}\n**Veröffentlicht:** ${published}\n\n${description}`)
+      .setFooter({ text: `${repo} · automatisch erkannt` })
+      .setTimestamp()],
+    components: [row],
+    files: [],
+    allowedMentions: { parse: [] }
+  };
 }
 
 function normalizeGitHubRepository(value) {

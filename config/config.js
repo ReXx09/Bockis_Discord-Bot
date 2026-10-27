@@ -110,6 +110,12 @@ const config = convict({
       default: 'large',
       env: 'DISCORD_COMMAND_TILE_SCALE'
     },
+    commandTileMode: {
+      doc: 'Darstellungsmodus der Befehls-Kachel: text (Embed-Text, scharf, kopierbar) | image (SVG-Grafik als PNG)',
+      format: ['text', 'image'],
+      default: 'text',
+      env: 'DISCORD_COMMAND_TILE_MODE'
+    },
     translateEnabled: {
       doc: 'Aktiviert den /translate Slash-Command',
       format: Boolean,
