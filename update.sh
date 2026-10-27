@@ -174,7 +174,7 @@ update_native() {
 
       # Lokale Laufzeit-Dateien sichern (z. B. .env + Auto-Reply-Regeln)
       LOCAL_OVERRIDE_FILES=()
-      for rel in .env auto-replies.json data/auto-replies.json; do
+      for rel in .env data/auto-replies.json; do
         if [[ -e "$BOT_DIR/$rel" ]]; then
           LOCAL_OVERRIDE_FILES+=("$rel")
         fi

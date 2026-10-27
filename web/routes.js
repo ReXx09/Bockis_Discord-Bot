@@ -103,6 +103,22 @@ module.exports = function startWebServer({
     }
   });
 
+  // ── API: Neustart-Status abfragen ───────────────────────────────────────────
+  app.get('/api/restart-status', dashboardAuth, (req, res) => {
+    const restartId = req.query.id;
+    if (!restartId || !global._restartStatus?.has(restartId)) {
+      return res.json({ ok: false, error: 'Unbekannte restartId' });
+    }
+    const status = global._restartStatus.get(restartId);
+    // Alte Einträge aufräumen (älter als 1 Stunde)
+    const now = Date.now();
+    for (const [id, s] of global._restartStatus.entries()) {
+      const started = new Date(s.startedAt).getTime();
+      if (now - started > 3600000) global._restartStatus.delete(id);
+    }
+    res.json({ ok: true, ...status });
+  });
+
   let dashboardBuildId = 'unknown';
   try {
     dashboardBuildId = execFileSync('git', ['rev-parse', '--short', 'HEAD'], { cwd: rootDir }).toString().trim();
@@ -1596,7 +1612,7 @@ module.exports = function startWebServer({
         DISCORD_AUTO_REPLY_MENTION_ONLY: get('DISCORD_AUTO_REPLY_MENTION_ONLY') || 'false',
         DISCORD_AUTO_REPLY_CHANNEL_IDS: get('DISCORD_AUTO_REPLY_CHANNEL_IDS') || '',
         DISCORD_AUTO_REPLY_COOLDOWN_MS: get('DISCORD_AUTO_REPLY_COOLDOWN_MS') || '30000',
-        DISCORD_AUTO_REPLY_RULES_FILE: get('DISCORD_AUTO_REPLY_RULES_FILE') || './auto-replies.json',
+        DISCORD_AUTO_REPLY_RULES_FILE: get('DISCORD_AUTO_REPLY_RULES_FILE') || './data/auto-replies.json',
         DISCORD_AUTO_REPLY_RESPONSE_MODE: get('DISCORD_AUTO_REPLY_RESPONSE_MODE') || 'list',
         DISCORD_AUTO_REPLY_CONNECTOR: get('DISCORD_AUTO_REPLY_CONNECTOR') || 'Außerdem',
         DISCORD_WELCOME_ENABLED:      get('DISCORD_WELCOME_ENABLED') || 'false',
@@ -2041,43 +2057,79 @@ module.exports = function startWebServer({
     if (Object.keys(updates).length === 0)
       return res.json({ ok: false, error: 'Keine Änderungen übermittelt' });
 
+    // Atomares, sicheres Schreiben der .env (Temp-File + Rename, keine Regex-Escape-Probleme)
     try {
       let envContent = fs.readFileSync(envPath, 'utf8');
-      for (const [key, val] of Object.entries(updates)) {
-        if (new RegExp(`^${key}=`, 'm').test(envContent)) {
-          envContent = envContent.replace(new RegExp(`^${key}=.*$`, 'm'), `${key}=${val}`);
-        } else {
-          envContent = envContent.trimEnd() + `\n${key}=${val}\n`;
+      const lines = envContent.split('\n');
+      const updated = new Set();
+      
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        const match = line.match(/^([A-Z0-9_]+)=/);
+        if (match && updates.hasOwnProperty(match[1])) {
+          const key = match[1];
+          // Wert sicher escapen: Backslashes und $ für Regex/Shell schützen
+          const safeVal = String(updates[key]).replace(/\\/g, '\\\\').replace(/\$/g, '\\$');
+          lines[i] = `${key}=${safeVal}`;
+          updated.add(key);
         }
       }
-      fs.writeFileSync(envPath, envContent, 'utf8');
+      
+      // Neue Keys anhängen
+      for (const [key, val] of Object.entries(updates)) {
+        if (!updated.has(key)) {
+          const safeVal = String(val).replace(/\\/g, '\\\\').replace(/\$/g, '\\$');
+          lines.push(`${key}=${safeVal}`);
+        }
+      }
+      
+      const newContent = lines.join('\n');
+      const tmpPath = `${envPath}.tmp.${Date.now()}`;
+      fs.writeFileSync(tmpPath, newContent, 'utf8');
+      fs.renameSync(tmpPath, envPath); // atomar auf POSIX
       logger.info(`Konfiguration aktualisiert: ${Object.keys(updates).join(', ')}`);
     } catch (err) {
       logger.error(`/api/config POST Schreibfehler: ${err.message}`);
       return res.json({ ok: false, error: `Fehler beim Schreiben: ${err.message}` });
     }
 
-    // Wichtig: erst Antwort senden, dann asynchron restarten.
-    // Sonst wird der HTTP-Request beim Selbst-Neustart oft abgebrochen ("Failed to fetch").
+    // Neustart asynchron mit Ergebnis-Tracking
     const updatedKeys = Object.keys(updates);
+    const restartId = `restart_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    
+    // Restart-Status im Speicher halten (für Status-API)
+    if (!global._restartStatus) global._restartStatus = new Map();
+    global._restartStatus.set(restartId, { 
+      status: 'pending', 
+      startedAt: new Date().toISOString(),
+      updatedKeys 
+    });
 
     const attemptRestart = (useSudo = true) => {
       const cmd = useSudo ? 'sudo' : 'systemctl';
       const args = useSudo ? ['-n', 'systemctl', 'restart', 'bockis-bot'] : ['restart', 'bockis-bot'];
 
-      execFile(cmd, args, { timeout: 12000 }, (e) => {
+      execFile(cmd, args, { timeout: 15000 }, (e) => {
+        const status = global._restartStatus.get(restartId) || {};
         if (!e) {
+          status.status = 'success';
+          status.finishedAt = new Date().toISOString();
+          status.method = useSudo ? 'sudo -n' : 'systemctl';
           logger.info(`Service 'bockis-bot' erfolgreich neu gestartet (${useSudo ? 'mit sudo -n' : 'ohne sudo'})`);
-          return;
+        } else {
+          if (useSudo) {
+            status.status = 'retrying';
+            status.error = e.message;
+            logger.warn(`Restart via sudo -n fehlgeschlagen, fallback auf systemctl direkt: ${e.message}`);
+            attemptRestart(false);
+            return;
+          }
+          status.status = 'failed';
+          status.finishedAt = new Date().toISOString();
+          status.error = e.message;
+          logger.error(`Service Restart endgültig fehlgeschlagen: ${e.message}`);
         }
-
-        if (useSudo) {
-          logger.warn(`Restart via sudo -n fehlgeschlagen, fallback auf systemctl direkt: ${e.message}`);
-          attemptRestart(false);
-          return;
-        }
-
-        logger.error(`Service Restart endgültig fehlgeschlagen: ${e.message}`);
+        global._restartStatus.set(restartId, status);
       });
     };
 
@@ -2088,8 +2140,9 @@ module.exports = function startWebServer({
     return res.json({
       ok: true,
       updated: updatedKeys,
-      restarted: true,
-      restartNote: 'Neustart wird im Hintergrund ausgelöst',
+      restartId,
+      restartStatus: 'pending',
+      restartNote: 'Neustart wird im Hintergrund ausgelöst. Status prüfen mit GET /api/restart-status?id=<restartId>',
     });
   });
 

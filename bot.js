@@ -4567,7 +4567,7 @@ const _autoReplyCooldownMap = new Map();
 
 function _loadAutoReplyRules() {
   try {
-    const filePath = path.join(__dirname, config.get('discord.autoReplyRulesFile') || './auto-replies.json');
+    const filePath = path.join(__dirname, config.get('discord.autoReplyRulesFile') || './data/auto-replies.json');
     if (!fs.existsSync(filePath)) return [];
     const content = fs.readFileSync(filePath, 'utf8');
     const rules = JSON.parse(content);
