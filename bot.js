@@ -2827,14 +2827,14 @@ async function runGitHubReleaseCheck({ notify = true } = {}) {
       const previous = githubWatchState[repository];
       
       // Baseline-Logik: 
-      // - notify=true (manueller Check): IMMER senden (force)
+      // - notify=true (manueller Check): IMMER senden (force), egal ob Release-ID gleich
       // - notify=false (automatisch): nur bei NEUEM Release ODER beim ersten Check wenn Release < 7 Tage alt
       const isNewRelease = !previous || String(previous.releaseId) !== String(release.id);
       const isFresh = !previous && release.published_at && 
         (Date.now() - new Date(release.published_at).getTime()) < 7 * 24 * 3600 * 1000;
-      const shouldNotify = notify ? isNewRelease : (isNewRelease || isFresh);
+      const shouldNotify = notify ? true : (isNewRelease || isFresh);
       
-      logger.info(`GitHub-Watcher: ${repository} -> previous: ${previous?.releaseId || 'none'}, isNewRelease: ${isNewRelease}, isFresh: ${isFresh}, shouldNotify: ${shouldNotify}, notify: ${notify}`);
+      logger.info(`GitHub-Watcher: ${repository} -> previous: ${previous?.releaseId || 'none'}, isNewRelease: ${isNewRelease}, isFresh: ${isFresh}, shouldNotify: ${shouldNotify}, notify: ${notify} (manual=force)`);
       
       if (shouldNotify) {
         let payload;
