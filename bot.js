@@ -4842,7 +4842,7 @@ function initializeUpdateCycle() {
 // #region 23. STARTUP
 // Webserver SOFORT starten — unabhängig vom Discord-Login
 // Damit ist das Dashboard auch erreichbar wenn der Token noch nicht stimmt
-const _webDeps = { config, logger, client, sequelize, prom, getMonitorData, updateStatusMessage, getWigiDashStatus, getCommandTilePreviewPng, getGitHubReleasePreviewPng, rootDir: __dirname };
+const _webDeps = { config, logger, client, sequelize, prom, getMonitorData, updateStatusMessage, getWigiDashStatus, getCommandTilePreviewPng, getGitHubReleasePreviewPng, runGitHubReleaseCheck, rootDir: __dirname };
 let _httpServer = null;
 initializeDatabase().then(() => { _httpServer = startWebServer(_webDeps); }).catch(err => {
   logger.error(`DB/Webserver-Startfehler: ${err.message}`);
@@ -4934,7 +4934,7 @@ if (process.env.NODE_ENV === 'test') {
       return { checksPerformed: monitors?.length ?? 0 };
     }
   };
-  module.exports = { client, sequelize, testSuite, runGitHubReleaseCheck };
+  module.exports = { client, sequelize, testSuite };
 }
 // #endregion
 

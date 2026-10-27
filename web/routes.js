@@ -52,6 +52,7 @@ module.exports = function startWebServer({
   getWigiDashStatus,
   getCommandTilePreviewPng,
   getGitHubReleasePreviewPng,
+  runGitHubReleaseCheck,
   rootDir           // = __dirname aus bot.js (Projektwurzel)
 }) {
   // ── Express-App erstellen ───────────────────────────────────────────────────
@@ -90,7 +91,6 @@ module.exports = function startWebServer({
   // ── API: GitHub Release Watcher manuell triggern ────────────────────────────
   app.post('/api/github-watcher/check', dashboardAuth, async (req, res) => {
     try {
-      const { runGitHubReleaseCheck } = require(path.join(rootDir, 'bot.js'));
       if (typeof runGitHubReleaseCheck !== 'function') {
         return res.status(503).json({ ok: false, error: 'GitHub-Watcher nicht verfügbar' });
       }
