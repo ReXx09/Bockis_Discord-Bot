@@ -2811,16 +2811,24 @@ async function runGitHubReleaseCheck({ notify = true } = {}) {
     try {
       const release = await fetchGitHubLatestRelease(repository);
       const previous = githubWatchState[repository];
-      const changed = previous && String(previous.releaseId) !== String(release.id);
-      githubWatchState[repository] = { releaseId: release.id, release, checkedAt: new Date().toISOString() };
-      persistState();
-      if (notify && changed) {
+      
+      // Baseline-Logik: 
+      // - notify=true (manueller Check): IMMER senden (force)
+      // - notify=false (automatisch): nur bei NEUEM Release ODER beim ersten Check wenn Release < 7 Tage alt
+      const isNewRelease = !previous || String(previous.releaseId) !== String(release.id);
+      const isFresh = !previous && release.published_at && 
+        (Date.now() - new Date(release.published_at).getTime()) < 7 * 24 * 3600 * 1000;
+      const shouldNotify = notify ? isNewRelease : (isNewRelease || isFresh);
+      
+      if (shouldNotify) {
         let payload;
         try { payload = await buildReleaseNotesAttachmentPayload(release); }
         catch (err) {
           logger.warn(`GitHub-Release-Grafik für ${repository} nicht verfügbar: ${err.message}`);
           payload = { embeds: [new EmbedBuilder().setColor(0x1f6feb).setTitle(`Neuer Release: ${release.name}`).setURL(release.html_url).setDescription(_releasePlainText(release.body).join('\n').slice(0, 4000))], allowedMentions: { parse: [] } };
         }
+        
+        let allSent = true;
         for (const targetChannelId of channelIds) {
           try {
             let targetChannel = client.channels.cache.get(targetChannelId);
@@ -2832,8 +2840,22 @@ async function runGitHubReleaseCheck({ notify = true } = {}) {
             logger.info(`GitHub-Watcher: neuer Release ${repository} ${release.tag_name} in ${targetChannelId} gemeldet`);
           } catch (err) {
             logger.warn(`GitHub-Watcher: Versand für ${repository} an Kanal ${targetChannelId} fehlgeschlagen: ${err.message}`);
+            allSent = false;
           }
         }
+        
+        // State NACH erfolgreichem Versand persistieren (nur wenn mindestens ein Kanal klappte)
+        if (allSent || channelIds.length === 0) {
+          githubWatchState[repository] = { releaseId: release.id, release, checkedAt: new Date().toISOString() };
+          persistState();
+        } else {
+          logger.warn(`GitHub-Watcher: State für ${repository} NICHT persistiert (Versand fehlgeschlagen), wird beim nächsten Check wiederholt`);
+        }
+      } else if (!previous) {
+        // Erster Check, aber Release zu alt -> nur Baseline setzen, nicht senden
+        githubWatchState[repository] = { releaseId: release.id, release, checkedAt: new Date().toISOString() };
+        persistState();
+        logger.info(`GitHub-Watcher: Baseline für ${repository} gesetzt (Release ${release.tag_name} älter als 7 Tage)`);
       }
     } catch (err) {
       logger.warn(`GitHub-Watcher: ${repository} konnte nicht geprüft werden: ${err.message}`);
