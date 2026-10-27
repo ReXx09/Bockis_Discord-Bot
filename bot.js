@@ -2866,8 +2866,10 @@ async function runGitHubReleaseCheck({ notify = true } = {}) {
 function initializeGitHubWatcher() {
   if (config.get('discord.githubWatchEnabled') !== true) return;
   const interval = Math.max(60_000, Number(config.get('discord.githubPollIntervalMs')) || 300_000);
-  runGitHubReleaseCheck({ notify: true });
-  setInterval(() => runGitHubReleaseCheck({ notify: true }), interval);
+  // Startup: nur Baseline setzen (notify=false), NICHT senden
+  runGitHubReleaseCheck({ notify: false });
+  // Periodisch: nur bei NEUEN Releases senden (notify=false)
+  setInterval(() => runGitHubReleaseCheck({ notify: false }), interval);
   logger.info(`GitHub-Watcher gestartet (alle ${Math.round(interval / 1000)}s)`);
 }
 
