@@ -2800,16 +2800,26 @@ async function fetchGitHubLatestRelease(repository) {
 }
 
 async function runGitHubReleaseCheck({ notify = true } = {}) {
-  if (config.get('discord.githubWatchEnabled') !== true) return;
+  if (config.get('discord.githubWatchEnabled') !== true) {
+    logger.debug('GitHub-Watcher: Feature deaktiviert (githubWatchEnabled=false)');
+    return;
+  }
   const repositories = parseGitHubRepositories();
+  logger.debug(`GitHub-Watcher: Repositories nach Parsing: ${repositories.join(', ') || 'KEINE'}`);
   const channelId = String(config.get('discord.githubChannelId') || '').trim();
   const secondaryChannelId = String(config.get('discord.githubSecondaryChannelId') || '').trim();
   const channelIds = [...new Set([channelId, secondaryChannelId].filter(Boolean))];
-  if (!repositories.length || !channelIds.length) return;
+  logger.debug(`GitHub-Watcher: Channel IDs: ${channelIds.join(', ') || 'KEINE'}`);
+  if (!repositories.length || !channelIds.length) {
+    logger.warn('GitHub-Watcher: Abbruch - keine Repositories oder keine Channel IDs konfiguriert');
+    return;
+  }
 
   for (const repository of repositories) {
     try {
+      logger.debug(`GitHub-Watcher: Prüfe ${repository}...`);
       const release = await fetchGitHubLatestRelease(repository);
+      logger.debug(`GitHub-Watcher: ${repository} -> Release ${release.tag_name} (ID: ${release.id})`);
       const previous = githubWatchState[repository];
       
       // Baseline-Logik: 
@@ -2819,6 +2829,8 @@ async function runGitHubReleaseCheck({ notify = true } = {}) {
       const isFresh = !previous && release.published_at && 
         (Date.now() - new Date(release.published_at).getTime()) < 7 * 24 * 3600 * 1000;
       const shouldNotify = notify ? isNewRelease : (isNewRelease || isFresh);
+      
+      logger.debug(`GitHub-Watcher: ${repository} -> previous: ${previous?.releaseId || 'none'}, isNewRelease: ${isNewRelease}, isFresh: ${isFresh}, shouldNotify: ${shouldNotify}, notify: ${notify}`);
       
       if (shouldNotify) {
         let payload;

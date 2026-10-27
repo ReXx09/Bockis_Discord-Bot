@@ -5681,7 +5681,9 @@
             btn.textContent = '💾 Speichern & Neu starten';
             if (success) {
               clearConfigDirtyTracking();
-              loadConfig({ force: true });
+              loadConfig({ force: true }).then(() => {
+                initConfigDirtyTracking(); // Listener wieder registrieren
+              });
               fetchAll();
               fetch('/api/refresh', { method: 'POST' }).catch(() => {});
               st.textContent = `✓ Bot neu gestartet. Status aktualisiert.`;
@@ -5706,7 +5708,9 @@
           }, 500);
         } else {
           clearConfigDirtyTracking();
-          loadConfig({ force: true });
+          loadConfig({ force: true }).then(() => {
+            initConfigDirtyTracking(); // Listener wieder registrieren
+          });
         }
       } else {
         st.textContent = '✗ ' + (res.error || 'Unbekannter Fehler');
@@ -5726,6 +5730,10 @@
       if (btn.disabled && !res?.restarted) {
         btn.disabled = false;
         btn.textContent = '💾 Speichern & Neu starten';
+      }
+      // Listener sicherstellen (falls loadConfig durchlief aber initConfigDirtyTracking fehlte)
+      if (!btn.disabled) {
+        initConfigDirtyTracking();
       }
     }
   }

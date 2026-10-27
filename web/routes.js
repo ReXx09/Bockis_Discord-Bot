@@ -92,10 +92,13 @@ module.exports = function startWebServer({
   app.post('/api/github-watcher/check', dashboardAuth, async (req, res) => {
     try {
       if (typeof runGitHubReleaseCheck !== 'function') {
+        logger.error('GitHub-Watcher: runGitHubReleaseCheck nicht verfügbar');
         return res.status(503).json({ ok: false, error: 'GitHub-Watcher nicht verfügbar' });
       }
+      logger.info('GitHub-Watcher: Manueller Check ausgelöst via Dashboard');
       // notify=true sendet auch bei bereits bekannten Releases (force send)
       await runGitHubReleaseCheck({ notify: true });
+      logger.info('GitHub-Watcher: Manueller Check abgeschlossen');
       res.json({ ok: true, message: 'GitHub-Watcher manuell ausgeführt' });
     } catch (err) {
       logger.error(`/api/github-watcher/check Fehler: ${err.message}`);
