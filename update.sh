@@ -172,6 +172,12 @@ update_native() {
         die "Git-Update abgebrochen wegen unaufgelöster Konflikte"
       fi
 
+      # Root auto-replies.json nach data/ migrieren falls vorhanden (einheitlicher Speicherort)
+      if [[ -f "$BOT_DIR/auto-replies.json" && ! -f "$BOT_DIR/data/auto-replies.json" ]]; then
+        mv "$BOT_DIR/auto-replies.json" "$BOT_DIR/data/auto-replies.json"
+        print_status "auto-replies.json nach data/ migriert"
+      fi
+
       # Lokale Laufzeit-Dateien sichern (z. B. .env + Auto-Reply-Regeln)
       LOCAL_OVERRIDE_FILES=()
       for rel in .env data/auto-replies.json; do

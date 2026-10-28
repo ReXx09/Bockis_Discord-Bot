@@ -5,6 +5,9 @@ node_modules/
 .env
 .env.backup.*
 
+# Auto-Replies – nur in data/ (nicht im Root)
+auto-replies.json
+
 # Datenbank
 data/
 
