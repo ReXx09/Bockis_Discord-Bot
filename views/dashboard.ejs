@@ -120,7 +120,7 @@
     /* DASHBOARD GRID LAYOUT */
     .dashboard-grid {
       display: grid;
-      grid-template-columns: repeat(24, 1fr);
+      grid-template-columns: repeat(24, minmax(0, 1fr));
       gap: 16px;
     }
     .dashboard-grid > .card {
@@ -154,7 +154,10 @@
     .dashboard-grid > .drop-placeholder[data-span="20"] { grid-column: span 20; }
     .dashboard-grid > .drop-placeholder[data-span="21"] { grid-column: span 21; }
     .dashboard-grid > .drop-placeholder[data-span="24"] { grid-column: span 24; }
-    @media (max-width: 900px) { .dashboard-grid > .card { grid-column: span 24 !important; } }
+    @media (max-width: 900px) {
+      .dashboard-grid { grid-template-columns: minmax(0, 1fr); }
+      .dashboard-grid > .card { grid-column: 1 / -1 !important; }
+    }
 
     .card-size-select {
       background: var(--surface2);
@@ -579,6 +582,8 @@
       padding: 10px;
       position: sticky;
       top: 18px;
+      max-height: calc(100vh - 36px);
+      overflow-y: auto;
     }
     .cfg-sidebar-title {
       font-size: 12px;
@@ -615,6 +620,18 @@
       background: rgba(56,139,253,.16);
       box-shadow: inset 0 0 0 1px rgba(56,139,253,.2);
     }
+    .cfg-nav-group { border: 1px solid var(--border); border-radius: 7px; overflow: hidden; background: var(--surface2); }
+    .cfg-nav-group .cfg-nav-btn { border: 0; border-radius: 0; width: 100%; }
+    .cfg-nav-group .cfg-nav-btn::after { content: '▸'; float: right; color: var(--muted); transition: transform .15s ease; }
+    .cfg-nav-group.open .cfg-nav-btn::after { transform: rotate(90deg); }
+    .cfg-nav-sections { display: none; padding: 3px 6px 7px; border-top: 1px solid var(--border); }
+    .cfg-nav-group.open .cfg-nav-sections { display: grid; gap: 3px; }
+    .cfg-nav-section-btn {
+      width: 100%; text-align: left; padding: 7px 8px 7px 12px; border: 0; border-radius: 5px;
+      background: transparent; color: var(--muted); cursor: pointer; font-size: 11px; line-height: 1.35;
+    }
+    .cfg-nav-section-btn:hover, .cfg-nav-section-btn.active { color: var(--text); background: rgba(56,139,253,.14); }
+    .cfg-nav-section-btn:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
     #cfgCard .cfg-search-hidden { display: none !important; }
     .cfg-search-input {
       width: 100%;
@@ -640,6 +657,12 @@
       padding: 12px;
     }
     .cfg-pane-card.hidden { display: none; }
+    .cfg-pane-card.cfg-nav-mode > .cfg-pane-title,
+    .cfg-pane-card.cfg-nav-mode > .cfg-section > .cfg-section-header,
+    .cfg-pane-card.cfg-nav-mode > .cfg-section { display: none; }
+    .cfg-pane-card.cfg-nav-mode > .cfg-section.cfg-nav-selected { display: block; }
+    .cfg-pane-card.cfg-nav-mode > .cfg-section.cfg-nav-selected > .cfg-section-content,
+    .cfg-pane-card.cfg-nav-mode > .cfg-section.cfg-nav-selected.open > .cfg-section-content { max-height: none; overflow: visible; }
     .cfg-pane-title {
       font-size: 12px;
       font-weight: 700;
@@ -651,13 +674,18 @@
       padding-bottom: 6px;
     }
     @media (max-width: 980px) {
-      .cfg-layout { grid-template-columns: 1fr; }
+      .cfg-layout { grid-template-columns: 220px minmax(0, 1fr); }
       .cfg-layout, .cfg-sidebar, .cfg-nav, .cfg-panels, .cfg-pane-card { min-width: 0; }
-      .cfg-sidebar { position: static; }
-      .cfg-nav { width: 100%; flex-direction: row; flex-wrap: wrap; }
-      .cfg-nav-btn { min-width: 0; max-width: 100%; flex: 1 1 130px; overflow-wrap: anywhere; }
+      .cfg-sidebar { position: static; max-height: calc(100vh - 24px); }
+      .cfg-nav { width: 100%; flex-direction: column; flex-wrap: nowrap; }
+      .cfg-nav-group { min-width: 0; max-width: 100%; flex: 0 0 auto; overflow-wrap: anywhere; }
+      .cfg-nav-btn { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
       .cfg-header { flex-direction: column; align-items: flex-start; }
       #cfgStatus { margin-left: 0; margin-top: 6px; }
+    }
+    @media (max-width: 700px) {
+      .cfg-layout { grid-template-columns: minmax(0, 1fr); }
+      .cfg-sidebar { max-height: 320px; }
     }
     .cfg-field { margin-bottom: 14px; }
     /* ── Collapsible Sections ─────────────────────────────────────────────── */
@@ -2514,6 +2542,15 @@
     <button class="btn" type="button" id="btnCopyLogs" onclick="copyBotLogs()" title="Alle angezeigten Bot-Logs kopieren">📋 Logs kopieren</button>
     <button class="btn" type="button" id="btnClearLogs" onclick="clearApplicationLogs()" title="Bot- und Reparatur-Logs leeren">🧹 Logs zurücksetzen</button>
   </div>
+  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:0 0 10px">
+    <select class="cfg-input" id="logSourceFilter" aria-label="Log-Quelle filtern" onchange="filterLogs()" style="width:auto;min-width:130px;height:34px;padding:6px 8px">
+      <option value="all">Alle Quellen</option>
+      <option value="bot">Bot</option>
+      <option value="systemd">systemd</option>
+    </select>
+    <input class="cfg-input" id="logTextFilter" type="search" aria-label="Logs durchsuchen" placeholder="Logs durchsuchen…" oninput="filterLogs()" style="flex:1;min-width:180px;height:34px;padding:6px 8px">
+    <span class="muted" id="logResultCount" style="font-size:11px;white-space:nowrap"></span>
+  </div>
   <div class="log-viewer" id="logViewer">
     <span class="muted">Lade Logs…</span>
   </div>
@@ -3003,16 +3040,38 @@
   }
 
   // ── Render: Logs ─────────────────────────────────────
+  let _currentLogData = null;
+
+  function getLogTimestamp(line) {
+    const match = line.match(/^(?:\[SYSTEMD\]\s+)?\[?(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?)/);
+    if (!match) return 0;
+    const timestamp = Date.parse(`${match[1]}T${match[2]}`);
+    return Number.isFinite(timestamp) ? timestamp : 0;
+  }
+
   function renderLogs(d) {
+    _currentLogData = d;
     document.getElementById('logFile').textContent = [d.file, d.systemd ? 'systemd' : ''].filter(Boolean).join(' · ') || '–';
     const viewer = document.getElementById('logViewer');
+    const sourceFilter = document.getElementById('logSourceFilter')?.value || 'all';
+    const textFilter = (document.getElementById('logTextFilter')?.value || '').trim().toLowerCase();
+    const lines = [...d.lines]
+      .sort((a, b) => getLogTimestamp(b) - getLogTimestamp(a))
+      .filter(line => {
+        const isSystemd = line.startsWith('[SYSTEMD]');
+        if (sourceFilter === 'systemd' && !isSystemd) return false;
+        if (sourceFilter === 'bot' && isSystemd) return false;
+        return !textFilter || line.toLowerCase().includes(textFilter);
+      });
+    const count = document.getElementById('logResultCount');
+    if (count) count.textContent = `${lines.length} / ${d.lines.length}`;
 
-    if (!d.lines.length) {
-      viewer.innerHTML = '<span class="muted">Keine Log-Einträge gefunden.</span>';
+    if (!lines.length) {
+      viewer.innerHTML = `<span class="muted">${d.lines.length ? 'Keine Log-Einträge passen zum Filter.' : 'Keine Log-Einträge gefunden.'}</span>`;
       return;
     }
 
-    viewer.innerHTML = d.lines.map(line => {
+    viewer.innerHTML = lines.map(line => {
       let cls = 'll';
       if (/ERROR/i.test(line)) cls += ' e';
       else if (/WARN/i.test(line))  cls += ' w';
@@ -3020,6 +3079,10 @@
       const safe = line.replace(/</g, '&lt;').replace(/>/g, '&gt;');
       return `<div class="${cls}">${safe}</div>`;
     }).join('');
+  }
+
+  function filterLogs() {
+    if (_currentLogData) renderLogs(_currentLogData);
   }
 
   function renderRepairLog(d) {
@@ -4769,26 +4832,139 @@
     if (hidden) hidden.value = value;
   }
 
-  function setActiveSettingsPane(pane) {
-    document.querySelectorAll('[data-cfg-pane-btn]').forEach((btn) => {
-      btn.classList.toggle('active', btn.dataset.cfgPaneBtn === pane);
+  let _activeSettingsSection = '';
+
+  function initSettingsNavigation() {
+    const nav = document.querySelector('#cfgCard .cfg-nav');
+    if (!nav || nav.dataset.ready === '1') return;
+
+    const groups = [];
+    const paneButtons = Array.from(nav.querySelectorAll(':scope > .cfg-nav-btn'));
+    paneButtons.forEach((paneButton) => {
+      const pane = paneButton.dataset.cfgPaneBtn;
+      const card = document.querySelector(`#cfgCard [data-cfg-pane="${pane}"]`);
+      if (!pane || !card) return;
+
+      const looseNodes = Array.from(card.children).filter((child) =>
+        !child.matches('.cfg-pane-title, .cfg-section')
+      );
+      if (looseNodes.length) {
+        const section = document.createElement('div');
+        section.className = 'cfg-section open';
+        const header = document.createElement('div');
+        header.className = 'cfg-section-header';
+        const headerTitle = document.createElement('div');
+        headerTitle.className = 'cfg-section-header-title';
+        const toggle = document.createElement('span');
+        toggle.className = 'cfg-section-toggle';
+        toggle.textContent = '▾';
+        const title = document.createElement('span');
+        title.textContent = 'Weitere Einstellungen';
+        headerTitle.append(toggle, title);
+        header.append(headerTitle);
+        const content = document.createElement('div');
+        content.className = 'cfg-section-content';
+        const body = document.createElement('div');
+        body.className = 'cfg-section-body';
+        looseNodes.forEach((node) => body.appendChild(node));
+        content.appendChild(body);
+        section.append(header, content);
+        card.appendChild(section);
+      }
+
+      const group = document.createElement('div');
+      group.className = 'cfg-nav-group';
+      const sectionList = document.createElement('div');
+      sectionList.className = 'cfg-nav-sections';
+      sectionList.id = `cfg-nav-sections-${pane}`;
+      paneButton.type = 'button';
+      paneButton.removeAttribute('onclick');
+      paneButton.setAttribute('aria-controls', sectionList.id);
+      paneButton.setAttribute('aria-expanded', 'false');
+
+      card.classList.add('cfg-nav-mode');
+      Array.from(card.querySelectorAll(':scope > .cfg-section')).forEach((section, index) => {
+        const sectionId = `${pane}-${index}`;
+        section.dataset.cfgSectionId = sectionId;
+        const sectionTitle = section.querySelector('.cfg-section-header-title span:last-child')?.textContent?.trim() || 'Einstellungen';
+        const sectionButton = document.createElement('button');
+        sectionButton.type = 'button';
+        sectionButton.className = 'cfg-nav-section-btn';
+        sectionButton.dataset.cfgSectionBtn = sectionId;
+        sectionButton.textContent = sectionTitle;
+        sectionButton.setAttribute('aria-controls', `${sectionId}-content`);
+        sectionButton.addEventListener('click', () => selectSettingsSection(pane, sectionId));
+        section.querySelector('.cfg-section-content')?.setAttribute('id', `${sectionId}-content`);
+        sectionList.appendChild(sectionButton);
+      });
+
+      paneButton.addEventListener('click', () => {
+        if (paneButton.classList.contains('active') && group.classList.contains('open')) {
+          group.classList.remove('open');
+          paneButton.setAttribute('aria-expanded', 'false');
+          return;
+        }
+        setActiveSettingsPane(pane);
+        if (!card.querySelector('.cfg-nav-selected')) {
+          const firstSection = card.querySelector(':scope > .cfg-section');
+          if (firstSection) selectSettingsSection(pane, firstSection.dataset.cfgSectionId);
+        }
+      });
+
+      group.append(paneButton, sectionList);
+      groups.push(group);
     });
-    document.querySelectorAll('[data-cfg-pane]').forEach((card) => {
+
+    nav.replaceChildren(...groups);
+    nav.dataset.ready = '1';
+    setActiveSettingsPane('bot');
+    const firstSection = document.querySelector('#cfgCard [data-cfg-pane="bot"] > .cfg-section');
+    if (firstSection) selectSettingsSection('bot', firstSection.dataset.cfgSectionId);
+  }
+
+  function setActiveSettingsPane(pane) {
+    document.querySelectorAll('#cfgCard [data-cfg-pane-btn]').forEach((btn) => {
+      const active = btn.dataset.cfgPaneBtn === pane;
+      btn.classList.toggle('active', active);
+      const group = btn.closest('.cfg-nav-group');
+      group?.classList.toggle('open', active);
+      btn.setAttribute('aria-expanded', active ? 'true' : 'false');
+    });
+    document.querySelectorAll('#cfgCard [data-cfg-pane]').forEach((card) => {
       card.classList.toggle('hidden', card.dataset.cfgPane !== pane);
     });
   }
 
+  function selectSettingsSection(pane, sectionId) {
+    setActiveSettingsPane(pane);
+    const card = document.querySelector(`#cfgCard [data-cfg-pane="${pane}"]`);
+    if (!card) return;
+    card.querySelectorAll(':scope > .cfg-section').forEach((section) => {
+      const selected = section.dataset.cfgSectionId === sectionId;
+      section.classList.toggle('cfg-nav-selected', selected);
+      section.classList.toggle('open', selected);
+      section.querySelector('.cfg-section-header')?.setAttribute('aria-expanded', selected ? 'true' : 'false');
+    });
+    document.querySelectorAll('#cfgCard [data-cfg-section-btn]').forEach((button) => {
+      button.classList.toggle('active', button.dataset.cfgSectionBtn === sectionId);
+    });
+    _activeSettingsSection = sectionId;
+  }
+
   let _settingsSearchActive = false;
   let _settingsSearchReturnPane = 'bot';
+  let _settingsSearchReturnSection = '';
 
   function filterSettings(query) {
     const term = String(query || '').trim().toLowerCase();
     const cards = Array.from(document.querySelectorAll('#cfgCard .cfg-pane-card'));
     const navButtons = Array.from(document.querySelectorAll('#cfgCard [data-cfg-pane-btn]'));
+    const sectionButtons = Array.from(document.querySelectorAll('#cfgCard [data-cfg-section-btn]'));
     const status = document.getElementById('cfgSettingsSearchStatus');
 
     if (term && !_settingsSearchActive) {
       _settingsSearchReturnPane = document.querySelector('#cfgCard .cfg-nav-btn.active')?.dataset.cfgPaneBtn || 'bot';
+      _settingsSearchReturnSection = _activeSettingsSection;
       _settingsSearchActive = true;
     }
 
@@ -4811,6 +4987,8 @@
           if (fieldMatchesTerm) hasMatch = true;
         });
         section.classList.toggle('cfg-search-hidden', !!term && !hasMatch);
+        const sectionButton = sectionButtons.find((button) => button.dataset.cfgSectionBtn === section.dataset.cfgSectionId);
+        sectionButton?.classList.toggle('cfg-search-hidden', !!term && !hasMatch);
         if (term && hasMatch) {
           section.classList.add('open');
           section.querySelector('.cfg-section-header')?.setAttribute('aria-expanded', 'true');
@@ -4834,13 +5012,22 @@
       _settingsSearchActive = false;
       restoreSectionStates();
       setActiveSettingsPane(_settingsSearchReturnPane);
+      const returnCard = document.querySelector(`#cfgCard [data-cfg-pane="${_settingsSearchReturnPane}"]`);
+      const returnSection = returnCard?.querySelector(`:scope > .cfg-section[data-cfg-section-id="${_settingsSearchReturnSection}"]`)
+        || returnCard?.querySelector(':scope > .cfg-section');
+      if (returnSection) selectSettingsSection(_settingsSearchReturnPane, returnSection.dataset.cfgSectionId);
       if (status) status.textContent = '';
       return;
     }
 
     if (status) status.textContent = matches.length ? `${matches.length} Bereiche gefunden` : 'Keine passenden Einstellungen gefunden';
-    const activePane = document.querySelector('#cfgCard .cfg-nav-btn.active')?.dataset.cfgPaneBtn;
-    if (matches.length && !matches.includes(activePane)) setActiveSettingsPane(matches[0]);
+    if (matches.length) {
+      const currentPane = document.querySelector('#cfgCard .cfg-nav-btn.active')?.dataset.cfgPaneBtn;
+      const activePane = matches.includes(currentPane) ? currentPane : matches[0];
+      const activeCard = document.querySelector(`#cfgCard [data-cfg-pane="${activePane}"]`);
+      const firstVisibleSection = activeCard?.querySelector(':scope > .cfg-section:not(.cfg-search-hidden)');
+      if (firstVisibleSection) selectSettingsSection(activePane, firstVisibleSection.dataset.cfgSectionId);
+    }
   }
 
   async function loadSystemLocalization() {
@@ -6287,10 +6474,12 @@
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
+      initSettingsNavigation();
       restoreSectionStates();
       initCardSystem();
     });
   } else {
+    initSettingsNavigation();
     restoreSectionStates();
     initCardSystem();
   }
