@@ -172,6 +172,24 @@ update_native() {
         die "Git-Update abgebrochen wegen unaufgelöster Konflikte"
       fi
 
+      print_status "Prüfe Commit-Verlauf mit origin/main..."
+      git -C "$BOT_DIR" fetch --quiet origin main || die "git fetch fehlgeschlagen; lokale Dateien wurden nicht gestasht"
+      LOCAL_COMMIT="$(git -C "$BOT_DIR" rev-parse HEAD)"
+      REMOTE_COMMIT="$(git -C "$BOT_DIR" rev-parse FETCH_HEAD)"
+      PULL_NEEDED=true
+      if git -C "$BOT_DIR" merge-base --is-ancestor "$LOCAL_COMMIT" "$REMOTE_COMMIT"; then
+        :
+      elif git -C "$BOT_DIR" merge-base --is-ancestor "$REMOTE_COMMIT" "$LOCAL_COMMIT"; then
+        PULL_NEEDED=false
+        print_warn "Lokaler Branch ist origin/main voraus; es gibt keine Fast-Forward-Änderungen zu übernehmen"
+      else
+        print_error "Lokaler Branch und origin/main sind auseinander gelaufen:"
+        git -C "$BOT_DIR" log --oneline --left-right --graph --decorate "$LOCAL_COMMIT...$REMOTE_COMMIT" 2>/dev/null | while IFS= read -r line; do
+          print_status "$line"
+        done
+        die "Fast-Forward nicht möglich. Keine Laufzeitdateien wurden gestasht oder überschrieben; lokale Commits müssen geprüft werden."
+      fi
+
       # Legacy-Regeln kopieren, aber die getrackte Quelldatei nicht vor git pull löschen.
       if [[ -f "$BOT_DIR/auto-replies.json" && ! -e "$BOT_DIR/data/auto-replies.json" ]]; then
         mkdir -p "$BOT_DIR/data"
@@ -196,14 +214,30 @@ update_native() {
         fi
       fi
 
-      git -C "$BOT_DIR" pull --ff-only origin main 2>&1 | while IFS= read -r line; do
-        print_status "$line"
-      done
+      if [[ "$PULL_NEEDED" == "true" ]]; then
+        if git -C "$BOT_DIR" merge --ff-only "$REMOTE_COMMIT" 2>&1 | while IFS= read -r line; do
+          print_status "$line"
+        done; then
+          print_success "Code aktualisiert"
+        else
+          MERGE_STATUS=$?
+          if [[ "$STASH_DONE" == "true" ]]; then
+            if git -C "$BOT_DIR" stash pop; then
+              print_success "Lokale Laufzeitdateien nach fehlgeschlagenem Update wiederhergestellt"
+              STASH_DONE=false
+            else
+              print_warn "Update-Stash konnte nicht automatisch wiederhergestellt werden. Backup: $BACKUP_FILE"
+            fi
+          fi
+          die "Fast-Forward fehlgeschlagen (Exit-Code $MERGE_STATUS)"
+        fi
+      else
+        print_success "Code ist bereits auf dem neuesten Stand"
+      fi
 
       if [[ "$STASH_DONE" == "true" ]]; then
         git -C "$BOT_DIR" stash pop 2>/dev/null || print_warn "Update-Stash (.env/Auto-Replies) konnte nicht automatisch wiederhergestellt werden. Backup: $BACKUP_FILE"
       fi
-      print_success "Code aktualisiert"
     else
       print_warn "Kein Git-Repository — Code-Update wird übersprungen (nur npm-Pakete werden aktualisiert)"
     fi
