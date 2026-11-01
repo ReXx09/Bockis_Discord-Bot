@@ -172,15 +172,18 @@ update_native() {
         die "Git-Update abgebrochen wegen unaufgelöster Konflikte"
       fi
 
-      # Root auto-replies.json nach data/ migrieren falls vorhanden (einheitlicher Speicherort)
-      if [[ -f "$BOT_DIR/auto-replies.json" && ! -f "$BOT_DIR/data/auto-replies.json" ]]; then
-        mv "$BOT_DIR/auto-replies.json" "$BOT_DIR/data/auto-replies.json"
-        print_status "auto-replies.json nach data/ migriert"
+      # Legacy-Regeln kopieren, aber die getrackte Quelldatei nicht vor git pull löschen.
+      if [[ -f "$BOT_DIR/auto-replies.json" && ! -e "$BOT_DIR/data/auto-replies.json" ]]; then
+        mkdir -p "$BOT_DIR/data"
+        cp -p "$BOT_DIR/auto-replies.json" "$BOT_DIR/data/auto-replies.json"
+        print_status "Legacy-auto-replies.json nach data/ kopiert"
+      elif [[ -f "$BOT_DIR/auto-replies.json" && -f "$BOT_DIR/data/auto-replies.json" ]] && ! cmp -s "$BOT_DIR/auto-replies.json" "$BOT_DIR/data/auto-replies.json"; then
+        print_warn "Root- und data/auto-replies.json unterscheiden sich; beide bleiben erhalten, data/ wird verwendet"
       fi
 
       # Lokale Laufzeit-Dateien sichern (z. B. .env + Auto-Reply-Regeln)
       LOCAL_OVERRIDE_FILES=()
-      for rel in .env data/auto-replies.json; do
+      for rel in .env auto-replies.json; do
         if [[ -e "$BOT_DIR/$rel" ]]; then
           LOCAL_OVERRIDE_FILES+=("$rel")
         fi

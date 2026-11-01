@@ -615,6 +615,20 @@
       background: rgba(56,139,253,.16);
       box-shadow: inset 0 0 0 1px rgba(56,139,253,.2);
     }
+    #cfgCard .cfg-search-hidden { display: none !important; }
+    .cfg-search-input {
+      width: 100%;
+      margin: 8px 0;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      font: 12px 'SFMono-Regular', Consolas, monospace;
+      padding: 8px 10px;
+      outline: none;
+    }
+    .cfg-search-input:focus { border-color: var(--blue); }
+    .cfg-search-status { min-height: 16px; color: var(--muted); font-size: 11px; }
     .cfg-panels {
       display: grid;
       gap: 12px;
@@ -638,8 +652,10 @@
     }
     @media (max-width: 980px) {
       .cfg-layout { grid-template-columns: 1fr; }
+      .cfg-layout, .cfg-sidebar, .cfg-nav, .cfg-panels, .cfg-pane-card { min-width: 0; }
       .cfg-sidebar { position: static; }
-      .cfg-nav { flex-direction: row; flex-wrap: wrap; }
+      .cfg-nav { width: 100%; flex-direction: row; flex-wrap: wrap; }
+      .cfg-nav-btn { min-width: 0; max-width: 100%; flex: 1 1 130px; overflow-wrap: anywhere; }
       .cfg-header { flex-direction: column; align-items: flex-start; }
       #cfgStatus { margin-left: 0; margin-top: 6px; }
     }
@@ -658,6 +674,7 @@
       transition: background 0.15s ease;
     }
     .cfg-section-header:hover { background: linear-gradient(135deg, rgba(255,255,255,.06) 0%, rgba(255,255,255,.03) 100%); }
+    .cfg-section-header:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
     .cfg-section-header-title {
       display: flex;
       align-items: center;
@@ -939,6 +956,9 @@
     <div class="cfg-layout">
       <div class="cfg-sidebar">
         <div class="cfg-sidebar-title">Einstellungs-Menü</div>
+        <label class="cfg-label" for="cfgSettingsSearch">Einstellungen suchen</label>
+        <input class="cfg-search-input" id="cfgSettingsSearch" type="search" autocomplete="off" placeholder="Name, Option oder Bereich" oninput="filterSettings(this.value)">
+        <div class="cfg-search-status" id="cfgSettingsSearchStatus" aria-live="polite"></div>
         <div class="cfg-nav">
           <button class="cfg-nav-btn active" data-cfg-pane-btn="bot" onclick="setActiveSettingsPane('bot')">🤖 Bot & IDs</button>
           <button class="cfg-nav-btn" data-cfg-pane-btn="commands" onclick="setActiveSettingsPane('commands')">⌨️ Bot-Kommandos</button>
@@ -2080,7 +2100,7 @@
         </div>
         <div class="cfg-field">
           <label class="cfg-label" for="cfgAutoReplyRulesFile">Pfad zur Regeldatei</label>
-          <input class="cfg-input" id="cfgAutoReplyRulesFile" type="text" autocomplete="off" placeholder="./auto-replies.json">
+          <input class="cfg-input" id="cfgAutoReplyRulesFile" type="text" autocomplete="off" placeholder="./data/auto-replies.json">
           <div class="cfg-hint">JSON-Array mit Regeln (Felder: <code>id</code>, <code>trigger</code>, <code>mode</code>, <code>reply</code>). Modus: <code>contains</code>, <code>exact</code>, <code>regex</code>.</div>
               </div>
             </div>
@@ -2616,7 +2636,16 @@
   }
 
   function escapeHtml(v) {
-    return String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    return String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
+  function safeHttpUrl(value) {
+    try {
+      const url = new URL(String(value ?? ''));
+      return ['http:', 'https:'].includes(url.protocol) ? url.href : '';
+    } catch {
+      return '';
+    }
   }
 
   function diagLine(text, level = 'i') {
@@ -2796,12 +2825,13 @@
   function renderBot(d) {
     const dot   = d.discordReady ? '<span class="dot dot-g"></span>' : '<span class="dot dot-r"></span>';
     const badge = d.discordReady ? '<span class="badge b-green">ONLINE</span>' : '<span class="badge b-red">OFFLINE</span>';
-    const pingColor = d.ping < 0 ? 'var(--muted)' : d.ping < 100 ? 'var(--green)' : d.ping < 250 ? 'var(--yellow)' : 'var(--red)';
-    const pingStr   = d.ping >= 0 ? `<span style="color:${pingColor}">${d.ping} ms</span>` : '–';
+    const ping = Number(d.ping);
+    const pingColor = ping < 0 ? 'var(--muted)' : ping < 100 ? 'var(--green)' : ping < 250 ? 'var(--yellow)' : 'var(--red)';
+    const pingStr   = Number.isFinite(ping) && ping >= 0 ? `<span style="color:${pingColor}">${ping} ms</span>` : '–';
 
     document.getElementById('botInfo').innerHTML =
       row('Discord', dot + badge) +
-      row('Bot-Tag', d.tag) +
+      row('Bot-Tag', escapeHtml(d.tag)) +
       row('WS-Ping', pingStr) +
       row('Laufzeit', fmtUptime(d.uptime));
   }
@@ -2818,12 +2848,12 @@
 
     document.getElementById('sysInfo').innerHTML =
       row('CPU-Temperatur', tempBadge(raspi?.cpuTempC ?? null)) +
-      row('RAM (Raspberry)', systemRam) +
-      row('Load (1/5/15)', load) +
-      row('Node.js', bot.nodeVersion) +
-      row('RAM (Prozess)', bot.memUsedMb + ' MB') +
-      row('Heap (genutzt)', bot.memHeapMb + ' MB') +
-      row('Plattform', platform);
+      row('RAM (Raspberry)', escapeHtml(systemRam)) +
+      row('Load (1/5/15)', escapeHtml(load)) +
+      row('Node.js', escapeHtml(bot.nodeVersion)) +
+      row('RAM (Prozess)', escapeHtml(bot.memUsedMb + ' MB')) +
+      row('Heap (genutzt)', escapeHtml(bot.memHeapMb + ' MB')) +
+      row('Plattform', escapeHtml(platform));
   }
 
   // ── Render: Hardware-Metriken ─────────────────────────
@@ -2952,17 +2982,19 @@
 
     grid.innerHTML = monitors.map(m => {
       const lastCheck = m.time ? new Date(m.time).toLocaleTimeString('de-DE') : '–';
-      const ping      = m.ping ? m.ping + ' ms' : '–';
+      const pingValue = Number(m.ping);
+      const ping      = Number.isFinite(pingValue) && m.ping !== null ? `${pingValue} ms` : '–';
+      const uptime    = Math.max(0, Math.min(100, Number(m.uptime) || 0));
       return `
         <div class="mc ${monClass(m)}">
-          <div class="mc-name" title="${m.name}">${m.name}</div>
-          <div class="mc-group">${m.group}</div>
+          <div class="mc-name" title="${escapeHtml(m.name)}">${escapeHtml(m.name)}</div>
+          <div class="mc-group">${escapeHtml(m.group)}</div>
           ${monBadge(m)}
           <div class="uptime-bar">
-            <div class="uptime-fill ${fillCls(m.uptime)}" style="width:${m.uptime}%"></div>
+            <div class="uptime-fill ${fillCls(uptime)}" style="width:${uptime}%"></div>
           </div>
           <div class="mc-meta">
-            <span>${m.uptime}% Uptime</span>
+            <span>${uptime}% Uptime</span>
             <span>${ping}</span>
           </div>
           <div class="muted" style="margin-top:6px">⏱ ${lastCheck}</div>
@@ -3228,15 +3260,19 @@
       ? '<span class="badge b-green">AKTIV</span>'
       : '<span class="badge b-red">GESTOPPT</span>';
     card.style.borderTop = d.active ? '3px solid var(--green)' : '3px solid var(--red)';
-    let html = row('Service', stBadge) + row('Version', d.version || '–');
+    let html = row('Service', stBadge) + row('Version', escapeHtml(d.version || '–'));
     if (d.tunnels && d.tunnels.length) {
       html += row('Tunnel', d.tunnels.map(t =>
-        `<span class="commit-hash">${t.id.slice(0,8)}</span> ${t.name.replace(/</g,'&lt;').replace(/>/g,'&gt;')}`
+        `<span class="commit-hash">${escapeHtml(String(t.id || '').slice(0, 8))}</span> ${escapeHtml(t.name)}`
       ).join('<br>'));
     } else if (d.zeroTrust) {
       html += row('Tunnel', '<span class="badge b-green">Zero Trust (Token-Methode)</span>');
       if (d.publicUrl) {
-        html += row('Public URL', `<a href="${d.publicUrl.replace(/</g,'&lt;')}" target="_blank" style="color:var(--blue)">${d.publicUrl.replace(/</g,'&lt;')}</a>`);
+        const publicUrl = safeHttpUrl(d.publicUrl);
+        if (publicUrl) {
+          const safeUrl = escapeHtml(publicUrl);
+          html += row('Public URL', `<a href="${safeUrl}" target="_blank" rel="noopener noreferrer" style="color:var(--blue)">${safeUrl}</a>`);
+        }
       }
     } else {
       html += row('Tunnel', '<span class="muted">kein Tunnel konfiguriert</span>');
@@ -3254,7 +3290,7 @@
       return;
     }
 
-    const safe = v => String(v ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const safe = escapeHtml;
 
     const fmtInternal = (svc, fallback = '–') => {
       if (!svc?.found) return '<span class="badge b-gray">NICHT GEFUNDEN</span>';
@@ -3268,7 +3304,9 @@
 
     const fmtExternal = (svc) => {
       if (!svc?.url) return '<span class="muted">nicht konfiguriert</span>';
-      const urlSafe = safe(svc.url);
+      const validatedUrl = safeHttpUrl(svc.url);
+      if (!validatedUrl) return '<span class="muted">ungültige URL</span>';
+      const urlSafe = safe(validatedUrl);
       let html = svc.reachable
         ? `<span class="muted">Erreichbar</span>`
         : `<span class="muted">Nicht erreichbar</span>`;
@@ -3500,9 +3538,9 @@
     if (!commits.length) { cl.innerHTML = '<span class="muted">Keine Details verfügbar.</span>'; return; }
     cl.innerHTML = commits.map(c =>
       `<div class="commit">
-        <span class="commit-hash">${c.hash}</span>
-        <span class="commit-msg">${c.subject.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</span>
-        <span class="commit-when">${c.when}</span>
+        <span class="commit-hash">${escapeHtml(c.hash)}</span>
+        <span class="commit-msg">${escapeHtml(c.subject)}</span>
+        <span class="commit-when">${escapeHtml(c.when)}</span>
       </div>`
     ).join('');
   }
@@ -4269,6 +4307,12 @@
     refreshConfigDirtyIndicator();
   }
 
+  window.addEventListener('beforeunload', (event) => {
+    if (!document.querySelector('#cfgCard [data-dirty="1"]') && !_arDirty) return;
+    event.preventDefault();
+    event.returnValue = '';
+  });
+
   function clearConfigDirtyTracking() {
     const fields = document.querySelectorAll('#cfgCard .cfg-input, #cfgCard input[type="checkbox"], #cfgCard select, #cfgCard textarea');
     fields.forEach((el) => { _setDirtyState(el, false); });
@@ -4476,7 +4520,7 @@
     const upName = _computeChannelNamePreview(firstService, 1, mode);
     const downName = _computeChannelNamePreview(firstService, 0, mode);
 
-    previewEl.innerHTML = `Vorschau: <code>${upName}</code> (up) · <code>${downName}</code> (down)`;
+    previewEl.innerHTML = `Vorschau: <code>${escapeHtml(upName)}</code> (up) · <code>${escapeHtml(downName)}</code> (down)`;
   }
 
   function maybeSetChanged(body, key, id, { allowEmpty = false } = {}) {
@@ -4563,14 +4607,14 @@
     const libreUrl = String(libreUrlEl.value || '').trim() || 'http://localhost:5000/translate';
 
     if (deepLEnabled && hasDeepLKey) {
-      statusEl.innerHTML = '<strong>Aktiv:</strong> DeepL wird bevorzugt verwendet. <span style="color:var(--text-muted,#9aa)">Fallback bei Fehlern: LibreTranslate unter ' + libreUrl + '</span>';
+      statusEl.innerHTML = '<strong>Aktiv:</strong> DeepL wird bevorzugt verwendet. <span style="color:var(--text-muted,#9aa)">Fallback bei Fehlern: LibreTranslate unter ' + escapeHtml(libreUrl) + '</span>';
       return;
     }
     if (deepLEnabled && !hasDeepLKey) {
-      statusEl.innerHTML = '<strong>Fallback aktiv:</strong> DeepL ist eingeschaltet, aber es ist kein API-Key gesetzt. Es wird aktuell <strong>LibreTranslate</strong> unter ' + libreUrl + ' verwendet.';
+      statusEl.innerHTML = '<strong>Fallback aktiv:</strong> DeepL ist eingeschaltet, aber es ist kein API-Key gesetzt. Es wird aktuell <strong>LibreTranslate</strong> unter ' + escapeHtml(libreUrl) + ' verwendet.';
       return;
     }
-    statusEl.innerHTML = '<strong>Aktiv:</strong> DeepL ist deaktiviert. Es wird <strong>LibreTranslate</strong> unter ' + libreUrl + ' verwendet.';
+    statusEl.innerHTML = '<strong>Aktiv:</strong> DeepL ist deaktiviert. Es wird <strong>LibreTranslate</strong> unter ' + escapeHtml(libreUrl) + ' verwendet.';
   }
 
   function _parseEnabledCommands(value) {
@@ -4734,6 +4778,71 @@
     });
   }
 
+  let _settingsSearchActive = false;
+  let _settingsSearchReturnPane = 'bot';
+
+  function filterSettings(query) {
+    const term = String(query || '').trim().toLowerCase();
+    const cards = Array.from(document.querySelectorAll('#cfgCard .cfg-pane-card'));
+    const navButtons = Array.from(document.querySelectorAll('#cfgCard [data-cfg-pane-btn]'));
+    const status = document.getElementById('cfgSettingsSearchStatus');
+
+    if (term && !_settingsSearchActive) {
+      _settingsSearchReturnPane = document.querySelector('#cfgCard .cfg-nav-btn.active')?.dataset.cfgPaneBtn || 'bot';
+      _settingsSearchActive = true;
+    }
+
+    const matches = [];
+    cards.forEach((card) => {
+      const pane = card.dataset.cfgPane;
+      const navButton = navButtons.find((button) => button.dataset.cfgPaneBtn === pane);
+      const paneText = `${navButton?.textContent || ''} ${card.querySelector('.cfg-pane-title')?.textContent || ''}`.toLowerCase();
+      const paneMatches = !!term && paneText.includes(term);
+      let fieldMatches = 0;
+
+      card.querySelectorAll('.cfg-section').forEach((section) => {
+        const sectionTitle = section.querySelector('.cfg-section-header-title')?.textContent?.toLowerCase() || '';
+        const sectionMatches = !term || paneMatches || sectionTitle.includes(term);
+        let hasMatch = sectionMatches;
+        section.querySelectorAll('.cfg-field').forEach((field) => {
+          const fieldMatchesTerm = sectionMatches || field.textContent.toLowerCase().includes(term);
+          field.classList.toggle('cfg-search-hidden', !!term && !fieldMatchesTerm);
+          if (term && fieldMatchesTerm) fieldMatches++;
+          if (fieldMatchesTerm) hasMatch = true;
+        });
+        section.classList.toggle('cfg-search-hidden', !!term && !hasMatch);
+        if (term && hasMatch) {
+          section.classList.add('open');
+          section.querySelector('.cfg-section-header')?.setAttribute('aria-expanded', 'true');
+        }
+      });
+
+      card.querySelectorAll('.cfg-field').forEach((field) => {
+        if (field.closest('.cfg-section')) return;
+        const fieldMatchesTerm = !term || paneMatches || field.textContent.toLowerCase().includes(term);
+        field.classList.toggle('cfg-search-hidden', !!term && !fieldMatchesTerm);
+        if (term && fieldMatchesTerm) fieldMatches++;
+      });
+
+      const paneMatchesSearch = !term || paneMatches || fieldMatches > 0;
+      card.classList.toggle('cfg-search-hidden', !!term && !paneMatchesSearch);
+      navButton?.classList.toggle('cfg-search-hidden', !!term && !paneMatchesSearch);
+      if (paneMatchesSearch) matches.push(pane);
+    });
+
+    if (!term) {
+      _settingsSearchActive = false;
+      restoreSectionStates();
+      setActiveSettingsPane(_settingsSearchReturnPane);
+      if (status) status.textContent = '';
+      return;
+    }
+
+    if (status) status.textContent = matches.length ? `${matches.length} Bereiche gefunden` : 'Keine passenden Einstellungen gefunden';
+    const activePane = document.querySelector('#cfgCard .cfg-nav-btn.active')?.dataset.cfgPaneBtn;
+    if (matches.length && !matches.includes(activePane)) setActiveSettingsPane(matches[0]);
+  }
+
   async function loadSystemLocalization() {
     const statusEl = document.getElementById('cfgLocaleStatus');
     const btn = document.getElementById('btnLocaleReload');
@@ -4828,6 +4937,7 @@
 
   // ── Auto-Reply Regeleditor ───────────────────────────
   let _arRules = [];
+  let _arDirty = false;
   const _arDefaultTemplateRules = [
     { id: 'good-evening', trigger: 'schönen abend', mode: 'contains', reply: 'Schönen Abend! 🌙', enabled: true, caseSensitive: false },
     { id: 'good-day', trigger: 'schönen tag', mode: 'contains', reply: 'Schönen Tag noch! ☀️', enabled: true, caseSensitive: false },
@@ -4905,6 +5015,9 @@
 
   function arFieldChanged(idx, field, value) {
     if (_arRules[idx]) _arRules[idx][field] = value;
+    _arDirty = true;
+    const status = document.getElementById('arStatus');
+    if (status) { status.textContent = 'Ungespeicherte Änderungen'; status.className = 'warn'; }
   }
 
   // ── Emoji Picker ─────────────────────────────────────────
@@ -4996,6 +5109,7 @@
   function arAddRule() {
     const newId = `regel-${Date.now()}`;
     _arRules.push({ id: newId, trigger: '', mode: 'contains', reply: '', enabled: true, caseSensitive: false });
+    _arDirty = true;
     arRenderTable();
     // Zur neuen Zeile scrollen
     const tbody = document.getElementById('arTableBody');
@@ -5008,7 +5122,10 @@
 
   function arDeleteRule(idx) {
     _arRules.splice(idx, 1);
+    _arDirty = true;
     arRenderTable();
+    const status = document.getElementById('arStatus');
+    if (status) { status.textContent = 'Ungespeicherte Änderungen'; status.className = 'warn'; }
   }
 
   // ── KI System-Prompt Templates ──────────────────────────────────────────
@@ -5040,6 +5157,7 @@
       const d = await fetch('/api/auto-replies').then(r => r.json());
       if (!d.ok) { st.textContent = '✗ ' + d.error; st.className = 'err'; return; }
       _arRules = arEnsureDefaultTemplateRules(d.rules);
+      _arDirty = false;
       arRenderTable();
       st.textContent = `✓ ${_arRules.length} Regel${_arRules.length !== 1 ? 'n' : ''} geladen`;
       st.className = 'ok';
@@ -5063,6 +5181,7 @@
       if (!d.ok) { st.textContent = '✗ ' + d.error; st.className = 'err'; }
       else {
         if (Array.isArray(d.rules)) _arRules = arEnsureDefaultTemplateRules(d.rules);
+        _arDirty = false;
         st.textContent = `✓ ${d.count} Regel${d.count !== 1 ? 'n' : ''} gespeichert`;
         st.className = 'ok';
         arRenderTable();
@@ -5258,7 +5377,7 @@
       setCfg('cfgAutoReplyCooldownMs', d.DISCORD_AUTO_REPLY_COOLDOWN_MS || '30000');
       setCfg('cfgAutoReplyResponseMode', d.DISCORD_AUTO_REPLY_RESPONSE_MODE || 'list');
       setCfg('cfgAutoReplyConnector', d.DISCORD_AUTO_REPLY_CONNECTOR || 'Außerdem');
-      setCfg('cfgAutoReplyRulesFile', d.DISCORD_AUTO_REPLY_RULES_FILE || './auto-replies.json');
+      setCfg('cfgAutoReplyRulesFile', d.DISCORD_AUTO_REPLY_RULES_FILE || './data/auto-replies.json');
 
       // GitHub-Watcher
       setCheckboxValue('cfgGithubWatchEnabled', (d.DISCORD_GITHUB_WATCH_ENABLED || 'false') === 'true', { force });
@@ -5634,8 +5753,9 @@
       return;
     }
 
+    let res = null;
     try {
-      let res = await fetch('/api/config', {
+      res = await fetch('/api/config', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify(body),
@@ -5665,22 +5785,35 @@
       }
 
       if (res.ok) {
-        st.textContent = `✓ Gespeichert: ${res.updated.join(', ')}${res.restarted ? ' · Bot startet neu…' : ''}`;
+        st.textContent = `✓ Gespeichert: ${res.updated.join(', ')}${res.restartId ? ' · Bot startet neu…' : ''}`;
         st.className = 'ok';
         toast('✓ Konfiguration gespeichert', 'ok');
         
         // Bot-Polling nach Restart vornehmen
-        if (res.restarted) {
+        if (res.restartId) {
           st.textContent += ' ⏳ Warte auf Bot-Neustart…';
           btn.textContent = '⏳ Bot startet neu…';
           btn.disabled = true;
           
-          // Polling: Versuche alle 500ms die config zu laden bis Bot antwortet
-          let retries = 0;
-          const maxRetries = 60; // max 30 Sekunden
           let pollBotReady = null;
+          let pollInFlight = false;
+          let pollingFinished = false;
+          const deadline = Date.now() + 90000;
+
+          const fetchJsonWithTimeout = async (url) => {
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 3000);
+            try {
+              const response = await fetch(url, { signal: controller.signal });
+              return { response, data: await response.json() };
+            } finally {
+              clearTimeout(timeout);
+            }
+          };
           
-          const cleanupPolling = (success) => {
+          const cleanupPolling = (success, message = '') => {
+            if (pollingFinished) return;
+            pollingFinished = true;
             if (pollBotReady) {
               clearInterval(pollBotReady);
               pollBotReady = null;
@@ -5696,24 +5829,41 @@
               fetch('/api/refresh', { method: 'POST' }).catch(() => {});
               st.textContent = `✓ Bot neu gestartet. Status aktualisiert.`;
               st.className = 'ok';
+            } else {
+              st.textContent = message || '⚠ Bot-Neustart konnte nicht bestätigt werden.';
+              st.className = 'warn';
             }
           };
           
           pollBotReady = setInterval(async () => {
-            retries++;
+            if (pollInFlight) return;
+            if (Date.now() >= deadline) {
+              cleanupPolling(false, '⚠ Bot-Neustart nach 90s nicht bestätigt. Bitte Status manuell prüfen.');
+              return;
+            }
+            pollInFlight = true;
             try {
-              const testRes = await fetch('/api/config', { timeout: 3000 });
-              if (testRes.ok) {
-                cleanupPolling(true);
+              const restartUrl = `/api/restart-status?id=${encodeURIComponent(res.restartId)}`;
+              const restart = await fetchJsonWithTimeout(restartUrl);
+              if (restart.data.ok && restart.data.status === 'failed') {
+                cleanupPolling(false, `⚠ Neustart fehlgeschlagen: ${restart.data.error || 'Unbekannter Fehler'}`);
+                return;
               }
-            } catch (e) {
-              if (retries >= maxRetries) {
-                cleanupPolling(false);
-                st.textContent = `⚠ Bot-Neustart dauert länger. Button wieder aktiv.`;
-                st.className = 'warn';
+              const restartedProcess = restart.data.status === 'success'
+                || (!restart.data.ok && restart.data.error === 'Unbekannte restartId');
+              if (restart.response.ok && restartedProcess) {
+                const config = await fetchJsonWithTimeout('/api/config');
+                if (config.response.ok && config.data.ok === true) cleanupPolling(true);
+              }
+            } catch {
+              // Während des Service-Neustarts ist die Verbindung kurz nicht verfügbar.
+            } finally {
+              pollInFlight = false;
+              if (Date.now() >= deadline) {
+                cleanupPolling(false, '⚠ Bot-Neustart nach 90s nicht bestätigt. Bitte Status manuell prüfen.');
               }
             }
-          }, 500);
+          }, 1000);
         } else {
           clearConfigDirtyTracking();
           loadConfig({ force: true }).then(() => {
@@ -6094,6 +6244,7 @@
     const section = header.closest('.cfg-section');
     if (!section) return;
     section.classList.toggle('open');
+    header.setAttribute('aria-expanded', section.classList.contains('open') ? 'true' : 'false');
     // Optionally, persist the state to localStorage
     const sectionTitle = header.querySelector('.cfg-section-header-title span:last-child')?.textContent || 'unknown';
     const state = section.classList.contains('open') ? 'open' : 'closed';
@@ -6114,6 +6265,21 @@
       if (!state) {
         if (title === '🔑 Token & IDs' || title === '😎 Präsenz & Status') {
           section.classList.add('open');
+        }
+      }
+      const header = section.querySelector('.cfg-section-header');
+      if (header) {
+        header.tabIndex = 0;
+        header.setAttribute('role', 'button');
+        header.setAttribute('aria-expanded', section.classList.contains('open') ? 'true' : 'false');
+        if (header.dataset.keyboardBound !== '1') {
+          header.dataset.keyboardBound = '1';
+          header.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault();
+              toggleConfigSection(header);
+            }
+          });
         }
       }
     });
@@ -6152,8 +6318,8 @@
     }
 
     results.innerHTML = filtered.map(model => {
-      const id = String(model.id).replace(/"/g, '&quot;');
-      const name = String(model.name || model.id).replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      const id = escapeHtml(model.id);
+      const name = escapeHtml(model.name || model.id);
       const badge = model.isFree ? '🟢 free' : '💳 kostenpflichtig';
       return `<button type="button" class="btn" data-openrouter-model="${id}" style="display:block;width:100%;text-align:left;margin:4px 0;padding:6px 10px">${name} <span class="muted">${badge}</span></button>`;
     }).join('');
@@ -6216,7 +6382,7 @@
       // Datalist mit kostenlosen Modellen füllen
       const datalist = document.getElementById('cfgOpenaiModelList');
       datalist.innerHTML = freeModels.map(m => 
-        `<option value="${m.id}">${m.name} ✅ KOSTENLOS</option>`
+        `<option value="${escapeHtml(m.id)}">${escapeHtml(m.name)} ✅ KOSTENLOS</option>`
       ).join('');
 
       // WICHTIG: Nach Änderung der Datalist müssen wir die data-initialValue NICHT ändern,

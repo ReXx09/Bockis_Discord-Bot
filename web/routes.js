@@ -1443,7 +1443,7 @@ module.exports = function startWebServer({
     const baseScript = [
       'set -euo pipefail',
       'REC_FILES=()',
-      'for rel in .env auto-replies.json data/auto-replies.json; do',
+      'for rel in .env auto-replies.json; do',
       '  [[ -e "$rel" ]] && REC_FILES+=("$rel")',
       'done',
       'cleanup_step() {',
@@ -2453,7 +2453,7 @@ module.exports = function startWebServer({
   
   app.get('/api/auto-replies', dashboardAuth, (req, res) => {
     try {
-      const autoRepliesFile = path.join(rootDir, config.get('discord.autoReplyRulesFile') || './auto-replies.json');
+      const autoRepliesFile = path.join(rootDir, config.get('discord.autoReplyRulesFile') || './data/auto-replies.json');
       if (!fs.existsSync(autoRepliesFile)) {
         return res.json({ ok: true, rules: withDefaultTemplateRules([]) });
       }
@@ -2496,7 +2496,7 @@ module.exports = function startWebServer({
         }
       }
       
-      const autoRepliesFile = path.join(rootDir, config.get('discord.autoReplyRulesFile') || './auto-replies.json');
+      const autoRepliesFile = path.join(rootDir, config.get('discord.autoReplyRulesFile') || './data/auto-replies.json');
       
       // 🔄 Backup erstellen, bevor überschrieben wird
       if (fs.existsSync(autoRepliesFile)) {
@@ -2529,7 +2529,7 @@ module.exports = function startWebServer({
         const normalized = String(value ?? '').trim().toLowerCase();
         return normalized === 'true' || normalized === '1' || normalized === 'on' || normalized === 'yes';
       };
-      const autoRepliesFile = path.join(rootDir, config.get('discord.autoReplyRulesFile') || './auto-replies.json');
+      const autoRepliesFile = path.join(rootDir, config.get('discord.autoReplyRulesFile') || './data/auto-replies.json');
       
       // Lade existierende Regeln
       let existingRules = [];
