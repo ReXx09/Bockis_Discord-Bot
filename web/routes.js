@@ -2622,10 +2622,12 @@ module.exports = function startWebServer({
       });
 
       const allModels = models.data?.data || [];
+      const isFreeModel = (model) =>
+        Number(model.pricing?.prompt) === 0 && Number(model.pricing?.completion) === 0;
       
       // Filtere kostenlose Modelle
       const freeModels = allModels
-        .filter(m => m.pricing?.prompt === '0' && m.pricing?.completion === '0')
+        .filter(isFreeModel)
         .map(m => ({
           id: m.id,
           name: m.name,
@@ -2636,7 +2638,7 @@ module.exports = function startWebServer({
 
       // Alle Modelle (auch kostenpflichtige)
       const paidModels = allModels
-        .filter(m => !(m.pricing?.prompt === '0' && m.pricing?.completion === '0'))
+        .filter(m => !isFreeModel(m))
         .map(m => ({
           id: m.id,
           name: m.name,
@@ -2649,8 +2651,7 @@ module.exports = function startWebServer({
       const selectedModel = allModels.find(model => model.id === currentModel);
       const selectedModelIsFree = Boolean(
         selectedModel
-        && selectedModel.pricing?.prompt === '0'
-        && selectedModel.pricing?.completion === '0'
+        && isFreeModel(selectedModel)
       );
 
       res.json({

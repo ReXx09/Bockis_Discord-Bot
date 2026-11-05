@@ -2383,9 +2383,10 @@
           </label>
           <input class="cfg-input" id="cfgOpenaiModel" type="text" list="cfgOpenaiModelList" autocomplete="off" placeholder="gpt-4o-mini">
           <datalist id="cfgOpenaiModelList"></datalist>
-          <div class="cfg-hint" id="cfgOpenaiModelHint">
-            <span id="modelStats"></span>
-            <button type="button" id="btnRefreshModels" style="margin-left: 15px; padding: 5px 10px; cursor: pointer; background: var(--blue); color: white; border: none; border-radius: 4px;">🔄 Modelle neu laden</button>
+          <div class="cfg-hint" id="cfgOpenaiModelHint"></div>
+          <div class="cfg-inline-action" style="align-items:center;margin-top:4px">
+            <span class="cfg-hint" id="modelStats"></span>
+            <button type="button" id="btnRefreshModels" style="padding: 5px 10px; cursor: pointer; background: var(--blue); color: white; border: none; border-radius: 4px;">🔄 Modelle neu laden</button>
           </div>
           <div id="openRouterModelTools" style="display:none;margin-top:8px">
             <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
@@ -6110,7 +6111,9 @@
   }
 
   // Config beim Start laden
-  loadConfig().finally(() => initConfigDirtyTracking());
+  loadConfig()
+    .then(() => loadOpenRouterModels())
+    .finally(() => initConfigDirtyTracking());
   loadSystemLocalization();
   setActiveSettingsPane('bot');
 
@@ -6590,8 +6593,13 @@
         }
       }
     } catch (err) {
-      document.getElementById('modelHealthStatus').textContent = '❌ Fehler';
-      document.getElementById('modelHealthStatus').style.color = '#f04747';
+      const statusEl = document.getElementById('modelHealthStatus');
+      const modelStats = document.getElementById('modelStats');
+      if (statusEl) {
+        statusEl.textContent = '❌ Fehler beim Laden';
+        statusEl.style.color = '#f04747';
+      }
+      if (modelStats) modelStats.textContent = err.message || 'Modellliste konnte nicht geladen werden.';
       console.error('Fehler beim Laden der OpenRouter-Modelle:', err);
     }
   }
