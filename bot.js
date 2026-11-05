@@ -2810,6 +2810,30 @@ function _releasePlainText(value) {
     .slice(0, 14);
 }
 
+function getGitHubReleaseColor(repository) {
+  const defaultColor = '#1f6feb';
+  const repo = normalizeGitHubRepository(repository);
+  const encodedColors = String(config.get('discord.githubRepoColorsB64') || '').trim();
+  if (!repo || !encodedColors) return defaultColor;
+  try {
+    const colors = JSON.parse(Buffer.from(encodedColors, 'base64').toString('utf8'));
+    const color = String(colors?.[repo] || '').trim();
+    return /^#[0-9a-f]{6}$/i.test(color) ? color.toLowerCase() : defaultColor;
+  } catch {
+    return defaultColor;
+  }
+}
+
+function darkenHexColor(color, factor = 0.48) {
+  const hex = color.slice(1);
+  return '#' + [0, 2, 4].map(index => Math.round(parseInt(hex.slice(index, index + 2), 16) * factor)
+    .toString(16).padStart(2, '0')).join('');
+}
+
+function getGitHubReleaseColorNumber(repository) {
+  return Number.parseInt(getGitHubReleaseColor(repository).slice(1), 16);
+}
+
 function buildReleaseNotesSvg(release) {
   const width = 1200;
   const template = config.get('discord.githubReleaseTemplate') || '';
@@ -2820,6 +2844,8 @@ function buildReleaseNotesSvg(release) {
   const url = release?.html_url || `https://github.com/${repo}/releases`;
   const author = release?.author?.login || 'GitHub';
   const body = release?.body || 'Keine Release Notes vorhanden.';
+  const releaseColor = getGitHubReleaseColor(repo);
+  const releaseColorDark = darkenHexColor(releaseColor);
 
   // Template rendern
   const renderedBody = template
@@ -2839,7 +2865,7 @@ function buildReleaseNotesSvg(release) {
 
   let svg = `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${totalHeight}" viewBox="0 0 ${width} ${totalHeight}">
-  <defs><linearGradient id="releaseHeader" x1="0" x2="1" y1="0" y2="1"><stop offset="0" stop-color="#1f6feb"/><stop offset="1" stop-color="#19315f"/></linearGradient><filter id="releaseShadow"><feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#000" flood-opacity=".3"/></filter></defs>
+  <defs><linearGradient id="releaseHeader" x1="0" x2="1" y1="0" y2="1"><stop offset="0" stop-color="${releaseColor}"/><stop offset="1" stop-color="${releaseColorDark}"/></linearGradient><filter id="releaseShadow"><feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#000" flood-opacity=".3"/></filter></defs>
   <rect width="${width}" height="${totalHeight}" fill="#10141d"/>
   <rect x="18" y="18" width="${width - 36}" height="${totalHeight - 36}" rx="18" fill="#181e2a" stroke="#2d3748" filter="url(#releaseShadow)"/>
   <rect x="18" y="18" width="${width - 36}" height="${headerHeight}" rx="18" fill="url(#releaseHeader)"/>
@@ -2847,7 +2873,7 @@ function buildReleaseNotesSvg(release) {
   <text x="108" y="62" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="16" font-weight="700" letter-spacing="1" fill="#bcd6ff">NEUER GITHUB RELEASE</text>
   <text x="108" y="99" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="30" font-weight="700" fill="#fff">${_escapeSvgText(title).slice(0, 70)}</text>
   <text x="108" y="132" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="16" fill="#d5e4ff">${_escapeSvgText(repo)} · ${_escapeSvgText(tag)} · ${_escapeSvgText(published)}</text>
-  <rect x="${width - 226}" y="54" width="154" height="50" rx="12" fill="#111827" fill-opacity=".55" stroke="#7eb1ff"/>
+  <rect x="${width - 226}" y="54" width="154" height="50" rx="12" fill="#111827" fill-opacity=".55" stroke="${releaseColor}"/>
   <text x="${width - 149}" y="84" text-anchor="middle" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="16" font-weight="700" fill="#fff">RELEASE NOTES</text>`;
 
   let currentY = headerHeight + 30;
@@ -2902,7 +2928,7 @@ async function buildReleaseNotesAttachmentPayload(release) {
   
   return {
     embeds: [new EmbedBuilder()
-      .setColor(0x1f6feb)
+      .setColor(getGitHubReleaseColorNumber(repo))
       .setTitle(`🚀 Neuer Release: ${title}`)
       .setURL(url)
       .setDescription(`**Repository:** ${repo}\n**Tag:** ${tag}\n**Veröffentlicht:** ${published}\n\n${description}`)
@@ -3034,7 +3060,7 @@ async function buildReleaseHighlightsPayload(release) {
   if (!lines.length) lines.push('Keine Release Notes hinterlegt.');
 
   const embed = new EmbedBuilder()
-    .setColor(0x1f6feb)
+    .setColor(getGitHubReleaseColorNumber(release.repository))
     .setTitle(`🚀 Neuer Release: ${String(release.name || release.tag_name || 'GitHub').slice(0, 200)}`)
     .setURL(releaseUrl)
     .setDescription(lines.join('\n').slice(0, 4000))
@@ -3136,7 +3162,7 @@ async function runGitHubReleaseCheck({ notify = true } = {}) {
         if (!payload) try { payload = await buildReleaseNotesAttachmentPayload(release); }
         catch (err) {
           logger.warn(`GitHub-Release-Grafik für ${repository} nicht verfügbar: ${err.message}`);
-          payload = { embeds: [new EmbedBuilder().setColor(0x1f6feb).setTitle(`Neuer Release: ${release.name}`).setURL(release.html_url).setDescription(_releasePlainText(release.body).join('\n').slice(0, 4000))], allowedMentions: { parse: [] } };
+          payload = { embeds: [new EmbedBuilder().setColor(getGitHubReleaseColorNumber(release.repository)).setTitle(`Neuer Release: ${release.name}`).setURL(release.html_url).setDescription(_releasePlainText(release.body).join('\n').slice(0, 4000))], allowedMentions: { parse: [] } };
         }
         
         let allSent = true;

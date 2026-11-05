@@ -2364,6 +2364,12 @@
           <div class="cfg-hint">Erlaubt sind <code>owner/repo</code> oder vollständige GitHub-URLs. Mehrere Repos mit <code>;</code> oder <code>,</code> trennen. Die Release-Notes werden als grafische Karte dargestellt.</div>
         </div>
         <div class="cfg-field">
+          <label class="cfg-label">Release-Farbe pro Repository</label>
+          <input class="cfg-input" id="cfgGithubRepoColors" type="hidden" value="{}">
+          <div id="cfgGithubRepoColorRows" style="display:grid;gap:8px"></div>
+          <div class="cfg-hint">Die ausgewählte Farbe wird als Akzent in der Release-Grafik und in Embed-Fallbacks verwendet. Neue Repositories starten mit Blau.</div>
+        </div>
+        <div class="cfg-field">
           <label class="cfg-label" for="cfgGithubMode">Überwachungs-Modus</label>
           <select class="cfg-input" id="cfgGithubMode">
             <option value="both">Beides (Releases + Commits)</option>
@@ -5606,6 +5612,87 @@
     image.src = `/api/previews/github-release.png?repo=${encodeURIComponent(repository)}&v=${Date.now()}`;
   }
 
+  const DEFAULT_GITHUB_RELEASE_COLOR = '#1f6feb';
+
+  function normalizeGitHubRepositoryForColors(value) {
+    let repository = String(value || '').trim();
+    if (!repository) return '';
+    try {
+      const url = new URL(repository);
+      if (!['github.com', 'www.github.com'].includes(url.hostname.toLowerCase())) return '';
+      repository = url.pathname;
+    } catch {
+      repository = repository.replace(/^https?:\/\/(?:www\.)?github\.com\//i, '');
+    }
+    repository = repository.replace(/^\/+|\/+$/g, '').replace(/\.git$/i, '').toLowerCase();
+    return /^[a-z0-9_.-]+\/[a-z0-9_.-]+$/.test(repository) ? repository : '';
+  }
+
+  function readGitHubRepositoryColors() {
+    try {
+      const parsed = JSON.parse(document.getElementById('cfgGithubRepoColors')?.value || '{}');
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+      return Object.fromEntries(Object.entries(parsed).flatMap(([repository, color]) => {
+        const normalizedRepository = normalizeGitHubRepositoryForColors(repository);
+        const normalizedColor = String(color || '').trim().toLowerCase();
+        return normalizedRepository && /^#[0-9a-f]{6}$/.test(normalizedColor)
+          ? [[normalizedRepository, normalizedColor]]
+          : [];
+      }));
+    } catch {
+      return {};
+    }
+  }
+
+  function renderGitHubRepositoryColorRows() {
+    const container = document.getElementById('cfgGithubRepoColorRows');
+    if (!container) return;
+    const repositories = [...new Set(String(document.getElementById('cfgGithubRepos')?.value || '')
+      .split(/[;,\s]+/).map(normalizeGitHubRepositoryForColors).filter(Boolean))];
+    const colors = readGitHubRepositoryColors();
+    container.replaceChildren();
+    if (!repositories.length) {
+      container.textContent = 'Zuerst mindestens ein Repository eintragen.';
+      container.classList.add('muted');
+      return;
+    }
+    container.classList.remove('muted');
+
+    repositories.forEach(repository => {
+      const row = document.createElement('label');
+      row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:12px;padding:7px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);font-size:13px';
+      const name = document.createElement('span');
+      name.textContent = repository;
+      const color = document.createElement('input');
+      color.type = 'color';
+      color.value = colors[repository] || DEFAULT_GITHUB_RELEASE_COLOR;
+      color.dataset.repoColor = repository;
+      color.setAttribute('aria-label', `Release-Farbe für ${repository}`);
+      color.title = `Release-Farbe für ${repository}`;
+      color.style.cssText = 'width:42px;height:30px;padding:2px;border:1px solid var(--border);border-radius:4px;background:transparent;cursor:pointer';
+      color.addEventListener('input', syncGitHubRepositoryColors);
+      color.addEventListener('change', syncGitHubRepositoryColors);
+      row.append(name, color);
+      container.appendChild(row);
+    });
+  }
+
+  function syncGitHubRepositoryColors() {
+    const hidden = document.getElementById('cfgGithubRepoColors');
+    const container = document.getElementById('cfgGithubRepoColorRows');
+    if (!hidden || !container) return;
+    const colors = {};
+    container.querySelectorAll('input[data-repo-color]').forEach(input => {
+      const color = String(input.value || DEFAULT_GITHUB_RELEASE_COLOR).toLowerCase();
+      if (color !== DEFAULT_GITHUB_RELEASE_COLOR) colors[input.dataset.repoColor] = color;
+    });
+    const serialized = JSON.stringify(colors);
+    if (hidden.value !== serialized) {
+      hidden.value = serialized;
+      hidden.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+  }
+
   let githubReleasePreviewData = null;
   let githubReleasePreviewRepo = '';
   let githubReleasePreviewRequest = 0;
@@ -5901,6 +5988,8 @@
       setCfg('cfgGithubChannelId', d.DISCORD_GITHUB_CHANNEL_ID || '');
       setCfg('cfgGithubSecondaryChannelId', d.DISCORD_GITHUB_SECONDARY_CHANNEL_ID || '');
       setCfg('cfgGithubRepos', d.DISCORD_GITHUB_REPOS || '');
+      setCfg('cfgGithubRepoColors', d.DISCORD_GITHUB_REPO_COLORS || '{}');
+      renderGitHubRepositoryColorRows();
       setCfg('cfgGithubMode', d.DISCORD_GITHUB_MODE || 'both');
       setCfg('cfgGithubPollIntervalMs', d.DISCORD_GITHUB_POLL_INTERVAL_MS || '600000');
       setCfg('cfgGithubPostStyle', d.DISCORD_GITHUB_POST_STYLE || 'highlights');
@@ -6115,6 +6204,7 @@
       button.addEventListener('click', () => insertGitHubReleaseTemplateText(button.dataset.releaseTemplateInsert || ''));
     });
     document.getElementById('cfgGithubRepos')?.addEventListener('input', () => {
+      renderGitHubRepositoryColorRows();
       clearTimeout(githubReleasePreviewTimer);
       githubReleasePreviewTimer = setTimeout(() => loadGitHubReleaseTextPreview(), 600);
     });
@@ -6128,6 +6218,7 @@
   // ── Config speichern mit Polling nach Restart ──────
   async function saveConfig() {
     syncCleanupRowsToHiddenInput();
+    syncGitHubRepositoryColors();
     const btn = document.getElementById('btnCfgSave');
     const st  = document.getElementById('cfgStatus');
     btn.disabled = true;
@@ -6228,6 +6319,7 @@
     maybeSetChanged(body, 'DISCORD_GITHUB_CHANNEL_ID', 'cfgGithubChannelId', { allowEmpty: true });
     maybeSetChanged(body, 'DISCORD_GITHUB_SECONDARY_CHANNEL_ID', 'cfgGithubSecondaryChannelId', { allowEmpty: true });
     maybeSetChanged(body, 'DISCORD_GITHUB_REPOS', 'cfgGithubRepos', { allowEmpty: true });
+    maybeSetChanged(body, 'DISCORD_GITHUB_REPO_COLORS', 'cfgGithubRepoColors');
     maybeSetChanged(body, 'DISCORD_GITHUB_MODE', 'cfgGithubMode');
     maybeSetChanged(body, 'DISCORD_GITHUB_POLL_INTERVAL_MS', 'cfgGithubPollIntervalMs');
     maybeSetChanged(body, 'DISCORD_GITHUB_POST_STYLE', 'cfgGithubPostStyle');

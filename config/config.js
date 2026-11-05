@@ -437,6 +437,12 @@ const config = convict({
       default: '',
       env: 'DISCORD_GITHUB_REPOS'
     },
+    githubRepoColorsB64: {
+      doc: 'Base64-kodierte JSON-Zuordnung von GitHub-Repositories zu Release-Farben',
+      format: String,
+      default: '',
+      env: 'DISCORD_GITHUB_REPO_COLORS_B64'
+    },
     githubMode: {
       doc: 'GitHub Watcher Modus: releases (nur Releases), commits (nur Commits) oder both (beides)',
       format: ['releases', 'commits', 'both'],

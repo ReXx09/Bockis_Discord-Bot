@@ -1658,6 +1658,14 @@ module.exports = function startWebServer({
       const commandTileTemplate = commandTileTemplateEncoded
         ? Buffer.from(commandTileTemplateEncoded, 'base64').toString('utf8')
         : '{{commands}}';
+      let githubRepoColors = '{}';
+      try {
+        const encodedColors = get('DISCORD_GITHUB_REPO_COLORS_B64');
+        const parsedColors = encodedColors ? JSON.parse(Buffer.from(encodedColors, 'base64').toString('utf8')) : {};
+        if (parsedColors && typeof parsedColors === 'object' && !Array.isArray(parsedColors)) {
+          githubRepoColors = JSON.stringify(parsedColors);
+        }
+      } catch {}
 
       res.json({
         ok: true,
@@ -1682,6 +1690,7 @@ module.exports = function startWebServer({
         DISCORD_GITHUB_CHANNEL_ID:    get('DISCORD_GITHUB_CHANNEL_ID') || '',
         DISCORD_GITHUB_SECONDARY_CHANNEL_ID: get('DISCORD_GITHUB_SECONDARY_CHANNEL_ID') || '',
         DISCORD_GITHUB_REPOS:         get('DISCORD_GITHUB_REPOS') || '',
+        DISCORD_GITHUB_REPO_COLORS:   githubRepoColors,
         DISCORD_GITHUB_MODE:          get('DISCORD_GITHUB_MODE') || 'releases',
         DISCORD_GITHUB_POLL_INTERVAL_MS: get('DISCORD_GITHUB_POLL_INTERVAL_MS') || '300000',
         DISCORD_GITHUB_POST_STYLE:    get('DISCORD_GITHUB_POST_STYLE') || 'highlights',
@@ -1824,6 +1833,7 @@ module.exports = function startWebServer({
       'DISCORD_GITHUB_CHANNEL_ID',
       'DISCORD_GITHUB_SECONDARY_CHANNEL_ID',
       'DISCORD_GITHUB_REPOS',
+      'DISCORD_GITHUB_REPO_COLORS',
       'DISCORD_GITHUB_MODE',
       'DISCORD_GITHUB_POLL_INTERVAL_MS',
       'DISCORD_GITHUB_POST_STYLE',
@@ -1924,6 +1934,28 @@ module.exports = function startWebServer({
       const val = key === 'DISCORD_COMMAND_TILE_TEMPLATE'
         ? String(raw).replace(/\r\n?/g, '\n')
         : String(raw).trim();
+      if (key === 'DISCORD_GITHUB_REPO_COLORS') {
+        let parsedColors;
+        try {
+          parsedColors = JSON.parse(val);
+        } catch {
+          return res.json({ ok: false, error: 'Repository-Farben müssen gültiges JSON sein' });
+        }
+        if (!parsedColors || typeof parsedColors !== 'object' || Array.isArray(parsedColors) || Object.keys(parsedColors).length > 100) {
+          return res.json({ ok: false, error: 'Repository-Farben müssen ein Objekt mit höchstens 100 Einträgen sein' });
+        }
+        const normalizedColors = {};
+        for (const [repository, colorValue] of Object.entries(parsedColors)) {
+          const normalizedRepository = repository.trim().toLowerCase();
+          const color = String(colorValue || '').trim().toLowerCase();
+          if (!/^[a-z0-9_.-]+\/[a-z0-9_.-]+$/.test(normalizedRepository) || !/^#[0-9a-f]{6}$/.test(color)) {
+            return res.json({ ok: false, error: 'Ungültige Repository-Farbe; erwartet owner/repo und #RRGGBB' });
+          }
+          normalizedColors[normalizedRepository] = color;
+        }
+        updates.DISCORD_GITHUB_REPO_COLORS_B64 = Buffer.from(JSON.stringify(normalizedColors), 'utf8').toString('base64');
+        continue;
+      }
       if (key === 'DISCORD_COMMAND_TILE_TEMPLATE') {
         const placeholders = val.match(/\{\{commands\}\}/g) || [];
         if (val.length > 2000) return res.json({ ok: false, error: 'Die Nachricht darf maximal 2000 Zeichen enthalten' });
