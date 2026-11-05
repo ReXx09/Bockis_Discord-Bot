@@ -2358,15 +2358,26 @@
           <div class="cfg-hint">Der gleiche Release-Banner wird parallel in diesen Kanal gesendet. Der Banner verlinkt direkt auf die GitHub Release Notes.</div>
         </div>
         <div class="cfg-field">
-          <label class="cfg-label" for="cfgGithubRepos">Repos (Format: owner/repo oder GitHub-URL)</label>
-          <input class="cfg-input" id="cfgGithubRepos" type="text" autocomplete="off" placeholder="ReXx09/Bockis_Discord-Bot;anderer/repo">
-          <div class="cfg-hint">Erlaubt sind <code>owner/repo</code> oder vollständige GitHub-URLs. Mehrere Repos mit <code>;</code> oder <code>,</code> trennen. Die Release-Notes werden als grafische Karte dargestellt.</div>
-        </div>
-        <div class="cfg-field">
-          <label class="cfg-label">Release-Farbe pro Repository</label>
+          <label class="cfg-label">GitHub-Repositories</label>
+          <input class="cfg-input" id="cfgGithubRepos" type="hidden" value="">
           <input class="cfg-input" id="cfgGithubRepoColors" type="hidden" value="{}">
-          <div id="cfgGithubRepoColorRows" style="display:grid;gap:8px"></div>
-          <div class="cfg-hint">Die ausgewählte Farbe wird als Akzent in der Release-Grafik und in Embed-Fallbacks verwendet. Neue Repositories starten mit Blau.</div>
+          <div style="overflow-x:auto;border:1px solid var(--border);border-radius:6px">
+            <table style="width:100%;border-collapse:collapse;min-width:420px">
+              <thead>
+                <tr style="background:var(--surface2);color:var(--muted);font-size:11px;text-align:left">
+                  <th style="padding:8px 10px;font-weight:600">Repository</th>
+                  <th style="padding:8px 10px;font-weight:600;width:100px">Release-Farbe</th>
+                  <th style="padding:8px 10px;width:42px"></th>
+                </tr>
+              </thead>
+              <tbody id="cfgGithubRepoColorRows"></tbody>
+            </table>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:8px">
+            <button class="btn" id="btnAddGithubRepo" type="button">＋ Repository hinzufügen</button>
+            <span class="cfg-hint" style="margin:0">Ein Eintrag pro Zeile: <code>owner/repo</code> oder GitHub-URL.</span>
+          </div>
+          <div class="cfg-hint">Die Release-Farbe wird für Grafik und Embed genutzt. Neue Repositories starten mit Blau.</div>
         </div>
         <div class="cfg-field">
           <label class="cfg-label" for="cfgGithubMode">Überwachungs-Modus</label>
@@ -2413,16 +2424,6 @@
                  placeholder="Leer lassen = unverändert">
           <div class="cfg-hint">Erhöht das Rate-Limit von 60 auf 5000 Anfragen/Stunde. Scope: <code>public_repo</code> reicht aus.</div>
               </div>
-        <div class="cfg-field" style="border-top:1px solid var(--border);padding-top:12px">
-          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-            <button class="btn" type="button" onclick="loadGitHubReleasePreview()">👁 Release-Ansicht Vorschau</button>
-            <button class="btn" type="button" onclick="triggerGitHubWatcherCheck()" style="background:#1f6feb">🔄 Jetzt prüfen & senden</button>
-            <span class="muted" id="githubPreviewStatus"></span>
-          </div>
-          <div id="githubPreviewWrap" style="display:none;margin-top:12px">
-            <img id="githubPreviewImage" alt="Vorschau der GitHub-Release-Ansicht" style="display:block;width:100%;max-height:560px;object-fit:contain;background:#10141d;border:1px solid var(--border);border-radius:8px">
-          </div>
-        </div>
             </div>
           </div>
         </div>
@@ -2435,6 +2436,16 @@
           </div>
           <div class="cfg-section-content">
             <div class="cfg-section-body">
+              <div class="cfg-field" style="border-bottom:1px solid var(--border);padding-bottom:12px">
+                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                  <button class="btn" type="button" onclick="loadGitHubReleasePreview()">👁 Release-Ansicht Vorschau</button>
+                  <button class="btn" type="button" onclick="triggerGitHubWatcherCheck()" style="background:#1f6feb">🔄 Jetzt prüfen &amp; senden</button>
+                  <span class="muted" id="githubPreviewStatus"></span>
+                </div>
+                <div id="githubPreviewWrap" style="display:none;margin-top:12px">
+                  <img id="githubPreviewImage" alt="Vorschau der GitHub-Release-Ansicht" style="display:block;width:100%;max-height:560px;object-fit:contain;background:#10141d;border:1px solid var(--border);border-radius:8px">
+                </div>
+              </div>
               <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;align-items:start">
                 <div>
                   <label class="cfg-label" for="cfgGithubReleaseTemplate">Discord-Release-Text</label>
@@ -5596,8 +5607,8 @@
 
   // ── Config laden ─────────────────────────────────────
   function loadGitHubReleasePreview() {
-    const repository = String(document.getElementById('cfgGithubRepos')?.value || '')
-      .split(/[;,\s]+/).map(value => value.trim()).find(value => /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(value));
+    const repository = normalizeGitHubRepositoryForColors(document.getElementById('githubReleasePreviewRepoSelect')?.value)
+      || getGitHubPreviewRepositories()[0];
     const status = document.getElementById('githubPreviewStatus');
     const wrap = document.getElementById('githubPreviewWrap');
     const image = document.getElementById('githubPreviewImage');
@@ -5640,37 +5651,107 @@
     }
   }
 
-  function renderGitHubRepositoryColorRows() {
+  function renderGitHubRepositoryColorRows(repositoryValues) {
     const container = document.getElementById('cfgGithubRepoColorRows');
     if (!container) return;
-    const repositories = [...new Set(String(document.getElementById('cfgGithubRepos')?.value || '')
-      .split(/[;,\s]+/).map(normalizeGitHubRepositoryForColors).filter(Boolean))];
+    const repositories = repositoryValues || String(document.getElementById('cfgGithubRepos')?.value || '')
+      .split(/[;,\s]+/).map(value => value.trim()).filter(Boolean);
     const colors = readGitHubRepositoryColors();
     container.replaceChildren();
     if (!repositories.length) {
-      container.textContent = 'Zuerst mindestens ein Repository eintragen.';
-      container.classList.add('muted');
+      const emptyRow = document.createElement('tr');
+      const emptyCell = document.createElement('td');
+      emptyCell.colSpan = 3;
+      emptyCell.className = 'muted';
+      emptyCell.style.cssText = 'padding:12px 10px;text-align:center';
+      emptyCell.textContent = 'Noch keine Repositories hinzugefügt.';
+      emptyRow.appendChild(emptyCell);
+      container.appendChild(emptyRow);
       return;
     }
-    container.classList.remove('muted');
 
-    repositories.forEach(repository => {
-      const row = document.createElement('label');
-      row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:12px;padding:7px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);font-size:13px';
-      const name = document.createElement('span');
-      name.textContent = repository;
+    repositories.forEach((value, index) => {
+      const repository = normalizeGitHubRepositoryForColors(value);
+      const row = document.createElement('tr');
+      row.style.borderTop = index ? '1px solid var(--border)' : '';
+      const nameCell = document.createElement('td');
+      nameCell.style.cssText = 'padding:6px 8px';
+      const name = document.createElement('input');
+      name.className = 'cfg-input';
+      name.type = 'text';
+      name.autocomplete = 'off';
+      name.maxLength = 200;
+      name.placeholder = 'owner/repo oder GitHub-URL';
+      name.value = value;
+      name.dataset.githubRepoValue = '1';
+      name.style.width = '100%';
+      nameCell.appendChild(name);
+      const colorCell = document.createElement('td');
+      colorCell.style.cssText = 'padding:6px 8px;text-align:center';
       const color = document.createElement('input');
       color.type = 'color';
       color.value = colors[repository] || DEFAULT_GITHUB_RELEASE_COLOR;
-      color.dataset.repoColor = repository;
+      color.disabled = !repository;
+      color.dataset.repoColor = '1';
       color.setAttribute('aria-label', `Release-Farbe für ${repository}`);
       color.title = `Release-Farbe für ${repository}`;
       color.style.cssText = 'width:42px;height:30px;padding:2px;border:1px solid var(--border);border-radius:4px;background:transparent;cursor:pointer';
       color.addEventListener('input', syncGitHubRepositoryColors);
       color.addEventListener('change', syncGitHubRepositoryColors);
-      row.append(name, color);
+      colorCell.appendChild(color);
+      const actionCell = document.createElement('td');
+      actionCell.style.cssText = 'padding:6px 8px;text-align:right';
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'btn';
+      remove.textContent = '✕';
+      remove.title = `Repository ${value} entfernen`;
+      remove.setAttribute('aria-label', `Repository ${value} entfernen`);
+      remove.addEventListener('click', () => {
+        row.remove();
+        syncGitHubRepositoryRows();
+        syncGitHubRepositoryColors();
+        if (!container.querySelector('[data-github-repo-value]')) renderGitHubRepositoryColorRows();
+      });
+      actionCell.appendChild(remove);
+      name.addEventListener('input', () => {
+        const normalized = normalizeGitHubRepositoryForColors(name.value);
+        color.disabled = !normalized;
+        color.setAttribute('aria-label', `Release-Farbe für ${normalized || 'Repository'}`);
+        color.title = `Release-Farbe für ${normalized || 'Repository'}`;
+        syncGitHubRepositoryRows();
+      });
+      name.addEventListener('change', () => {
+        const normalized = normalizeGitHubRepositoryForColors(name.value);
+        color.value = colors[normalized] || DEFAULT_GITHUB_RELEASE_COLOR;
+        syncGitHubRepositoryColors();
+      });
+      row.append(nameCell, colorCell, actionCell);
       container.appendChild(row);
     });
+  }
+
+  function syncGitHubRepositoryRows() {
+    const hidden = document.getElementById('cfgGithubRepos');
+    const container = document.getElementById('cfgGithubRepoColorRows');
+    if (!hidden || !container) return;
+    const values = Array.from(container.querySelectorAll('[data-github-repo-value]'))
+      .map(input => String(input.value || '').trim()).filter(Boolean);
+    const serialized = [...new Set(values)].join(';');
+    if (hidden.value !== serialized) {
+      hidden.value = serialized;
+      hidden.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+  }
+
+  function addGitHubRepositoryRow() {
+    const hidden = document.getElementById('cfgGithubRepos');
+    const currentRows = Array.from(document.querySelectorAll('#cfgGithubRepoColorRows [data-github-repo-value]'))
+      .map(input => String(input.value || '').trim()).filter(Boolean);
+    currentRows.push('');
+    renderGitHubRepositoryColorRows(currentRows);
+    const inputs = document.querySelectorAll('#cfgGithubRepoColorRows [data-github-repo-value]');
+    inputs[inputs.length - 1]?.focus();
   }
 
   function syncGitHubRepositoryColors() {
@@ -5678,9 +5759,10 @@
     const container = document.getElementById('cfgGithubRepoColorRows');
     if (!hidden || !container) return;
     const colors = {};
-    container.querySelectorAll('input[data-repo-color]').forEach(input => {
-      const color = String(input.value || DEFAULT_GITHUB_RELEASE_COLOR).toLowerCase();
-      if (color !== DEFAULT_GITHUB_RELEASE_COLOR) colors[input.dataset.repoColor] = color;
+    container.querySelectorAll('tr').forEach(row => {
+      const repository = normalizeGitHubRepositoryForColors(row.querySelector('[data-github-repo-value]')?.value);
+      const color = String(row.querySelector('[data-repo-color]')?.value || DEFAULT_GITHUB_RELEASE_COLOR).toLowerCase();
+      if (repository && color !== DEFAULT_GITHUB_RELEASE_COLOR) colors[repository] = color;
     });
     const serialized = JSON.stringify(colors);
     if (hidden.value !== serialized) {
@@ -6239,11 +6321,11 @@
       button.addEventListener('click', () => insertGitHubReleaseTemplateText(button.dataset.releaseTemplateInsert || ''));
     });
     document.getElementById('cfgGithubRepos')?.addEventListener('input', () => {
-      renderGitHubRepositoryColorRows();
       updateGitHubReleasePreviewRepositories();
       clearTimeout(githubReleasePreviewTimer);
       githubReleasePreviewTimer = setTimeout(() => loadGitHubReleaseTextPreview(), 600);
     });
+    document.getElementById('btnAddGithubRepo')?.addEventListener('click', addGitHubRepositoryRow);
     document.getElementById('githubReleasePreviewRepoSelect')?.addEventListener('change', () => loadGitHubReleaseTextPreview());
     document.getElementById('cfgTranslateProvider')?.addEventListener('change', updateTranslateProviderStatus);
     document.getElementById('cfgDeepLApiKey')?.addEventListener('input', updateTranslateProviderStatus);
@@ -6255,6 +6337,7 @@
   // ── Config speichern mit Polling nach Restart ──────
   async function saveConfig() {
     syncCleanupRowsToHiddenInput();
+    syncGitHubRepositoryRows();
     syncGitHubRepositoryColors();
     const btn = document.getElementById('btnCfgSave');
     const st  = document.getElementById('cfgStatus');
