@@ -2736,13 +2736,10 @@ async function buildCommandTileAttachmentPayload() {
   const pngBuffer = await convertSvgToPngBuffer(buildCommandTileSvg());
   const attachment = new AttachmentBuilder(pngBuffer, { name: 'commands.png' });
   return {
-    embeds: [new EmbedBuilder()
-      .setColor(0x5865F2)
-      .setDescription('Alle aktivierten Befehle als übersichtliche Tabelle. Mit `/hilfe` erhältst du weitere Hinweise.')
-      .setImage('attachment://commands.png')
-      .setFooter({ text: 'Automatisch aus DISCORD_ENABLED_COMMANDS erzeugt.' })
-      .setTimestamp()],
-    files: [attachment]
+    content: '**Bockis Bot | Befehle**\nAlle aktivierten Befehle als Tabelle. Mit `/hilfe` erhältst du weitere Hinweise.',
+    embeds: [],
+    files: [attachment],
+    allowedMentions: { parse: [] }
   };
 }
 
@@ -3169,7 +3166,7 @@ async function ensureCommandTile() {
       payload = { embeds: [buildCommandTileEmbed()] };
     }
     if (message) {
-      await message.edit(payload);
+      await message.edit({ ...payload, content: payload.content ?? null, attachments: [] });
     } else {
       message = await channel.send(payload);
       commandTileMessageId = message.id;
