@@ -851,6 +851,18 @@ module.exports = function startWebServer({
     }
   });
 
+  app.post('/api/repair-log-clear', dashboardAuth, (req, res) => {
+    try {
+      const repairLogPath = path.join(rootDir, 'logs', 'repair.log');
+      const existed = fs.existsSync(repairLogPath);
+      if (existed) fs.truncateSync(repairLogPath, 0);
+      res.json({ ok: true, cleared: existed ? 1 : 0 });
+    } catch (err) {
+      logger.error(`/api/repair-log-clear Fehler: ${err.message}`);
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
   // ── API: Diagnose Link-Preview / Discord-Unfurl ───────────────────────────
 
   app.get('/api/diagnostics/link-preview', dashboardAuth, async (req, res) => {

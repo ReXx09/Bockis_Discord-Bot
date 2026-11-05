@@ -130,6 +130,13 @@
     .dashboard-grid > .card[data-pane="diagnostics"] {
       align-self: start;
     }
+    #logsCard, #repairDiagCard { align-self: stretch; }
+    #repairLogDiag {
+      height: 260px;
+      min-height: 260px;
+      max-height: 260px;
+      overflow-y: auto;
+    }
     .dashboard-grid > .card[data-span="3"]  { grid-column: span 3; }
     .dashboard-grid > .card[data-span="4"]  { grid-column: span 4; }
     .dashboard-grid > .card[data-span="6"]  { grid-column: span 6; }
@@ -1091,11 +1098,6 @@
                        placeholder="z. B. 123456789012345678">
               </div>
               <div class="cfg-field" style="margin-bottom:0">
-                <label class="cfg-label" for="cfgNotifCh">Benachrichtigungs-Channel ID</label>
-                <input class="cfg-input" id="cfgNotifCh" type="text" autocomplete="off"
-                       placeholder="z. B. 123456789012345678">
-              </div>
-              <div class="cfg-field" style="margin-bottom:0">
                 <label class="cfg-label" for="cfgCommandsCh">Öffentliche Befehls-Kachel: Channel ID</label>
                 <input class="cfg-input" id="cfgCommandsCh" type="text" autocomplete="off"
                        placeholder="Leer = deaktiviert">
@@ -1719,6 +1721,25 @@
             <img id="commandPreviewImage" alt="Vorschau der Befehlsansicht" style="display:block;width:100%;max-height:520px;object-fit:contain;background:#10141d;border:1px solid var(--border);border-radius:8px">
           </div>
           <div class="cfg-hint">Mindestens ein Kommando muss aktiv bleiben. Änderungen werden beim Neustart neu registriert.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <!-- Benachrichtigungen Section -->
+        <div class="cfg-section">
+          <div class="cfg-section-header" onclick="toggleConfigSection(this)">
+            <div class="cfg-section-header-title">
+              <span class="cfg-section-toggle">▾</span>
+              <span>🔔 Benachrichtigungen</span>
+            </div>
+          </div>
+          <div class="cfg-section-content">
+            <div class="cfg-section-body">
+              <div class="cfg-field" style="margin-bottom:0">
+                <label class="cfg-label" for="cfgNotifCh">Benachrichtigungs-Channel ID</label>
+                <input class="cfg-input" id="cfgNotifCh" type="text" autocomplete="off"
+                       placeholder="z. B. 123456789012345678">
+                <div class="cfg-hint">Discord-Kanal für Benachrichtigungen des Bots.</div>
               </div>
             </div>
           </div>
@@ -2580,8 +2601,13 @@
   <div class="mb12" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px">
     <button class="btn btn-red" id="btnRepairDiagFull" onclick="runRepair('full', 'btnRepairDiagFull')">🔧 Automatisch prüfen und reparieren</button>
     <button class="btn" type="button" id="btnCopyRepairLog" onclick="copyRepairLog()" title="Reparaturbericht kopieren">📋 Reparatur-Log kopieren</button>
+    <button class="btn" type="button" id="btnClearRepairLog" onclick="clearRepairLog()" title="Nur das Reparatur-Log zurücksetzen">🧹 Reparatur-Log zurücksetzen</button>
   </div>
-  <div id="repairLogDiag" style="display:none;margin-top:12px"></div>
+  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:0 0 10px">
+    <input class="cfg-input" id="repairLogFilter" type="search" aria-label="Reparatur-Log filtern" placeholder="Reparatur-Log durchsuchen…" oninput="filterRepairLogs()" style="flex:1;min-width:180px;height:34px;padding:6px 8px">
+    <span class="muted" id="repairLogResultCount" style="font-size:11px;white-space:nowrap">0 / 0</span>
+  </div>
+  <div id="repairLogDiag" class="update-log visible repair-log-viewer" style="margin-top:0"><span class="muted repair-log-empty">Noch kein Reparatur-Log vorhanden.</span></div>
 </div>
 
 <!-- ── UPDATES KACHEL ────────────────────────────────── -->
@@ -3088,16 +3114,45 @@
 
   function renderRepairLog(d) {
     const viewer = document.getElementById('repairLogDiag');
-    if (!viewer || !d?.ok || !d.lines?.length) return;
+    if (!viewer || !d?.ok) return;
     viewer.style.display = 'block';
-    viewer.className = 'update-log visible';
-    viewer.innerHTML = d.lines.map(line => {
+    viewer.className = 'update-log visible repair-log-viewer';
+    viewer.innerHTML = d.lines?.length ? d.lines.map(line => {
       let cls = 'ul-line';
       if (/FAIL|ERROR|fehler/i.test(line)) cls += ' ul-err';
       else if (/WARN|warn/i.test(line)) cls += ' ul-warn';
       else if (/\[ OK \]|erfolgreich/i.test(line)) cls += ' ul-ok';
       return `<div class="${cls}">${line.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>`;
-    }).join('');
+    }).join('') : '<span class="muted repair-log-empty">Noch kein Reparatur-Log vorhanden.</span>';
+    filterRepairLogs();
+  }
+
+  function filterRepairLogs() {
+    const viewer = document.getElementById('repairLogDiag');
+    if (!viewer) return;
+    const query = (document.getElementById('repairLogFilter')?.value || '').trim().toLowerCase();
+    const lines = Array.from(viewer.querySelectorAll('.ul-line'));
+    let visible = 0;
+    lines.forEach((line) => {
+      const matches = !query || line.textContent.toLowerCase().includes(query);
+      line.style.display = matches ? '' : 'none';
+      if (matches) visible++;
+    });
+
+    let empty = viewer.querySelector('.repair-log-empty');
+    if (!lines.length || (query && visible === 0)) {
+      if (!empty) {
+        empty = document.createElement('span');
+        empty.className = 'muted repair-log-empty';
+        viewer.appendChild(empty);
+      }
+      empty.textContent = lines.length ? 'Keine passenden Reparatur-Einträge.' : 'Noch kein Reparatur-Log vorhanden.';
+    } else {
+      empty?.remove();
+    }
+
+    const count = document.getElementById('repairLogResultCount');
+    if (count) count.textContent = `${visible} / ${lines.length}`;
   }
 
   async function copyBotLogs() {
@@ -3156,7 +3211,11 @@
 
   async function copyRepairLog() {
     const logEl = document.getElementById('repairLogDiag');
-    const text = logEl?.innerText?.trim() || '';
+    const text = Array.from(logEl?.querySelectorAll('.ul-line') || [])
+      .filter(line => line.style.display !== 'none')
+      .map(line => line.textContent.trim())
+      .filter(Boolean)
+      .join('\n');
     if (!text) {
       toast('Noch kein Reparatur-Log vorhanden', 'warn');
       return;
@@ -3181,6 +3240,30 @@
       toast('Reparatur-Log kopiert', 'ok');
     } catch (e) {
       toast('Kopieren fehlgeschlagen: ' + e.message, 'err');
+    }
+  }
+
+  async function clearRepairLog() {
+    if (document.getElementById('btnRepairDiagFull')?.disabled) {
+      toast('Während einer laufenden Reparatur kann das Log nicht zurückgesetzt werden', 'warn');
+      return;
+    }
+    if (!window.confirm('Nur das Reparatur-Log wirklich zurücksetzen? Bot-Logs bleiben erhalten.')) return;
+
+    const btn = document.getElementById('btnClearRepairLog');
+    if (btn) btn.disabled = true;
+    try {
+      const response = await fetch('/api/repair-log-clear', { method: 'POST' });
+      const result = await response.json();
+      if (!response.ok || !result.ok) throw new Error(result.error || response.statusText);
+      const viewer = document.getElementById('repairLogDiag');
+      if (viewer) viewer.innerHTML = '<span class="muted repair-log-empty">Reparatur-Log zurückgesetzt.</span>';
+      filterRepairLogs();
+      toast('Reparatur-Log zurückgesetzt', 'ok');
+    } catch (err) {
+      toast('Reparatur-Log konnte nicht zurückgesetzt werden: ' + err.message, 'err');
+    } finally {
+      if (btn) btn.disabled = false;
     }
   }
 
@@ -3897,7 +3980,7 @@
     allBtns.forEach(b => { b.disabled = true; });
     if (btn) { btn.textContent = '⏳…'; }
     logEl.style.display = 'block';
-    logEl.className     = 'update-log visible';
+    logEl.className     = 'update-log visible repair-log-viewer';
     logEl.innerHTML     = '';
 
     const addLine = (text, cls = '') => {
@@ -3906,6 +3989,7 @@
       el.textContent = text.replace(/\x1b\[[0-9;]*m/g, '');
       logEl.appendChild(el);
       logEl.scrollTop = logEl.scrollHeight;
+      filterRepairLogs();
     };
 
     try {
@@ -4664,21 +4748,31 @@
     const useDeepLEl = document.getElementById('cfgUseDeepL');
     const deepLKeyEl = document.getElementById('cfgDeepLApiKey');
     const libreUrlEl = document.getElementById('cfgTranslateApiUrl');
-    if (!statusEl || !useDeepLEl || !deepLKeyEl || !libreUrlEl) return;
+    const openAIKeyEl = document.getElementById('cfgOpenaiApiKey');
+    if (!statusEl || !useDeepLEl || !deepLKeyEl || !libreUrlEl || !openAIKeyEl) return;
 
     const deepLEnabled = !!useDeepLEl.checked;
     const hasDeepLKey = !!String(deepLKeyEl.value || '').trim() || deepLKeyEl.dataset.initialValue === '__MASKED__';
+    const hasOpenAIKey = !!String(openAIKeyEl.value || '').trim()
+      || openAIKeyEl.dataset.initialValue === '__MASKED__'
+      || /gesetzt/i.test(openAIKeyEl.placeholder);
     const libreUrl = String(libreUrlEl.value || '').trim() || 'http://localhost:5000/translate';
 
     if (deepLEnabled && hasDeepLKey) {
-      statusEl.innerHTML = '<strong>Aktiv:</strong> DeepL wird bevorzugt verwendet. <span style="color:var(--text-muted,#9aa)">Fallback bei Fehlern: LibreTranslate unter ' + escapeHtml(libreUrl) + '</span>';
+      statusEl.innerHTML = hasOpenAIKey
+        ? '<strong>Aktiv:</strong> DeepL wird bevorzugt verwendet, danach KI/OpenAI.'
+        : '<strong>Aktiv:</strong> DeepL wird bevorzugt verwendet. Fallback: LibreTranslate unter ' + escapeHtml(libreUrl);
       return;
     }
-    if (deepLEnabled && !hasDeepLKey) {
-      statusEl.innerHTML = '<strong>Fallback aktiv:</strong> DeepL ist eingeschaltet, aber es ist kein API-Key gesetzt. Es wird aktuell <strong>LibreTranslate</strong> unter ' + escapeHtml(libreUrl) + ' verwendet.';
+    if (hasOpenAIKey) {
+      statusEl.innerHTML = deepLEnabled
+        ? '<strong>Aktiv:</strong> KI/OpenAI wird verwendet; DeepL ist eingeschaltet, aber ohne API-Key.'
+        : '<strong>Aktiv:</strong> KI/OpenAI wird als Übersetzer verwendet.';
       return;
     }
-    statusEl.innerHTML = '<strong>Aktiv:</strong> DeepL ist deaktiviert. Es wird <strong>LibreTranslate</strong> unter ' + escapeHtml(libreUrl) + ' verwendet.';
+    statusEl.innerHTML = deepLEnabled
+      ? '<strong>Fallback aktiv:</strong> DeepL ist eingeschaltet, aber ohne API-Key. LibreTranslate unter ' + escapeHtml(libreUrl) + ' wird verwendet.'
+      : '<strong>Aktiv:</strong> LibreTranslate wird unter ' + escapeHtml(libreUrl) + ' verwendet.';
   }
 
   function _parseEnabledCommands(value) {
@@ -5599,6 +5693,7 @@
         document.getElementById('cfgOpenaiApiKey').placeholder = d.OPENAI_API_KEY
           ? 'sk-… (gesetzt – leer lassen = unverändert)'
           : 'sk-… (noch nicht gesetzt)';
+        updateTranslateProviderStatus();
         setCfg('cfgOpenaiModel', d.OPENAI_MODEL || _defaultModelForBaseUrl(openaiBaseUrl));
         setCfg('cfgOpenaiPersonaName', d.OPENAI_PERSONA_NAME || 'Bockis');
         setCfg('cfgOpenaiSystemPrompt', d.OPENAI_SYSTEM_PROMPT || '');
@@ -5741,6 +5836,7 @@
     document.getElementById('btnAddCleanupChannel')?.addEventListener('click', () => addCleanupChannelRow());
     document.getElementById('cfgUseDeepL')?.addEventListener('change', updateTranslateProviderStatus);
     document.getElementById('cfgDeepLApiKey')?.addEventListener('input', updateTranslateProviderStatus);
+    document.getElementById('cfgOpenaiApiKey')?.addEventListener('input', updateTranslateProviderStatus);
     document.getElementById('cfgTranslateApiUrl')?.addEventListener('input', updateTranslateProviderStatus);
     arLoadRules();
   });
