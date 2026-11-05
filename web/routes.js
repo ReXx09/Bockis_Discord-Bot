@@ -1663,6 +1663,7 @@ module.exports = function startWebServer({
         DISCORD_TRANSLATE_ENABLED:    get('DISCORD_TRANSLATE_ENABLED') || 'false',
         DISCORD_TRANSLATE_DEFAULT_TARGET: get('DISCORD_TRANSLATE_DEFAULT_TARGET') || 'de',
         DISCORD_TRANSLATE_DEFAULT_SOURCE: get('DISCORD_TRANSLATE_DEFAULT_SOURCE') || 'auto',
+        DISCORD_TRANSLATE_PROVIDER: get('DISCORD_TRANSLATE_PROVIDER') || (get('DISCORD_USE_DEEPL') === 'true' && get('DISCORD_DEEPL_API_KEY') ? 'deepl' : 'auto'),
         DISCORD_USE_DEEPL:            get('DISCORD_USE_DEEPL') || 'false',
         DISCORD_DEEPL_API_KEY:        maskSecret(get('DISCORD_DEEPL_API_KEY')),
         DISCORD_DEEPL_API_URL:        get('DISCORD_DEEPL_API_URL') || 'https://api-free.deepl.com',
@@ -1756,6 +1757,7 @@ module.exports = function startWebServer({
       'DISCORD_TRANSLATE_ENABLED',
       'DISCORD_TRANSLATE_DEFAULT_TARGET',
       'DISCORD_TRANSLATE_DEFAULT_SOURCE',
+      'DISCORD_TRANSLATE_PROVIDER',
       'DISCORD_USE_DEEPL',
       'DISCORD_DEEPL_API_KEY',
       'DISCORD_DEEPL_API_URL',
@@ -1940,6 +1942,8 @@ module.exports = function startWebServer({
           return res.json({ ok: false, error: `${key} muss auto (nur Quelle) oder Sprachcode wie de/en/fr sein` });
         }
       }
+      if (key === 'DISCORD_TRANSLATE_PROVIDER' && !['auto', 'openai', 'deepl', 'libretranslate'].includes(val))
+        return res.json({ ok: false, error: 'DISCORD_TRANSLATE_PROVIDER muss auto, openai, deepl oder libretranslate sein' });
       if (key === 'DISCORD_TRANSLATE_API_URL' && !/^https?:\/\/.+/.test(val))
         return res.json({ ok: false, error: 'DISCORD_TRANSLATE_API_URL muss mit http:// oder https:// beginnen' });
       if (key === 'DISCORD_TRANSLATE_ALLOWED_GUILD_IDS') {

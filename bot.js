@@ -3819,9 +3819,8 @@ function isTranslationAllowedForGuild(guildId) {
 }
 
 async function translateViaDeepL({ text, source, target }) {
-  const useDeepL = config.get('discord.useDeepL');
   const apiKey = String(config.get('discord.deepLApiKey') || '').trim();
-  if (!useDeepL || !apiKey) return null;
+  if (!apiKey) return null;
 
   const baseUrl = String(config.get('discord.deepLApiUrl') || '').trim() || 'https://api-free.deepl.com';
   const normalTarget = String(target || 'de').toUpperCase(); // DeepL: uppercase codes + optional -US suffix
@@ -3969,22 +3968,35 @@ async function translateViaAI({ text, source, target }) {
 }
 
 async function translateTextViaApi({ text, source, target }) {
-  // Eine ausdrücklich aktivierte DeepL-Konfiguration bleibt der primäre Provider.
-  if (config.get('discord.useDeepL')) {
+  const provider = String(config.get('discord.translateProvider') || 'auto').trim().toLowerCase();
+  const hasOpenAIKey = !!String(config.get('openai.apiKey') || '').trim();
+  const hasDeepLKey = !!String(config.get('discord.deepLApiKey') || '').trim();
+
+  if (provider === 'openai') return translateViaAI({ text, source, target });
+  if (provider === 'libretranslate') return translateViaLibreTranslate({ text, source, target });
+
+  const legacyDeepLPreference = provider === 'auto'
+    && config.get('discord.useDeepL') === true
+    && hasDeepLKey;
+  if (provider === 'deepl' || legacyDeepLPreference) {
     try {
       const result = await translateViaDeepL({ text, source, target });
       if (result) return result;
     } catch (e) {
       logger.warn(`DeepL Error: ${e.message}`);
     }
+    if (provider === 'deepl') return translateViaLibreTranslate({ text, source, target });
   }
 
-  if (String(config.get('openai.apiKey') || '').trim()) {
-    return translateViaAI({ text, source, target });
+  if (provider === 'auto' && hasOpenAIKey) {
+    try {
+      return await translateViaAI({ text, source, target });
+    } catch (err) {
+      logger.warn(`KI-Übersetzung fehlgeschlagen, nutze LibreTranslate: ${err.message}`);
+    }
   }
 
-  // Letzter Fallback, wenn DeepL und KI nicht verfügbar sind.
-  return await translateViaLibreTranslate({ text, source, target });
+  return translateViaLibreTranslate({ text, source, target });
 }
 
 function applyConfiguredPresenceNow() {

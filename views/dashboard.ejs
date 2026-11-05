@@ -695,6 +695,31 @@
       .cfg-sidebar { max-height: 320px; }
     }
     .cfg-field { margin-bottom: 14px; }
+    .cleanup-channel-head,
+    .cleanup-channel-row {
+      display: grid;
+      grid-template-columns: minmax(190px, 240px) minmax(180px, 1fr) 110px 110px 110px 28px;
+      gap: 5px;
+      align-items: center;
+    }
+    .cleanup-channel-head { padding: 0 2px; margin-bottom: 3px; }
+    .cleanup-ch-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    @media (max-width: 700px) {
+      .cleanup-channel-head,
+      .cleanup-channel-row {
+        grid-template-columns: minmax(140px, 1.1fr) minmax(120px, 1.3fr) repeat(3, minmax(76px, .7fr)) 28px;
+      }
+    }
+    @media (max-width: 540px) {
+      .cleanup-channel-head { display: none; }
+      .cleanup-channel-row { grid-template-columns: repeat(3, minmax(0, 1fr)) 28px; }
+      .cleanup-ch-id { grid-column: 1 / span 2; grid-row: 1; }
+      .cleanup-ch-name { grid-column: 3; grid-row: 1; }
+      .cleanup-sel-mm { grid-column: 1; grid-row: 2; }
+      .cleanup-sel-ma { grid-column: 2; grid-row: 2; }
+      .cleanup-sel-iv { grid-column: 3; grid-row: 2; }
+      .cleanup-row-remove { grid-column: 4; grid-row: 1; }
+    }
     /* ── Collapsible Sections ─────────────────────────────────────────────── */
     .cfg-section { margin-bottom: 12px; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
     .cfg-section-header {
@@ -1097,12 +1122,6 @@
                 <input class="cfg-input" id="cfgStatusCh" type="text" autocomplete="off"
                        placeholder="z. B. 123456789012345678">
               </div>
-              <div class="cfg-field" style="margin-bottom:0">
-                <label class="cfg-label" for="cfgCommandsCh">Öffentliche Befehls-Kachel: Channel ID</label>
-                <input class="cfg-input" id="cfgCommandsCh" type="text" autocomplete="off"
-                       placeholder="Leer = deaktiviert">
-                <div class="cfg-hint">In diesem Kanal wird die gepinnte Übersicht der Bot-Befehle erstellt und automatisch wiederhergestellt.</div>
-              </div>
             </div>
           </div>
         </div>
@@ -1241,37 +1260,43 @@
               </div>
               <div class="cfg-hint">Leer bei Guild-Whitelist = in allen Servern und DMs nutzbar, in denen der Bot verfuegbar ist.</div>
               <div style="border-top:1px solid var(--border);margin-top:12px;padding-top:12px">
-                <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;margin-bottom:8px">
-                  <input type="checkbox" id="cfgUseDeepL" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
-                  <span>DeepL als primaerer Uebersetzer nutzen (falls API-Key gesetzt)</span>
-                </label>
-                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px;margin-bottom:8px">
-                  <div>
-                    <label class="cfg-label" for="cfgDeepLApiKey" style="font-size:12px;margin-bottom:4px">DeepL API Key</label>
-                    <input class="cfg-input" id="cfgDeepLApiKey" type="password" autocomplete="off" placeholder="Leer = nicht genutzt">
+                <label class="cfg-label" for="cfgTranslateProvider" style="font-size:12px;margin-bottom:4px">Übersetzungsanbieter</label>
+                <select class="cfg-input" id="cfgTranslateProvider">
+                  <option value="auto">Automatisch (KI/OpenAI, sonst LibreTranslate)</option>
+                  <option value="openai">KI / OpenAI</option>
+                  <option value="deepl">DeepL</option>
+                  <option value="libretranslate">LibreTranslate</option>
+                </select>
+                <div id="cfgTranslateProviderHelp" class="cfg-hint" style="margin-bottom:10px"></div>
+                <div id="cfgTranslateDeepLConfig" style="display:none">
+                  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px;margin-bottom:8px">
+                    <div>
+                      <label class="cfg-label" for="cfgDeepLApiKey" style="font-size:12px;margin-bottom:4px">DeepL API Key</label>
+                      <input class="cfg-input" id="cfgDeepLApiKey" type="password" autocomplete="off" placeholder="Leer = nicht genutzt">
+                    </div>
+                    <div>
+                      <label class="cfg-label" for="cfgDeepLApiUrl" style="font-size:12px;margin-bottom:4px">DeepL API URL</label>
+                      <select class="cfg-input" id="cfgDeepLApiUrl">
+                        <option value="https://api-free.deepl.com">api-free.deepl.com (Free)</option>
+                        <option value="https://api.deepl.com">api.deepl.com (Pro)</option>
+                      </select>
+                    </div>
                   </div>
-                  <div>
-                    <label class="cfg-label" for="cfgDeepLApiUrl" style="font-size:12px;margin-bottom:4px">DeepL API URL</label>
-                    <select class="cfg-input" id="cfgDeepLApiUrl">
-                      <option value="https://api-free.deepl.com">api-free.deepl.com (Free)</option>
-                      <option value="https://api.deepl.com">api.deepl.com (Pro)</option>
-                    </select>
-                  </div>
+                  <div class="cfg-hint">DeepL benötigt einen eigenen API-Key. Bei einem Fehler wird LibreTranslate verwendet.</div>
                 </div>
-                <div class="cfg-hint">DeepL bietet hoehere Qualitaet. Fallback: LibreTranslate. API-Key unter https://www.deepl.com/pro-account/summary erhältlich.</div>
               </div>
               <div id="cfgTranslateProviderStatus" style="margin-top:12px;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:rgba(255,255,255,.03);font-size:13px;color:var(--text)">
                 Uebersetzer-Status wird geladen...
               </div>
-              <div style="border-top:1px solid var(--border);margin-top:12px;padding-top:12px">
-                <label class="cfg-label" style="font-size:12px;margin-bottom:4px">Fallback: LibreTranslate</label>
+              <div id="cfgTranslateLibreConfig" style="display:none;border-top:1px solid var(--border);margin-top:12px;padding-top:12px">
+                <label class="cfg-label" style="font-size:12px;margin-bottom:4px">LibreTranslate-Konfiguration</label>
                 <label class="cfg-label" for="cfgTranslateApiUrl" style="font-size:12px;margin-bottom:4px;margin-top:8px">API URL</label>
                 <input class="cfg-input" id="cfgTranslateApiUrl" type="text" autocomplete="off"
                        placeholder="http://localhost:5000/translate">
                 <label class="cfg-label" for="cfgTranslateApiKey" style="font-size:12px;margin-bottom:4px;margin-top:8px">API Key (optional)</label>
                 <input class="cfg-input" id="cfgTranslateApiKey" type="password" autocomplete="off"
                        placeholder="Leer = nicht noetig">
-                <div class="cfg-hint" style="margin-bottom:0">Wird als Fallback genutzt, wenn DeepL nicht verfuegbar oder deaktiviert ist.</div>
+                  <div class="cfg-hint" style="margin-bottom:0">Wird direkt oder als Fallback bei einem DeepL-Fehler genutzt.</div>
               </div>
             </div>
           </div>
@@ -1360,8 +1385,9 @@
                   <span class="cfg-label" style="font-size:12px;margin:0">Kanäle &amp; Cleanup-Regeln</span>
                   <button type="button" id="btnAddCleanupChannel" style="padding:3px 10px;font-size:12px;border-radius:5px;border:1px solid var(--border);background:var(--surface);color:var(--text);cursor:pointer">+ Kanal hinzufügen</button>
                 </div>
-                <div style="display:grid;grid-template-columns:1fr 110px 110px 110px 28px;gap:5px;padding:0 2px;margin-bottom:3px">
+                <div class="cleanup-channel-head">
                   <span style="font-size:11px;color:var(--muted)">Channel-ID</span>
+                  <span style="font-size:11px;color:var(--muted)">Kanalname</span>
                   <span style="font-size:11px;color:var(--muted)">Max. Nachrichten</span>
                   <span style="font-size:11px;color:var(--muted)">Max. Alter</span>
                   <span style="font-size:11px;color:var(--muted)">Intervall</span>
@@ -1707,6 +1733,12 @@
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:12px">
             <button class="btn" type="button" onclick="loadCommandPreview()">👁 Befehlsansicht Vorschau</button>
             <span class="muted" id="commandPreviewStatus"></span>
+          </div>
+          <div class="cfg-field" style="margin-top:12px;margin-bottom:0">
+            <label class="cfg-label" for="cfgCommandsCh">Öffentliche Befehls-Kachel: Channel ID</label>
+            <input class="cfg-input" id="cfgCommandsCh" type="text" autocomplete="off"
+                   placeholder="Leer = deaktiviert">
+            <div class="cfg-hint">In diesem Kanal wird die gepinnte Übersicht der Bot-Befehle erstellt und automatisch wiederhergestellt.</div>
           </div>
           <div class="cfg-field" style="margin-top:12px;margin-bottom:0">
             <label class="cfg-label" for="cfgCommandTileScale">Grafikgröße der Befehlsansicht</label>
@@ -4763,34 +4795,41 @@
 
   function updateTranslateProviderStatus() {
     const statusEl = document.getElementById('cfgTranslateProviderStatus');
-    const useDeepLEl = document.getElementById('cfgUseDeepL');
+    const providerEl = document.getElementById('cfgTranslateProvider');
+    const helpEl = document.getElementById('cfgTranslateProviderHelp');
+    const deepLConfigEl = document.getElementById('cfgTranslateDeepLConfig');
+    const libreConfigEl = document.getElementById('cfgTranslateLibreConfig');
     const deepLKeyEl = document.getElementById('cfgDeepLApiKey');
     const libreUrlEl = document.getElementById('cfgTranslateApiUrl');
     const openAIKeyEl = document.getElementById('cfgOpenaiApiKey');
-    if (!statusEl || !useDeepLEl || !deepLKeyEl || !libreUrlEl || !openAIKeyEl) return;
+    if (!statusEl || !providerEl || !helpEl || !deepLConfigEl || !libreConfigEl || !deepLKeyEl || !libreUrlEl || !openAIKeyEl) return;
 
-    const deepLEnabled = !!useDeepLEl.checked;
+    const provider = providerEl.value || 'auto';
     const hasDeepLKey = !!String(deepLKeyEl.value || '').trim() || deepLKeyEl.dataset.initialValue === '__MASKED__';
     const hasOpenAIKey = !!String(openAIKeyEl.value || '').trim()
       || openAIKeyEl.dataset.initialValue === '__MASKED__'
       || /gesetzt/i.test(openAIKeyEl.placeholder);
     const libreUrl = String(libreUrlEl.value || '').trim() || 'http://localhost:5000/translate';
 
-    if (deepLEnabled && hasDeepLKey) {
-      statusEl.innerHTML = hasOpenAIKey
-        ? '<strong>Aktiv:</strong> DeepL wird bevorzugt verwendet, danach KI/OpenAI.'
-        : '<strong>Aktiv:</strong> DeepL wird bevorzugt verwendet. Fallback: LibreTranslate unter ' + escapeHtml(libreUrl);
-      return;
+    deepLConfigEl.style.display = provider === 'deepl' ? '' : 'none';
+    libreConfigEl.style.display = provider === 'openai' ? 'none' : '';
+    if (provider === 'auto') {
+      helpEl.textContent = 'Kein DeepL erforderlich. OpenAI wird bevorzugt, LibreTranslate dient als Fallback.';
+      statusEl.textContent = hasOpenAIKey
+        ? 'Bereit: OpenAI ist konfiguriert; bei Fehlern wird LibreTranslate unter ' + libreUrl + ' genutzt.'
+        : 'OpenAI-Key fehlt: LibreTranslate unter ' + libreUrl + ' wird verwendet.';
+    } else if (provider === 'openai') {
+      helpEl.textContent = 'Verwendet den OpenAI-Key aus dem Bereich KI-Chat. Kein DeepL-Key erforderlich.';
+      statusEl.textContent = hasOpenAIKey ? 'Bereit: OpenAI wird als Übersetzer verwendet.' : 'OpenAI-Key fehlt. Hinterlege ihn im Bereich KI-Chat.';
+    } else if (provider === 'deepl') {
+      helpEl.textContent = 'DeepL benötigt einen eigenen API-Key; bei fehlendem Key oder Fehler wird LibreTranslate genutzt.';
+      statusEl.textContent = hasDeepLKey
+        ? 'Bereit: DeepL wird verwendet; Fallback: LibreTranslate unter ' + libreUrl + '.'
+        : 'DeepL-Key fehlt. Fallback: LibreTranslate unter ' + libreUrl + '.';
+    } else {
+      helpEl.textContent = 'Verwendet ausschließlich LibreTranslate. DeepL und OpenAI werden nicht benötigt.';
+      statusEl.textContent = 'LibreTranslate wird unter ' + libreUrl + ' verwendet.';
     }
-    if (hasOpenAIKey) {
-      statusEl.innerHTML = deepLEnabled
-        ? '<strong>Aktiv:</strong> KI/OpenAI wird verwendet; DeepL ist eingeschaltet, aber ohne API-Key.'
-        : '<strong>Aktiv:</strong> KI/OpenAI wird als Übersetzer verwendet.';
-      return;
-    }
-    statusEl.innerHTML = deepLEnabled
-      ? '<strong>Fallback aktiv:</strong> DeepL ist eingeschaltet, aber ohne API-Key. LibreTranslate unter ' + escapeHtml(libreUrl) + ' wird verwendet.'
-      : '<strong>Aktiv:</strong> LibreTranslate wird unter ' + escapeHtml(libreUrl) + ' verwendet.';
   }
 
   function _parseEnabledCommands(value) {
@@ -5591,7 +5630,8 @@
       ensureSelectOption('cfgTranslateDefaultSource', d.DISCORD_TRANSLATE_DEFAULT_SOURCE || 'auto');
       setCfg('cfgTranslateDefaultTarget', d.DISCORD_TRANSLATE_DEFAULT_TARGET || 'de');
       setCfg('cfgTranslateDefaultSource', d.DISCORD_TRANSLATE_DEFAULT_SOURCE || 'auto');
-      setCheckboxValue('cfgUseDeepL', d.DISCORD_USE_DEEPL || 'false', { force });
+      setCfg('cfgTranslateProvider', d.DISCORD_TRANSLATE_PROVIDER || (d.DISCORD_USE_DEEPL === 'true' && d.DISCORD_DEEPL_API_KEY ? 'deepl' : 'auto'));
+      document.getElementById('cfgTranslateProvider').dataset.initialLegacyDeepL = d.DISCORD_USE_DEEPL || 'false';
       setCfg('cfgDeepLApiUrl', d.DISCORD_DEEPL_API_URL || 'https://api-free.deepl.com');
       setCfg('cfgTranslateApiUrl', d.DISCORD_TRANSLATE_API_URL || 'http://localhost:5000/translate');
       setCfg('cfgTranslateApiUrlSecurity', d.DISCORD_TRANSLATE_API_URL || 'http://localhost:5000/translate');
@@ -5828,19 +5868,16 @@
     if (!container) return;
     const row = document.createElement('div');
     row.className = 'cleanup-channel-row';
-    row.style.cssText = 'display:grid;grid-template-columns:1fr 110px 110px 110px 28px;gap:5px;align-items:center';
     const mm = overrides.maxmessages !== undefined ? String(overrides.maxmessages) : '';
     const ma = overrides.maxagehours !== undefined ? String(overrides.maxagehours) : '';
     const iv = overrides.cleanupintervalms !== undefined ? String(overrides.cleanupintervalms) : '';
     row.innerHTML = `
-      <div style="display:grid;gap:3px;min-width:0">
-        <input class="cfg-input cleanup-ch-id" type="text" placeholder="Channel-ID (z. B. 123456789012345678)" value="${id}" maxlength="20" style="font-family:monospace;font-size:13px" autocomplete="off">
-        <span class="cleanup-ch-name" role="status" aria-live="polite" style="font-size:11px;color:var(--text-muted,#9aa);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Kanalname wird anhand der ID erkannt</span>
-      </div>
+      <input class="cfg-input cleanup-ch-id" type="text" placeholder="Channel-ID" value="${id}" maxlength="20" style="font-family:monospace;font-size:13px" autocomplete="off">
+      <span class="cleanup-ch-name" role="status" aria-live="polite" title="Kanalname wird anhand der ID erkannt" style="font-size:12px;color:var(--text-muted,#9aa)">Kanalname wird anhand der ID erkannt</span>
       <select class="cfg-input cleanup-sel-mm" title="Max. Nachrichten im Kanal" style="font-size:12px">${_mkCleanupMaxMsgOpts(mm)}</select>
       <select class="cfg-input cleanup-sel-ma" title="Nachrichten älter als (Stunden)" style="font-size:12px">${_mkCleanupMaxAgeOpts(ma)}</select>
       <select class="cfg-input cleanup-sel-iv" title="Cleanup-Intervall" style="font-size:12px">${_mkCleanupIntervalOpts(iv)}</select>
-      <button type="button" title="Kanal entfernen" style="padding:0;width:26px;height:26px;border-radius:5px;border:1px solid var(--border);background:rgba(220,50,50,.15);color:#f88;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;flex-shrink:0">✕</button>
+      <button class="cleanup-row-remove" type="button" title="Kanal entfernen" style="padding:0;width:26px;height:26px;border-radius:5px;border:1px solid var(--border);background:rgba(220,50,50,.15);color:#f88;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;flex-shrink:0">✕</button>
     `;
     row.querySelector('button').addEventListener('click', () => row.remove());
     row.querySelector('.cleanup-ch-id').addEventListener('blur', () => _resolveCleanupChannelName(row));
@@ -5886,7 +5923,7 @@
   }
   document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('btnAddCleanupChannel')?.addEventListener('click', () => addCleanupChannelRow());
-    document.getElementById('cfgUseDeepL')?.addEventListener('change', updateTranslateProviderStatus);
+    document.getElementById('cfgTranslateProvider')?.addEventListener('change', updateTranslateProviderStatus);
     document.getElementById('cfgDeepLApiKey')?.addEventListener('input', updateTranslateProviderStatus);
     document.getElementById('cfgOpenaiApiKey')?.addEventListener('input', updateTranslateProviderStatus);
     document.getElementById('cfgTranslateApiUrl')?.addEventListener('input', updateTranslateProviderStatus);
@@ -5914,9 +5951,9 @@
     maybeSetChanged(body, 'DISCORD_ENABLED_COMMANDS', 'cfgEnabledCommands');
     maybeSetChanged(body, 'DISCORD_TRANSLATE_DEFAULT_TARGET', 'cfgTranslateDefaultTarget');
     maybeSetChanged(body, 'DISCORD_TRANSLATE_DEFAULT_SOURCE', 'cfgTranslateDefaultSource');
-    const useDeepLEl = document.getElementById('cfgUseDeepL');
-    const curUseDeepL = useDeepLEl.checked ? 'true' : 'false';
-    if (curUseDeepL !== (useDeepLEl.dataset.initialValue || 'false')) body.DISCORD_USE_DEEPL = curUseDeepL;
+    maybeSetChanged(body, 'DISCORD_TRANSLATE_PROVIDER', 'cfgTranslateProvider');
+    const curUseDeepL = document.getElementById('cfgTranslateProvider').value === 'deepl' ? 'true' : 'false';
+    if (curUseDeepL !== (document.getElementById('cfgTranslateProvider').dataset.initialLegacyDeepL || 'false')) body.DISCORD_USE_DEEPL = curUseDeepL;
     maybeSetChanged(body, 'DISCORD_DEEPL_API_KEY', 'cfgDeepLApiKey', { allowEmpty: true });
     maybeSetChanged(body, 'DISCORD_DEEPL_API_URL', 'cfgDeepLApiUrl');
     maybeSetChangedAny(body, 'DISCORD_TRANSLATE_API_URL', ['cfgTranslateApiUrl', 'cfgTranslateApiUrlSecurity']);

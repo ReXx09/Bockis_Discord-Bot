@@ -134,6 +134,12 @@ const config = convict({
       default: 'auto',
       env: 'DISCORD_TRANSLATE_DEFAULT_SOURCE'
     },
+    translateProvider: {
+      doc: 'Uebersetzungsanbieter fuer /translate: automatisch, OpenAI, DeepL oder LibreTranslate',
+      format: ['auto', 'openai', 'deepl', 'libretranslate'],
+      default: 'auto',
+      env: 'DISCORD_TRANSLATE_PROVIDER'
+    },
     translateApiUrl: {
       doc: 'HTTP-Endpoint fuer Uebersetzungen (LibreTranslate kompatibel)',
       format: String,
