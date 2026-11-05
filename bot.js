@@ -2608,33 +2608,65 @@ function buildCommandTileEmbed() {
 
 function buildCommandTilePlainText() {
   const enabled = new Set(getEnabledSlashCommands());
-  const commandIds = new Map();
   const categories = [
     { key: 'info', title: 'INFO & VERWALTUNG' },
     { key: 'fun', title: 'FUN & GADGETS' },
     { key: 'admin', title: 'ADMIN & DEBUG' }
   ];
+  const grouped = categories.map(category => ({
+    ...category,
+    commands: COMMAND_TILE_CATEGORIES[category.key].filter(command => enabled.has(command))
+  })).filter(category => category.commands.length);
+  const compactLabels = {
+    refresh: 'manuell aktualisieren [Admin]',
+    triggerinfo: 'Auto-Reply-Trigger posten',
+    cleanup: 'Nachrichten bereinigen [Admin]',
+    subscribe: 'Status-Abos verwalten',
+    quote: 'Zitat speichern/anzeigen',
+    testreply: 'Auto-Reply testen [Admin]'
+  };
+  const descriptionFor = command => compactLabels[command] || COMMAND_TILE_LABELS[command] || 'verfügbar';
+  const commandWidth = Math.max(10, ...grouped.flatMap(category => category.commands.map(command =>
+    getSlashCommandDisplayName(command, 'de').length + 1)));
+  const descriptionWidth = Math.max(12, ...grouped.flatMap(category => category.commands.map(command =>
+    descriptionFor(command).length)));
+  const tableWidth = commandWidth + descriptionWidth + 5;
+  const line = (left, middle, right) => left + '─'.repeat(commandWidth + 2)
+    + middle + '─'.repeat(descriptionWidth + 2) + right;
+  const row = (command, description) => `│ ${command.padEnd(commandWidth)} │ ${description.padEnd(descriptionWidth)} │`;
+  const fullLine = (left, right) => left + '─'.repeat(tableWidth) + right;
+  const centeredRow = text => {
+    const padding = Math.max(0, tableWidth - text.length);
+    const leftPadding = Math.floor(padding / 2);
+    return `│${' '.repeat(leftPadding)}${text}${' '.repeat(padding - leftPadding)}│`;
+  };
 
-  try {
-    const appCommands = client.application?.commands?.cache;
-    if (appCommands) {
-      for (const [id, command] of appCommands) commandIds.set(command.name, id);
-    }
-  } catch { /* ignore */ }
-
-  const lines = ['**Bockis Bot | Befehle**'];
-  for (const category of categories) {
-    const commands = COMMAND_TILE_CATEGORIES[category.key].filter(command => enabled.has(command));
-    if (!commands.length) continue;
-    lines.push('', `**${category.title}**`);
-    for (const command of commands) {
-      const id = commandIds.get(command);
-      const mention = id ? `</${command}:${id}>` : `/${getSlashCommandDisplayName(command, 'de')}`;
-      lines.push(`${mention}  ·  ${COMMAND_TILE_LABELS[command] || 'verfügbar'}`);
+  const lines = ['```', fullLine('┌', '┐'), centeredRow('BOCKIS BOT | BEFEHLE'), line('├', '┬', '┤'), row('BEFEHL', 'BESCHREIBUNG')];
+  for (const category of grouped) {
+    lines.push(fullLine('├', '┤'), centeredRow(category.title));
+    for (const command of category.commands) {
+      lines.push(row(`/${getSlashCommandDisplayName(command, 'de')}`, descriptionFor(command)));
     }
   }
-  if (lines.length === 1) lines.push('', 'Keine Befehle aktiviert.');
+  if (!grouped.length) {
+    lines.push(fullLine('├', '┤'), centeredRow('KEINE BEFEHLE AKTIVIERT'), fullLine('└', '┘'));
+  } else {
+    lines.push(fullLine('└', '┘'));
+  }
+  lines.push('```');
   return lines.join('\n');
+}
+
+function renderCommandTileText(templateOverride) {
+  const encodedTemplate = String(config.get('discord.commandTileTemplateB64') || '').trim();
+  const savedTemplate = encodedTemplate ? Buffer.from(encodedTemplate, 'base64').toString('utf8') : '{{commands}}';
+  const template = templateOverride === undefined ? savedTemplate : String(templateOverride);
+  const placeholders = template.match(/\{\{commands\}\}/g) || [];
+  if (placeholders.length !== 1) throw new Error('Die Vorlage muss {{commands}} genau einmal enthalten');
+
+  const message = template.replace('{{commands}}', buildCommandTilePlainText());
+  if (message.length > 2000) throw new Error('Die fertige Befehlsansicht überschreitet Discords 2000-Zeichen-Limit');
+  return message;
 }
 
 function buildCommandTileSvg() {
@@ -2757,7 +2789,7 @@ function buildCommandTileSvg() {
 
 async function buildCommandTileAttachmentPayload() {
   return {
-    content: buildCommandTilePlainText(),
+    content: renderCommandTileText(),
     embeds: [],
     files: [],
     allowedMentions: { parse: [] }
@@ -3153,6 +3185,10 @@ function initializeGitHubWatcher() {
 
 async function getCommandTilePreviewPng() {
   return convertSvgToPngBuffer(buildCommandTileSvg());
+}
+
+function getCommandTilePreviewText(template) {
+  return renderCommandTileText(template);
 }
 
 async function getGitHubReleasePreviewPng(repository) {
@@ -5264,7 +5300,7 @@ function initializeUpdateCycle() {
 // #region 23. STARTUP
 // Webserver SOFORT starten — unabhängig vom Discord-Login
 // Damit ist das Dashboard auch erreichbar wenn der Token noch nicht stimmt
-const _webDeps = { config, logger, client, sequelize, prom, getMonitorData, updateStatusMessage, getWigiDashStatus, getCommandTilePreviewPng, getGitHubReleasePreviewPng, runGitHubReleaseCheck, rootDir: __dirname };
+const _webDeps = { config, logger, client, sequelize, prom, getMonitorData, updateStatusMessage, getWigiDashStatus, getCommandTilePreviewPng, getCommandTilePreviewText, getGitHubReleasePreviewPng, runGitHubReleaseCheck, rootDir: __dirname };
 let _httpServer = null;
 initializeDatabase().then(() => { _httpServer = startWebServer(_webDeps); }).catch(err => {
   logger.error(`DB/Webserver-Startfehler: ${err.message}`);

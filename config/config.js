@@ -104,6 +104,12 @@ const config = convict({
       default: 'status,uptime,refresh,help,triggerinfo,coinflip,dice,eightball,cleanup,translate,ping,botinfo,serverstatus,ki,wetter,subscribe,remind,quote,poll,avatar,userinfo,testreply',
       env: 'DISCORD_ENABLED_COMMANDS'
     },
+    commandTileTemplateB64: {
+      doc: 'Base64-kodierte Vorlage fuer die oeffentliche Befehlsansicht',
+      format: String,
+      default: '',
+      env: 'DISCORD_COMMAND_TILE_TEMPLATE_B64'
+    },
     commandTileScale: {
       doc: 'Darstellungsgröße der grafischen Befehls-Kachel',
       format: ['compact', 'normal', 'large'],

@@ -51,6 +51,7 @@ module.exports = function startWebServer({
   updateStatusMessage,
   getWigiDashStatus,
   getCommandTilePreviewPng,
+  getCommandTilePreviewText,
   getGitHubReleasePreviewPng,
   runGitHubReleaseCheck,
   rootDir           // = __dirname aus bot.js (Projektwurzel)
@@ -84,6 +85,16 @@ module.exports = function startWebServer({
     } catch (err) {
       logger.error(`/api/previews/commands.png Fehler: ${err.message}`);
       res.status(503).json({ ok: false, error: err.message });
+    }
+  });
+
+  app.post('/api/previews/commands.txt', dashboardAuth, (req, res) => {
+    try {
+      if (typeof getCommandTilePreviewText !== 'function') throw new Error('Befehlsvorschau nicht verfügbar');
+      const text = getCommandTilePreviewText(String(req.body?.template || ''));
+      res.set('Cache-Control', 'no-store').json({ ok: true, text });
+    } catch (err) {
+      res.status(400).json({ ok: false, error: err.message });
     }
   });
 
@@ -1627,6 +1638,10 @@ module.exports = function startWebServer({
       const webhookUrl = get('DISCORD_STATUS_WEBHOOK_URL');
       const dashboardPassword = get('DASHBOARD_PASSWORD');
       const translateApiKey = get('DISCORD_TRANSLATE_API_KEY');
+      const commandTileTemplateEncoded = get('DISCORD_COMMAND_TILE_TEMPLATE_B64');
+      const commandTileTemplate = commandTileTemplateEncoded
+        ? Buffer.from(commandTileTemplateEncoded, 'base64').toString('utf8')
+        : '{{commands}}';
 
       res.json({
         ok: true,
@@ -1659,6 +1674,7 @@ module.exports = function startWebServer({
         DISCORD_GITHUB_RELEASE_TEMPLATE: get('DISCORD_GITHUB_RELEASE_TEMPLATE') || '',
         GITHUB_TOKEN:                 maskSecret(get('GITHUB_TOKEN')),
         DISCORD_ENABLED_COMMANDS:     get('DISCORD_ENABLED_COMMANDS') || 'status,uptime,refresh,help,triggerinfo,coinflip,dice,eightball,cleanup,translate,ping,botinfo,serverstatus,ki,wetter,subscribe,remind,quote,poll,avatar,userinfo,testreply',
+        DISCORD_COMMAND_TILE_TEMPLATE: commandTileTemplate,
         DISCORD_COMMAND_TILE_SCALE:   get('DISCORD_COMMAND_TILE_SCALE') || 'large',
         DISCORD_TRANSLATE_ENABLED:    get('DISCORD_TRANSLATE_ENABLED') || 'false',
         DISCORD_TRANSLATE_DEFAULT_TARGET: get('DISCORD_TRANSLATE_DEFAULT_TARGET') || 'de',
@@ -1753,6 +1769,7 @@ module.exports = function startWebServer({
       'DISCORD_AUTO_REPLY_RESPONSE_MODE',
       'DISCORD_AUTO_REPLY_CONNECTOR',
       'DISCORD_ENABLED_COMMANDS',
+      'DISCORD_COMMAND_TILE_TEMPLATE',
       'DISCORD_COMMAND_TILE_SCALE',
       'DISCORD_TRANSLATE_ENABLED',
       'DISCORD_TRANSLATE_DEFAULT_TARGET',
@@ -1886,9 +1903,24 @@ module.exports = function startWebServer({
         continue;
       }
 
-      if (raw === '') continue;
+      if (raw === '' && key !== 'DISCORD_COMMAND_TILE_TEMPLATE') continue;
 
-      const val = String(raw).trim();
+      const val = key === 'DISCORD_COMMAND_TILE_TEMPLATE'
+        ? String(raw).replace(/\r\n?/g, '\n')
+        : String(raw).trim();
+      if (key === 'DISCORD_COMMAND_TILE_TEMPLATE') {
+        const placeholders = val.match(/\{\{commands\}\}/g) || [];
+        if (val.length > 180) return res.json({ ok: false, error: 'Die Vorlage darf maximal 180 Zeichen enthalten' });
+        if (placeholders.length !== 1) return res.json({ ok: false, error: 'Die Vorlage muss {{commands}} genau einmal enthalten' });
+        try {
+          if (typeof getCommandTilePreviewText !== 'function') throw new Error('Befehlsvorschau nicht verfügbar');
+          getCommandTilePreviewText(val);
+        } catch (err) {
+          return res.json({ ok: false, error: err.message });
+        }
+        updates.DISCORD_COMMAND_TILE_TEMPLATE_B64 = Buffer.from(val, 'utf8').toString('base64');
+        continue;
+      }
       if (key === 'DISCORD_TOKEN' || key === 'UPTIME_KUMA_API_KEY' || key === 'DISCORD_STATUS_WEBHOOK_URL' || key === 'DASHBOARD_PASSWORD' || key === 'DISCORD_TRANSLATE_API_KEY' || key === 'OPENAI_API_KEY' || key === 'WIGIDASH_API_KEY') {
         if (val.includes('*')) continue;
         if (/[\n\r]/.test(val)) return res.json({ ok: false, error: 'Ungültiger Token (enthält Zeilenumbruch)' });

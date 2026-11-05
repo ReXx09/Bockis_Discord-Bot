@@ -1742,6 +1742,39 @@
             </div>
           </div>
         </div>
+        <div class="cfg-section open">
+          <div class="cfg-section-header" onclick="toggleConfigSection(this)">
+            <div class="cfg-section-header-title">
+              <span class="cfg-section-toggle">▾</span>
+              <span>📝 Befehlsansicht-Editor</span>
+            </div>
+          </div>
+          <div class="cfg-section-content">
+            <div class="cfg-section-body">
+              <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;align-items:start">
+                <div>
+                  <label class="cfg-label" for="cfgCommandTileTemplate">Nachrichtenvorlage</label>
+                  <div style="display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 8px">
+                    <button class="btn" type="button" data-command-template-insert="{{commands}}" title="Aktuelle Befehlstabelle einfügen">＋ Befehle</button>
+                    <button class="btn" type="button" data-command-template-insert="📋" title="Zwischenablage-Emoji einfügen">📋</button>
+                    <button class="btn" type="button" data-command-template-insert="🤖" title="Roboter-Emoji einfügen">🤖</button>
+                    <button class="btn" type="button" data-command-template-insert="✨" title="Funkeln einfügen">✨</button>
+                    <button class="btn" type="button" data-command-template-insert="✅" title="Häkchen einfügen">✅</button>
+                    <button class="btn" type="button" data-command-template-insert="➡️" title="Pfeil einfügen">➡️</button>
+                    <button class="btn" type="button" data-command-template-insert="★" title="Stern einfügen">★</button>
+                  </div>
+                  <textarea class="cfg-input" id="cfgCommandTileTemplate" rows="8" maxlength="180" spellcheck="true" style="font-family:ui-monospace,Consolas,monospace;resize:vertical;min-height:180px">{{commands}}</textarea>
+                  <div class="cfg-hint">`{{commands}}` genau einmal stehen lassen; dort werden alle aktivierten Befehle eingesetzt. Emojis, Sonderzeichen und Zeilenumbrüche sind erlaubt.</div>
+                </div>
+                <div>
+                  <label class="cfg-label" for="cfgCommandTilePreview">Live-Vorschau</label>
+                  <div id="cfgCommandTilePreviewStatus" class="cfg-hint" aria-live="polite">Vorschau wird geladen…</div>
+                  <pre id="cfgCommandTilePreview" aria-label="Vorschau der Discord-Befehlsnachricht" style="box-sizing:border-box;min-height:300px;max-height:680px;overflow:auto;white-space:pre;tab-size:2;margin:0;padding:12px;border:1px solid var(--border);border-radius:8px;background:#10141d;color:var(--text);font:12px/1.45 ui-monospace,Consolas,monospace"></pre>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
         <!-- Benachrichtigungen Section -->
         <div class="cfg-section">
           <div class="cfg-section-header" onclick="toggleConfigSection(this)">
@@ -5553,6 +5586,42 @@
     }
   }
 
+  let commandTilePreviewRequest = 0;
+  let commandTilePreviewTimer = null;
+
+  async function updateCommandTileEditorPreview() {
+    const editor = document.getElementById('cfgCommandTileTemplate');
+    const preview = document.getElementById('cfgCommandTilePreview');
+    const status = document.getElementById('cfgCommandTilePreviewStatus');
+    if (!editor || !preview || !status) return;
+    const requestId = ++commandTilePreviewRequest;
+    status.textContent = 'Vorschau wird aktualisiert…';
+    try {
+      const response = await fetch('/api/previews/commands.txt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ template: editor.value })
+      });
+      const result = await response.json();
+      if (requestId !== commandTilePreviewRequest) return;
+      if (!response.ok || !result.ok) throw new Error(result.error || 'Vorschau konnte nicht erstellt werden');
+      preview.textContent = String(result.text).replace(/```[^\n]*\n/g, '').replace(/\n```/g, '');
+      status.textContent = `${result.text.length} / 2000 Zeichen`;
+    } catch (err) {
+      if (requestId !== commandTilePreviewRequest) return;
+      preview.textContent = '';
+      status.textContent = err.message;
+    }
+  }
+
+  function insertCommandTileTemplateText(text) {
+    const editor = document.getElementById('cfgCommandTileTemplate');
+    if (!editor) return;
+    editor.focus();
+    editor.setRangeText(text, editor.selectionStart, editor.selectionEnd, 'end');
+    editor.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+
   async function loadConfig({ force = false } = {}) {
     try {
       const d = await fetch('/api/config').then(r => r.json());
@@ -5599,6 +5668,8 @@
       setCfg('cfgAutoReactionChannelIds', d.DISCORD_AUTO_REACTION_CHANNEL_IDS || '');
       setCfg('cfgEnabledCommands', d.DISCORD_ENABLED_COMMANDS || 'status,uptime,refresh,help,triggerinfo,coinflip,dice,eightball,cleanup,translate,ping,botinfo,serverstatus,ki,wetter,subscribe,remind,quote,poll,avatar,userinfo,testreply');
       applyEnabledCommandsToCheckboxes(d.DISCORD_ENABLED_COMMANDS || 'status,uptime,refresh,help,triggerinfo,coinflip,dice,eightball,cleanup,translate,ping,botinfo,serverstatus,ki,wetter,subscribe,remind,quote,poll,avatar,userinfo,testreply');
+      setCfg('cfgCommandTileTemplate', d.DISCORD_COMMAND_TILE_TEMPLATE || '{{commands}}');
+      updateCommandTileEditorPreview();
       ensureSelectOption('cfgTranslateDefaultTarget', d.DISCORD_TRANSLATE_DEFAULT_TARGET || 'de');
       ensureSelectOption('cfgTranslateDefaultSource', d.DISCORD_TRANSLATE_DEFAULT_SOURCE || 'auto');
       setCfg('cfgTranslateDefaultTarget', d.DISCORD_TRANSLATE_DEFAULT_TARGET || 'de');
@@ -5896,6 +5967,14 @@
   }
   document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('btnAddCleanupChannel')?.addEventListener('click', () => addCleanupChannelRow());
+    document.getElementById('cfgCommandTileTemplate')?.addEventListener('input', () => {
+      clearTimeout(commandTilePreviewTimer);
+      commandTilePreviewTimer = setTimeout(updateCommandTileEditorPreview, 180);
+    });
+    document.querySelectorAll('[data-command-template-insert]').forEach(button => {
+      button.addEventListener('click', () => insertCommandTileTemplateText(button.dataset.commandTemplateInsert || ''));
+    });
+    updateCommandTileEditorPreview();
     document.getElementById('cfgTranslateProvider')?.addEventListener('change', updateTranslateProviderStatus);
     document.getElementById('cfgDeepLApiKey')?.addEventListener('input', updateTranslateProviderStatus);
     document.getElementById('cfgOpenaiApiKey')?.addEventListener('input', updateTranslateProviderStatus);
@@ -5922,6 +6001,11 @@
     maybeSetChanged(body, 'DISCORD_AUTO_REACTION_EMOJIS', 'cfgAutoReactionEmojis', { allowEmpty: true });
     maybeSetChanged(body, 'DISCORD_AUTO_REACTION_CHANNEL_IDS', 'cfgAutoReactionChannelIds', { allowEmpty: true });
     maybeSetChanged(body, 'DISCORD_ENABLED_COMMANDS', 'cfgEnabledCommands');
+    const commandTileTemplateEl = document.getElementById('cfgCommandTileTemplate');
+    const commandTileTemplate = commandTileTemplateEl.value;
+    if (commandTileTemplate !== (commandTileTemplateEl.dataset.initialValue || '')) {
+      body.DISCORD_COMMAND_TILE_TEMPLATE = commandTileTemplate;
+    }
     maybeSetChanged(body, 'DISCORD_TRANSLATE_DEFAULT_TARGET', 'cfgTranslateDefaultTarget');
     maybeSetChanged(body, 'DISCORD_TRANSLATE_DEFAULT_SOURCE', 'cfgTranslateDefaultSource');
     maybeSetChanged(body, 'DISCORD_TRANSLATE_PROVIDER', 'cfgTranslateProvider');
