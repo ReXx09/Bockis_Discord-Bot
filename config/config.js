@@ -147,6 +147,25 @@ const config = convict({
       env: 'DISCORD_TRANSLATE_API_KEY',
       sensitive: true
     },
+    useDeepL: {
+      doc: 'DeepL als primaeren Uebersetzer verwenden',
+      format: Boolean,
+      default: false,
+      env: 'DISCORD_USE_DEEPL'
+    },
+    deepLApiKey: {
+      doc: 'DeepL API-Key fuer Uebersetzungen',
+      format: String,
+      default: '',
+      env: 'DISCORD_DEEPL_API_KEY',
+      sensitive: true
+    },
+    deepLApiUrl: {
+      doc: 'Basis-URL der DeepL API',
+      format: String,
+      default: 'https://api-free.deepl.com',
+      env: 'DISCORD_DEEPL_API_URL'
+    },
     translateAllowedGuildIds: {
       doc: 'Optionale Guild-Whitelist fuer /translate (Komma/Semikolon). Leer = alle Guilds + DMs',
       format: String,
