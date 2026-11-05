@@ -2606,6 +2606,37 @@ function buildCommandTileEmbed() {
     .setTimestamp();
 }
 
+function buildCommandTilePlainText() {
+  const enabled = new Set(getEnabledSlashCommands());
+  const commandIds = new Map();
+  const categories = [
+    { key: 'info', title: 'INFO & VERWALTUNG' },
+    { key: 'fun', title: 'FUN & GADGETS' },
+    { key: 'admin', title: 'ADMIN & DEBUG' }
+  ];
+
+  try {
+    const appCommands = client.application?.commands?.cache;
+    if (appCommands) {
+      for (const [id, command] of appCommands) commandIds.set(command.name, id);
+    }
+  } catch { /* ignore */ }
+
+  const lines = ['**Bockis Bot | Befehle**'];
+  for (const category of categories) {
+    const commands = COMMAND_TILE_CATEGORIES[category.key].filter(command => enabled.has(command));
+    if (!commands.length) continue;
+    lines.push('', `**${category.title}**`);
+    for (const command of commands) {
+      const id = commandIds.get(command);
+      const mention = id ? `</${command}:${id}>` : `/${getSlashCommandDisplayName(command, 'de')}`;
+      lines.push(`${mention}  ·  ${COMMAND_TILE_LABELS[command] || 'verfügbar'}`);
+    }
+  }
+  if (lines.length === 1) lines.push('', 'Keine Befehle aktiviert.');
+  return lines.join('\n');
+}
+
 function buildCommandTileSvg() {
   const enabled = new Set(getEnabledSlashCommands());
   const tileScale = config.get('discord.commandTileScale');
@@ -2725,20 +2756,10 @@ function buildCommandTileSvg() {
 }
 
 async function buildCommandTileAttachmentPayload() {
-  const tileMode = config.get('discord.commandTileMode') || 'image';
-  
-  if (tileMode === 'text') {
-    // Text-Embed: scharf, kopierbar, mit echten Slash-Command-Mentions
-    return { embeds: [buildCommandTileEmbed()], files: [] };
-  }
-  
-  // Image-Modus: SVG als PNG
-  const pngBuffer = await convertSvgToPngBuffer(buildCommandTileSvg());
-  const attachment = new AttachmentBuilder(pngBuffer, { name: 'commands.png' });
   return {
-    content: '**Bockis Bot | Befehle**\nAlle aktivierten Befehle als Tabelle. Mit `/hilfe` erhältst du weitere Hinweise.',
+    content: buildCommandTilePlainText(),
     embeds: [],
-    files: [attachment],
+    files: [],
     allowedMentions: { parse: [] }
   };
 }
@@ -3158,13 +3179,7 @@ async function ensureCommandTile() {
     if (commandTileMessageId) {
       try { message = await channel.messages.fetch(commandTileMessageId); } catch { message = null; }
     }
-    let payload;
-    try {
-      payload = await buildCommandTileAttachmentPayload();
-    } catch (err) {
-      logger.warn(`Befehls-Kachel-SVG nicht verfügbar, Textdarstellung wird verwendet: ${err.message}`);
-      payload = { embeds: [buildCommandTileEmbed()] };
-    }
+    const payload = await buildCommandTileAttachmentPayload();
     if (message) {
       await message.edit({ ...payload, content: payload.content ?? null, attachments: [] });
     } else {

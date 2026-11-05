@@ -1730,28 +1730,13 @@
             </label>
           </div>
           <input type="hidden" id="cfgEnabledCommands" value="status,uptime,refresh,help,triggerinfo,coinflip,dice,eightball,cleanup,translate,ping,botinfo,serverstatus,ki,wetter,subscribe,remind,quote,poll,avatar,userinfo,testreply">
-          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:12px">
-            <button class="btn" type="button" onclick="loadCommandPreview()">👁 Befehlsansicht Vorschau</button>
-            <span class="muted" id="commandPreviewStatus"></span>
-          </div>
           <div class="cfg-field" style="margin-top:12px;margin-bottom:0">
             <label class="cfg-label" for="cfgCommandsCh">Öffentliche Befehls-Kachel: Channel ID</label>
             <input class="cfg-input" id="cfgCommandsCh" type="text" autocomplete="off"
                    placeholder="Leer = deaktiviert">
             <div class="cfg-hint">In diesem Kanal wird die gepinnte Übersicht der Bot-Befehle erstellt und automatisch wiederhergestellt.</div>
           </div>
-          <div class="cfg-field" style="margin-top:12px;margin-bottom:0">
-            <label class="cfg-label" for="cfgCommandTileScale">Grafikgröße der Befehlsansicht</label>
-            <select class="cfg-input" id="cfgCommandTileScale" style="max-width:260px">
-              <option value="compact">Kompakt</option>
-              <option value="normal">Normal</option>
-              <option value="large">Groß und gut lesbar</option>
-            </select>
-            <div class="cfg-hint">Große Darstellung verwendet größere Schrift und mehr Abstand. Nach dem Speichern wird die angeheftete Karte aktualisiert.</div>
-          </div>
-          <div id="commandPreviewWrap" style="display:none;margin-top:12px">
-            <img id="commandPreviewImage" alt="Vorschau der Befehlsansicht" style="display:block;width:100%;max-height:520px;object-fit:contain;background:#10141d;border:1px solid var(--border);border-radius:8px">
-          </div>
+          <div class="cfg-hint" style="margin-top:10px">Die angeheftete Übersicht erscheint als normale Nachricht ohne Embed oder Bild. Alle aktivierten Befehle und Kurzbeschreibungen stehen nach Kategorien gruppiert in einer Nachricht.</div>
           <div class="cfg-hint">Mindestens ein Kommando muss aktiv bleiben. Änderungen werden beim Neustart neu registriert.</div>
               </div>
             </div>
@@ -5535,17 +5520,6 @@
   
 
   // ── Config laden ─────────────────────────────────────
-  function loadCommandPreview() {
-    const wrap = document.getElementById('commandPreviewWrap');
-    const image = document.getElementById('commandPreviewImage');
-    const status = document.getElementById('commandPreviewStatus');
-    if (!wrap || !image) return;
-    if (status) status.textContent = 'Lade Vorschau…';
-    image.onload = () => { wrap.style.display = 'block'; if (status) status.textContent = 'Gespeicherte Konfiguration'; };
-    image.onerror = () => { wrap.style.display = 'none'; if (status) status.textContent = 'Vorschau nicht verfügbar'; };
-    image.src = `/api/previews/commands.png?v=${Date.now()}`;
-  }
-
   function loadGitHubReleasePreview() {
     const repository = String(document.getElementById('cfgGithubRepos')?.value || '')
       .split(/[;,\s]+/).map(value => value.trim()).find(value => /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(value));
@@ -5617,7 +5591,6 @@
       document.getElementById('cfgWigiDashApiKey').dataset.initialValue = d.WIGIDASH_API_KEY ? '__MASKED__' : '';
 
       setCfg('cfgStatusCh', d.STATUS_CHANNEL_ID || '');
-      setCfg('cfgCommandTileScale', d.DISCORD_COMMAND_TILE_SCALE || 'large');
       setCfg('cfgCommandsCh', d.DISCORD_COMMANDS_CHANNEL_ID || '');
       setCfg('cfgBotName', d.DISCORD_BOT_NAME || '');
       setCfg('cfgPresenceText', d.DISCORD_PRESENCE_TEXT || 'Service Health');
@@ -5975,7 +5948,6 @@
     maybeSetChanged(body, 'WIGIDASH_API_KEY', 'cfgWigiDashApiKey', { allowEmpty: true });
     maybeSetChanged(body, 'STATUS_CHANNEL_ID', 'cfgStatusCh');
     maybeSetChanged(body, 'DISCORD_NOTIFICATION_CHANNEL', 'cfgNotifCh');
-    maybeSetChanged(body, 'DISCORD_COMMAND_TILE_SCALE', 'cfgCommandTileScale');
     maybeSetChanged(body, 'DISCORD_COMMANDS_CHANNEL_ID', 'cfgCommandsCh', { allowEmpty: true });
     maybeSetChanged(body, 'MESSAGE_CLEANUP_CHANNEL_IDS', 'cfgMsgCleanupChannelIds', { allowEmpty: true });
     maybeSetChanged(body, 'MESSAGE_CLEANUP_MAX_MESSAGES', 'cfgMsgCleanupMaxMessages');
