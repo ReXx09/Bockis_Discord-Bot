@@ -53,6 +53,7 @@ module.exports = function startWebServer({
   getCommandTilePreviewPng,
   getCommandTilePreviewText,
   getGitHubReleasePreviewPng,
+  getGitHubReleasePreviewData,
   runGitHubReleaseCheck,
   rootDir           // = __dirname aus bot.js (Projektwurzel)
 }) {
@@ -109,6 +110,21 @@ module.exports = function startWebServer({
       res.set('Cache-Control', 'no-store').type('png').send(png);
     } catch (err) {
       logger.error(`/api/previews/github-release.png Fehler: ${err.message}`);
+      res.status(503).json({ ok: false, error: err.message });
+    }
+  });
+
+  app.get('/api/previews/github-release.json', dashboardAuth, async (req, res) => {
+    try {
+      if (typeof getGitHubReleasePreviewData !== 'function') throw new Error('Release-Vorschau nicht verfügbar');
+      const repository = String(req.query.repo || '').trim().toLowerCase();
+      if (!/^[a-z0-9_.-]+\/[a-z0-9_.-]+$/.test(repository)) {
+        return res.status(400).json({ ok: false, error: 'Repository muss owner/repo sein' });
+      }
+      const release = await getGitHubReleasePreviewData(repository);
+      res.set('Cache-Control', 'no-store').json({ ok: true, release });
+    } catch (err) {
+      logger.error(`/api/previews/github-release.json Fehler: ${err.message}`);
       res.status(503).json({ ok: false, error: err.message });
     }
   });
@@ -1910,8 +1926,9 @@ module.exports = function startWebServer({
         : String(raw).trim();
       if (key === 'DISCORD_COMMAND_TILE_TEMPLATE') {
         const placeholders = val.match(/\{\{commands\}\}/g) || [];
-        if (val.length > 180) return res.json({ ok: false, error: 'Die Vorlage darf maximal 180 Zeichen enthalten' });
-        if (placeholders.length !== 1) return res.json({ ok: false, error: 'Die Vorlage muss {{commands}} genau einmal enthalten' });
+        if (val.length > 2000) return res.json({ ok: false, error: 'Die Nachricht darf maximal 2000 Zeichen enthalten' });
+        if (!val.trim()) return res.json({ ok: false, error: 'Die Nachricht darf nicht leer sein' });
+        if (placeholders.length > 1) return res.json({ ok: false, error: '{{commands}} darf höchstens einmal enthalten sein' });
         try {
           if (typeof getCommandTilePreviewText !== 'function') throw new Error('Befehlsvorschau nicht verfügbar');
           getCommandTilePreviewText(val);

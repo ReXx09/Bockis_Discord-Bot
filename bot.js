@@ -2662,9 +2662,10 @@ function renderCommandTileText(templateOverride) {
   const savedTemplate = encodedTemplate ? Buffer.from(encodedTemplate, 'base64').toString('utf8') : '{{commands}}';
   const template = templateOverride === undefined ? savedTemplate : String(templateOverride);
   const placeholders = template.match(/\{\{commands\}\}/g) || [];
-  if (placeholders.length !== 1) throw new Error('Die Vorlage muss {{commands}} genau einmal enthalten');
+  if (!template.trim()) throw new Error('Die Nachricht darf nicht leer sein');
+  if (placeholders.length > 1) throw new Error('{{commands}} darf höchstens einmal enthalten sein');
 
-  const message = template.replace('{{commands}}', buildCommandTilePlainText());
+  const message = placeholders.length ? template.replace('{{commands}}', buildCommandTilePlainText()) : template;
   if (message.length > 2000) throw new Error('Die fertige Befehlsansicht überschreitet Discords 2000-Zeichen-Limit');
   return message;
 }
@@ -3196,6 +3197,23 @@ async function getGitHubReleasePreviewPng(repository) {
   if (!repo) throw new Error('Ungültiges Repository-Format');
   const release = githubWatchState[repo]?.release || await fetchGitHubLatestRelease(repo);
   return convertSvgToPngBuffer(buildReleaseNotesSvg(release));
+}
+
+async function getGitHubReleasePreviewData(repository) {
+  const repo = normalizeGitHubRepository(repository);
+  if (!repo) throw new Error('Ungültiges Repository-Format');
+  const release = githubWatchState[repo]?.release || await fetchGitHubLatestRelease(repo);
+  return {
+    title: release?.name || release?.tag_name || 'GitHub Release',
+    tag: release?.tag_name || 'Release',
+    repo: release?.repository || repo,
+    date: release?.published_at
+      ? new Date(release.published_at).toLocaleString('de-DE', { dateStyle: 'medium', timeStyle: 'short' })
+      : 'unbekannt',
+    url: release?.html_url || `https://github.com/${repo}/releases`,
+    body: release?.body || 'Keine Release Notes vorhanden.',
+    author: release?.author?.login || 'GitHub'
+  };
 }
 
 let commandTileRecoveryRunning = false;
@@ -5300,7 +5318,7 @@ function initializeUpdateCycle() {
 // #region 23. STARTUP
 // Webserver SOFORT starten — unabhängig vom Discord-Login
 // Damit ist das Dashboard auch erreichbar wenn der Token noch nicht stimmt
-const _webDeps = { config, logger, client, sequelize, prom, getMonitorData, updateStatusMessage, getWigiDashStatus, getCommandTilePreviewPng, getCommandTilePreviewText, getGitHubReleasePreviewPng, runGitHubReleaseCheck, rootDir: __dirname };
+const _webDeps = { config, logger, client, sequelize, prom, getMonitorData, updateStatusMessage, getWigiDashStatus, getCommandTilePreviewPng, getCommandTilePreviewText, getGitHubReleasePreviewPng, getGitHubReleasePreviewData, runGitHubReleaseCheck, rootDir: __dirname };
 let _httpServer = null;
 initializeDatabase().then(() => { _httpServer = startWebServer(_webDeps); }).catch(err => {
   logger.error(`DB/Webserver-Startfehler: ${err.message}`);
