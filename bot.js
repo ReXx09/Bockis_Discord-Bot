@@ -2834,9 +2834,26 @@ function getGitHubReleaseColorNumber(repository) {
   return Number.parseInt(getGitHubReleaseColor(repository).slice(1), 16);
 }
 
+function renderGitHubReleaseTemplate(release, bodyOverride) {
+  const published = release?.published_at
+    ? new Date(release.published_at).toLocaleString('de-DE', { dateStyle: 'medium', timeStyle: 'short' })
+    : 'unbekannt';
+  const tag = release?.tag_name || 'Release';
+  const values = {
+    title: release?.name || tag,
+    tag,
+    repo: release?.repository || 'GitHub',
+    date: published,
+    url: release?.html_url || `https://github.com/${release?.repository || 'GitHub'}/releases`,
+    body: bodyOverride === undefined ? (release?.body || 'Keine Release Notes vorhanden.') : String(bodyOverride),
+    author: release?.author?.login || 'GitHub'
+  };
+  const template = String(config.get('discord.githubReleaseTemplate') || '');
+  return template.replace(/\{\{(title|tag|repo|date|url|body|author)\}\}/g, (match, key) => values[key] ?? match);
+}
+
 function buildReleaseNotesSvg(release) {
   const width = 1200;
-  const template = config.get('discord.githubReleaseTemplate') || '';
   const published = release?.published_at ? new Date(release.published_at).toLocaleString('de-DE', { dateStyle: 'medium', timeStyle: 'short' }) : 'unbekannt';
   const repo = release?.repository || 'GitHub';
   const tag = release?.tag_name || 'Release';
@@ -2847,15 +2864,7 @@ function buildReleaseNotesSvg(release) {
   const releaseColor = getGitHubReleaseColor(repo);
   const releaseColorDark = darkenHexColor(releaseColor);
 
-  // Template rendern
-  const renderedBody = template
-    .replace(/\{\{title\}\}/g, _escapeSvgText(title))
-    .replace(/\{\{tag\}\}/g, _escapeSvgText(tag))
-    .replace(/\{\{repo\}\}/g, _escapeSvgText(repo))
-    .replace(/\{\{date\}\}/g, _escapeSvgText(published))
-    .replace(/\{\{url\}\}/g, _escapeSvgText(url))
-    .replace(/\{\{body\}\}/g, _escapeSvgText(body))
-    .replace(/\{\{author\}\}/g, _escapeSvgText(author));
+  const renderedBody = _escapeSvgText(renderGitHubReleaseTemplate(release));
 
   // Body in Zeilen splitten für SVG
   const noteLines = renderedBody.split('\n').filter(line => line.trim().length > 0);
@@ -2914,10 +2923,8 @@ async function buildReleaseNotesAttachmentPayload(release) {
   const title = release?.name || tag;
   const url = release?.html_url || `https://github.com/${repo}/releases`;
   const author = release?.author?.login || 'GitHub';
-  const body = release?.body || 'Keine Release Notes vorhanden.';
-  
-  // Body kürzen für Embed (max 4096 Zeichen)
-  const description = body.length > 4000 ? body.slice(0, 3997) + '...' : body;
+  const renderedNotes = renderGitHubReleaseTemplate(release);
+  const description = renderedNotes.length > 4000 ? renderedNotes.slice(0, 3997) + '...' : renderedNotes;
   
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
@@ -3058,12 +3065,13 @@ async function buildReleaseHighlightsPayload(release) {
   const more = result.total - result.items.length;
   if (more > 0) lines.push(`*… und ${more} weitere Änderung${more === 1 ? '' : 'en'}*`);
   if (!lines.length) lines.push('Keine Release Notes hinterlegt.');
+  const renderedNotes = renderGitHubReleaseTemplate(release, lines.join('\n'));
 
   const embed = new EmbedBuilder()
     .setColor(getGitHubReleaseColorNumber(release.repository))
     .setTitle(`🚀 Neuer Release: ${String(release.name || release.tag_name || 'GitHub').slice(0, 200)}`)
     .setURL(releaseUrl)
-    .setDescription(lines.join('\n').slice(0, 4000))
+    .setDescription(renderedNotes.slice(0, 4000))
     .setFooter({ text: `${release.repository} · ${release.tag_name || 'Release'}${release.prerelease ? ' · Pre-Release' : ''}` });
   if (release.published_at) embed.setTimestamp(new Date(release.published_at));
 
@@ -3111,6 +3119,7 @@ async function fetchGitHubLatestRelease(repository) {
     body: data.body || '',
     html_url: data.html_url || `https://github.com/${repository}/releases`,
     published_at: data.published_at || data.created_at || null,
+    author: { login: data.author?.login || 'GitHub' },
     prerelease: data.prerelease === true
   };
 }

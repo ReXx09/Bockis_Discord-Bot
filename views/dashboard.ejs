@@ -1028,7 +1028,6 @@
           <button class="cfg-nav-btn" data-cfg-pane-btn="raspi" onclick="setActiveSettingsPane('raspi')">🍓 Raspi & Web</button>
           <button class="cfg-nav-btn" data-cfg-pane-btn="welcome" onclick="setActiveSettingsPane('welcome')">👋 Willkommen & Auto-Reply</button>
           <button class="cfg-nav-btn" data-cfg-pane-btn="github" onclick="setActiveSettingsPane('github')">🐙 GitHub-Watcher</button>
-          <button class="cfg-nav-btn" data-cfg-pane-btn="release-editor" onclick="setActiveSettingsPane('release-editor')">📝 Release-Editor</button>
           <button class="cfg-nav-btn" data-cfg-pane-btn="aichat" onclick="setActiveSettingsPane('aichat')">🤖 KI-Chat (OpenAI)</button>
         </div>
       </div>
@@ -1752,8 +1751,8 @@
           </div>
           <div class="cfg-section-content">
             <div class="cfg-section-body">
-              <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;align-items:start">
-                <div>
+              <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;align-items:stretch">
+                <div style="display:flex;flex-direction:column;min-width:0">
                   <label class="cfg-label" for="cfgCommandTileTemplate">Discord-Nachrichtentext</label>
                   <div style="display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 8px">
                     <button class="btn" id="btnCommandTileReload" type="button" title="Aktuelle generierte Tabelle in den Editor laden">↻ Tabelle neu laden</button>
@@ -1764,7 +1763,7 @@
                     <button class="btn" type="button" data-command-template-insert="➡️" title="Pfeil einfügen">➡️</button>
                     <button class="btn" type="button" data-command-template-insert="★" title="Stern einfügen">★</button>
                   </div>
-                  <textarea class="cfg-input" id="cfgCommandTileTemplate" rows="8" maxlength="2000" spellcheck="true" style="font-family:ui-monospace,Consolas,monospace;resize:vertical;min-height:180px">{{commands}}</textarea>
+                  <textarea class="cfg-input" id="cfgCommandTileTemplate" rows="8" maxlength="2000" spellcheck="true" style="box-sizing:border-box;width:100%;height:300px;min-height:300px;max-height:680px;overflow:auto;resize:none;font-family:ui-monospace,Consolas,monospace">{{commands}}</textarea>
                   <div class="cfg-hint">Bearbeite hier genau den Text aus der Vorschau. Manuelle Änderungen speichern diesen Inhalt. Wenn sich aktive Befehle ändern, klicke „Tabelle neu laden“. Emojis, Sonderzeichen und Zeilenumbrüche sind erlaubt.</div>
                 </div>
                 <div>
@@ -2427,10 +2426,6 @@
             </div>
           </div>
         </div>
-      </div>
-
-      <div class="cfg-pane-card hidden" data-cfg-pane="release-editor">
-        <div class="cfg-pane-title">📝 GitHub-Release-Editor</div>
         <div class="cfg-section open">
           <div class="cfg-section-header" onclick="toggleConfigSection(this)">
             <div class="cfg-section-header-title">
@@ -2457,10 +2452,11 @@
                   </div>
                   <textarea class="cfg-input" id="cfgGithubReleaseTemplate" rows="10" maxlength="10000" spellcheck="true" style="font-family:ui-monospace,Consolas,monospace;resize:vertical;min-height:220px"
                     placeholder="Release-Notes-Vorlage mit {{title}}, {{tag}}, {{repo}}, {{date}}, {{url}}, {{body}} und {{author}}"></textarea>
-                  <div class="cfg-hint">Die Platzhalter werden für jeden Release mit den echten GitHub-Daten gefüllt. Änderungen an der Vorlage verändern nur die Darstellung, nicht den GitHub-Release selbst.</div>
+                  <div class="cfg-hint">Diese gemeinsame Vorlage gilt für alle eingetragenen Repositories. Die Repo-Auswahl rechts ändert nur, welchen Release du in der Vorschau siehst.</div>
                 </div>
                 <div>
                   <label class="cfg-label" for="githubReleaseTextPreview">Live-Vorschau des letzten Releases</label>
+                  <select class="cfg-input" id="githubReleasePreviewRepoSelect" aria-label="Repository für die Release-Vorschau" style="margin-bottom:8px"></select>
                   <div id="githubReleaseTextPreviewStatus" class="cfg-hint" aria-live="polite">Repository wird geladen…</div>
                   <pre id="githubReleaseTextPreview" aria-label="Vorschau der Release-Notes" style="box-sizing:border-box;min-height:320px;max-height:680px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;tab-size:2;margin:0;padding:12px;border:1px solid var(--border);border-radius:8px;background:#10141d;color:var(--text);font:12px/1.5 ui-monospace,Consolas,monospace"></pre>
                   <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px">
@@ -5698,6 +5694,27 @@
   let githubReleasePreviewRequest = 0;
   let githubReleasePreviewTimer = null;
 
+  function getGitHubPreviewRepositories() {
+    return [...new Set(String(document.getElementById('cfgGithubRepos')?.value || '')
+      .split(/[;,\s]+/).map(normalizeGitHubRepositoryForColors).filter(Boolean))];
+  }
+
+  function updateGitHubReleasePreviewRepositories() {
+    const select = document.getElementById('githubReleasePreviewRepoSelect');
+    if (!select) return;
+    const repositories = getGitHubPreviewRepositories();
+    const selected = normalizeGitHubRepositoryForColors(select.value);
+    select.replaceChildren();
+    repositories.forEach(repository => {
+      const option = document.createElement('option');
+      option.value = repository;
+      option.textContent = repository;
+      select.appendChild(option);
+    });
+    select.value = repositories.includes(selected) ? selected : (repositories[0] || '');
+    select.disabled = repositories.length === 0;
+  }
+
   function renderGitHubReleaseTextPreview() {
     const editor = document.getElementById('cfgGithubReleaseTemplate');
     const preview = document.getElementById('githubReleaseTextPreview');
@@ -5714,8 +5731,10 @@
   }
 
   async function loadGitHubReleaseTextPreview(force = false) {
-    const repository = String(document.getElementById('cfgGithubRepos')?.value || '')
-      .split(/[;,\s]+/).map(value => value.trim()).find(value => /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(value));
+    updateGitHubReleasePreviewRepositories();
+    const repositories = getGitHubPreviewRepositories();
+    const selectedRepository = normalizeGitHubRepositoryForColors(document.getElementById('githubReleasePreviewRepoSelect')?.value);
+    const repository = repositories.includes(selectedRepository) ? selectedRepository : repositories[0];
     const preview = document.getElementById('githubReleaseTextPreview');
     const status = document.getElementById('githubReleaseTextPreviewStatus');
     const repoLabel = document.getElementById('githubReleaseTextPreviewRepo');
@@ -5781,6 +5800,14 @@
   let commandTilePreviewRequest = 0;
   let commandTilePreviewTimer = null;
 
+  function syncCommandTileEditorHeight() {
+    const editor = document.getElementById('cfgCommandTileTemplate');
+    const preview = document.getElementById('cfgCommandTilePreview');
+    if (!editor || !preview) return;
+    const previewHeight = preview.getBoundingClientRect().height;
+    if (previewHeight > 0) editor.style.height = `${previewHeight}px`;
+  }
+
   async function requestCommandTilePreviewText(template) {
     const response = await fetch('/api/previews/commands.txt', {
       method: 'POST',
@@ -5804,10 +5831,12 @@
       if (requestId !== commandTilePreviewRequest) return;
       preview.textContent = text.replace(/```[^\n]*\n/g, '').replace(/\n```/g, '');
       status.textContent = `${text.length} / 2000 Zeichen`;
+      syncCommandTileEditorHeight();
     } catch (err) {
       if (requestId !== commandTilePreviewRequest) return;
       preview.textContent = '';
       status.textContent = err.message;
+      syncCommandTileEditorHeight();
     }
   }
 
@@ -5990,6 +6019,7 @@
       setCfg('cfgGithubRepos', d.DISCORD_GITHUB_REPOS || '');
       setCfg('cfgGithubRepoColors', d.DISCORD_GITHUB_REPO_COLORS || '{}');
       renderGitHubRepositoryColorRows();
+      updateGitHubReleasePreviewRepositories();
       setCfg('cfgGithubMode', d.DISCORD_GITHUB_MODE || 'both');
       setCfg('cfgGithubPollIntervalMs', d.DISCORD_GITHUB_POLL_INTERVAL_MS || '600000');
       setCfg('cfgGithubPostStyle', d.DISCORD_GITHUB_POST_STYLE || 'highlights');
@@ -6198,6 +6228,11 @@
       button.addEventListener('click', () => insertCommandTileTemplateText(button.dataset.commandTemplateInsert || ''));
     });
     document.getElementById('btnCommandTileReload')?.addEventListener('click', reloadCommandTileTable);
+    const commandTilePreview = document.getElementById('cfgCommandTilePreview');
+    if (commandTilePreview && 'ResizeObserver' in window) {
+      new ResizeObserver(syncCommandTileEditorHeight).observe(commandTilePreview);
+    }
+    window.addEventListener('resize', syncCommandTileEditorHeight);
     updateCommandTileEditorPreview();
     document.getElementById('cfgGithubReleaseTemplate')?.addEventListener('input', renderGitHubReleaseTextPreview);
     document.querySelectorAll('[data-release-template-insert]').forEach(button => {
@@ -6205,9 +6240,11 @@
     });
     document.getElementById('cfgGithubRepos')?.addEventListener('input', () => {
       renderGitHubRepositoryColorRows();
+      updateGitHubReleasePreviewRepositories();
       clearTimeout(githubReleasePreviewTimer);
       githubReleasePreviewTimer = setTimeout(() => loadGitHubReleaseTextPreview(), 600);
     });
+    document.getElementById('githubReleasePreviewRepoSelect')?.addEventListener('change', () => loadGitHubReleaseTextPreview());
     document.getElementById('cfgTranslateProvider')?.addEventListener('change', updateTranslateProviderStatus);
     document.getElementById('cfgDeepLApiKey')?.addEventListener('input', updateTranslateProviderStatus);
     document.getElementById('cfgOpenaiApiKey')?.addEventListener('input', updateTranslateProviderStatus);
