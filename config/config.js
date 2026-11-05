@@ -111,9 +111,9 @@ const config = convict({
       env: 'DISCORD_COMMAND_TILE_SCALE'
     },
     commandTileMode: {
-      doc: 'Darstellungsmodus der Befehls-Kachel: text (Embed-Text, scharf, kopierbar) | image (SVG-Grafik als PNG)',
+      doc: 'Darstellungsmodus der Befehls-Kachel: image (SVG-Tabelle als PNG) | text (kopierbares Embed)',
       format: ['text', 'image'],
-      default: 'text',
+      default: 'image',
       env: 'DISCORD_COMMAND_TILE_MODE'
     },
     translateEnabled: {
@@ -436,6 +436,24 @@ const config = convict({
       format: 'int',
       default: 300000,
       env: 'DISCORD_GITHUB_POLL_INTERVAL_MS'
+    },
+    githubPostStyle: {
+      doc: 'Darstellung neuer GitHub-Releases: Highlights oder bisherige Release-Notes-Ansicht',
+      format: ['highlights', 'image'],
+      default: 'highlights',
+      env: 'DISCORD_GITHUB_POST_STYLE'
+    },
+    githubHighlightsMax: {
+      doc: 'Maximale Anzahl Highlights pro Release-Meldung (1-10)',
+      format: 'int',
+      default: 5,
+      env: 'DISCORD_GITHUB_HIGHLIGHTS_MAX'
+    },
+    githubHighlightsAi: {
+      doc: 'Release-Notes per OpenAI-kompatibler API zusammenfassen',
+      format: Boolean,
+      default: false,
+      env: 'DISCORD_GITHUB_HIGHLIGHTS_AI'
     },
     githubToken: {
       doc: 'Optionaler GitHub Token für höhere Rate-Limits (ghp_... oder github_pat_...)',

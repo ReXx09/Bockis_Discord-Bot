@@ -62,6 +62,20 @@ module.exports = function startWebServer({
   app.use(express.json());
   app.use(express.static(path.join(rootDir, 'public')));
 
+  app.get('/api/discord/channels/:id', dashboardAuth, async (req, res) => {
+    const channelId = String(req.params.id || '').trim();
+    if (!/^\d{5,20}$/.test(channelId)) {
+      return res.status(400).json({ ok: false, error: 'Ungültige Channel-ID' });
+    }
+    try {
+      const channel = client.channels.cache.get(channelId) || await client.channels.fetch(channelId);
+      if (!channel?.name) return res.status(404).json({ ok: false, error: 'Kanal nicht gefunden oder für den Bot nicht erreichbar' });
+      return res.json({ ok: true, name: channel.name, guildName: channel.guild?.name || '' });
+    } catch {
+      return res.status(404).json({ ok: false, error: 'Kanal nicht gefunden oder für den Bot nicht erreichbar' });
+    }
+  });
+
   app.get('/api/previews/commands.png', dashboardAuth, async (req, res) => {
     try {
       if (typeof getCommandTilePreviewPng !== 'function') throw new Error('Befehlsvorschau nicht verfügbar');
@@ -1639,6 +1653,9 @@ module.exports = function startWebServer({
         DISCORD_GITHUB_REPOS:         get('DISCORD_GITHUB_REPOS') || '',
         DISCORD_GITHUB_MODE:          get('DISCORD_GITHUB_MODE') || 'releases',
         DISCORD_GITHUB_POLL_INTERVAL_MS: get('DISCORD_GITHUB_POLL_INTERVAL_MS') || '300000',
+        DISCORD_GITHUB_POST_STYLE:    get('DISCORD_GITHUB_POST_STYLE') || 'highlights',
+        DISCORD_GITHUB_HIGHLIGHTS_MAX: get('DISCORD_GITHUB_HIGHLIGHTS_MAX') || '5',
+        DISCORD_GITHUB_HIGHLIGHTS_AI: get('DISCORD_GITHUB_HIGHLIGHTS_AI') || 'false',
         DISCORD_GITHUB_RELEASE_TEMPLATE: get('DISCORD_GITHUB_RELEASE_TEMPLATE') || '',
         GITHUB_TOKEN:                 maskSecret(get('GITHUB_TOKEN')),
         DISCORD_ENABLED_COMMANDS:     get('DISCORD_ENABLED_COMMANDS') || 'status,uptime,refresh,help,triggerinfo,coinflip,dice,eightball,cleanup,translate,ping,botinfo,serverstatus,ki,wetter,subscribe,remind,quote,poll,avatar,userinfo,testreply',
@@ -1774,6 +1791,9 @@ module.exports = function startWebServer({
       'DISCORD_GITHUB_REPOS',
       'DISCORD_GITHUB_MODE',
       'DISCORD_GITHUB_POLL_INTERVAL_MS',
+      'DISCORD_GITHUB_POST_STYLE',
+      'DISCORD_GITHUB_HIGHLIGHTS_MAX',
+      'DISCORD_GITHUB_HIGHLIGHTS_AI',
       'DISCORD_GITHUB_RELEASE_TEMPLATE',
       'GITHUB_TOKEN',
       'UPTIME_KUMA_URL',

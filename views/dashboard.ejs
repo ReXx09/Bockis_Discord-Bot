@@ -2321,6 +2321,24 @@
           </select>
         </div>
         <div class="cfg-field">
+          <label class="cfg-label" for="cfgGithubPostStyle">Darstellung neuer Releases</label>
+          <select class="cfg-input" id="cfgGithubPostStyle">
+            <option value="highlights">Kompakte Highlights</option>
+            <option value="image">Bisherige Release-Notes-Ansicht</option>
+          </select>
+        </div>
+        <div class="cfg-field">
+          <label class="cfg-label" for="cfgGithubHighlightsMax">Maximale Anzahl Highlights</label>
+          <input class="cfg-input" id="cfgGithubHighlightsMax" type="number" min="1" max="10" step="1" value="5">
+        </div>
+        <div class="cfg-field">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px">
+            <input type="checkbox" id="cfgGithubHighlightsAi" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
+            <span>Highlights mit KI zusammenfassen</span>
+          </label>
+          <div class="cfg-hint">Nutzt den konfigurierten OpenAI-kompatiblen KI-Zugang. Ohne KI-Key oder bei API-Fehlern wird automatisch die lokale Auswertung verwendet.</div>
+        </div>
+        <div class="cfg-field">
           <label class="cfg-label" for="cfgGithubReleaseTemplate">Release Notes Template</label>
           <textarea class="cfg-input" id="cfgGithubReleaseTemplate" rows="6" style="font-family:monospace;font-size:12px;resize:vertical"
                  placeholder="Template für Release Notes. Platzhalter: {{title}}, {{tag}}, {{repo}}, {{date}}, {{url}}, {{body}}, {{author}}"></textarea>
@@ -5668,6 +5686,9 @@
       setCfg('cfgGithubRepos', d.DISCORD_GITHUB_REPOS || '');
       setCfg('cfgGithubMode', d.DISCORD_GITHUB_MODE || 'both');
       setCfg('cfgGithubPollIntervalMs', d.DISCORD_GITHUB_POLL_INTERVAL_MS || '600000');
+      setCfg('cfgGithubPostStyle', d.DISCORD_GITHUB_POST_STYLE || 'highlights');
+      setCfg('cfgGithubHighlightsMax', d.DISCORD_GITHUB_HIGHLIGHTS_MAX || '5');
+      setCheckboxValue('cfgGithubHighlightsAi', (d.DISCORD_GITHUB_HIGHLIGHTS_AI || 'false') === 'true', { force });
       setCfg('cfgGithubReleaseTemplate', d.DISCORD_GITHUB_RELEASE_TEMPLATE || '');
       setCfg('cfgGithubToken', '');
       document.getElementById('cfgGithubToken').dataset.initialValue = d.GITHUB_TOKEN ? '__MASKED__' : '';
@@ -5776,6 +5797,32 @@
     const opts = [['','Standard'],['60000','1 Min'],['300000','5 Min'],['600000','10 Min'],['900000','15 Min'],['1800000','30 Min'],['3600000','1 Std'],['7200000','2 Std'],['21600000','6 Std'],['43200000','12 Std'],['86400000','24 Std']];
     return opts.map(([v,l]) => `<option value="${v}"${selected===v?' selected':''} >${l}</option>`).join('');
   }
+
+  async function _resolveCleanupChannelName(row) {
+    const idInput = row.querySelector('.cleanup-ch-id');
+    const nameLabel = row.querySelector('.cleanup-ch-name');
+    const id = String(idInput?.value || '').trim();
+    if (!nameLabel) return;
+    if (!/^\d{5,20}$/.test(id)) {
+      nameLabel.textContent = id ? 'Ungültige Channel-ID' : 'Kanalname wird anhand der ID erkannt';
+      return;
+    }
+
+    nameLabel.textContent = 'Kanal wird gesucht...';
+    try {
+      const response = await fetch(`/api/discord/channels/${encodeURIComponent(id)}`);
+      const data = await response.json().catch(() => ({}));
+      if (String(idInput.value || '').trim() !== id) return;
+      if (!response.ok || !data.name) {
+        nameLabel.textContent = data.error || 'Kanal nicht erreichbar';
+        return;
+      }
+      nameLabel.textContent = `#${data.name}${data.guildName ? ` · ${data.guildName}` : ''}`;
+    } catch {
+      if (String(idInput.value || '').trim() === id) nameLabel.textContent = 'Kanalname derzeit nicht abrufbar';
+    }
+  }
+
   function addCleanupChannelRow(id = '', overrides = {}) {
     const container = document.getElementById('cleanupChannelRows');
     if (!container) return;
@@ -5786,14 +5833,19 @@
     const ma = overrides.maxagehours !== undefined ? String(overrides.maxagehours) : '';
     const iv = overrides.cleanupintervalms !== undefined ? String(overrides.cleanupintervalms) : '';
     row.innerHTML = `
-      <input class="cfg-input cleanup-ch-id" type="text" placeholder="Channel-ID (z. B. 123456789012345678)" value="${id}" maxlength="20" style="font-family:monospace;font-size:13px" autocomplete="off">
+      <div style="display:grid;gap:3px;min-width:0">
+        <input class="cfg-input cleanup-ch-id" type="text" placeholder="Channel-ID (z. B. 123456789012345678)" value="${id}" maxlength="20" style="font-family:monospace;font-size:13px" autocomplete="off">
+        <span class="cleanup-ch-name" role="status" aria-live="polite" style="font-size:11px;color:var(--text-muted,#9aa);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Kanalname wird anhand der ID erkannt</span>
+      </div>
       <select class="cfg-input cleanup-sel-mm" title="Max. Nachrichten im Kanal" style="font-size:12px">${_mkCleanupMaxMsgOpts(mm)}</select>
       <select class="cfg-input cleanup-sel-ma" title="Nachrichten älter als (Stunden)" style="font-size:12px">${_mkCleanupMaxAgeOpts(ma)}</select>
       <select class="cfg-input cleanup-sel-iv" title="Cleanup-Intervall" style="font-size:12px">${_mkCleanupIntervalOpts(iv)}</select>
       <button type="button" title="Kanal entfernen" style="padding:0;width:26px;height:26px;border-radius:5px;border:1px solid var(--border);background:rgba(220,50,50,.15);color:#f88;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;flex-shrink:0">✕</button>
     `;
     row.querySelector('button').addEventListener('click', () => row.remove());
+    row.querySelector('.cleanup-ch-id').addEventListener('blur', () => _resolveCleanupChannelName(row));
     container.appendChild(row);
+    if (id) _resolveCleanupChannelName(row);
   }
   function syncCleanupRowsToHiddenInput() {
     const el = document.getElementById('cfgMsgCleanupChannelIds');
@@ -5940,8 +5992,13 @@
     maybeSetChanged(body, 'DISCORD_GITHUB_REPOS', 'cfgGithubRepos', { allowEmpty: true });
     maybeSetChanged(body, 'DISCORD_GITHUB_MODE', 'cfgGithubMode');
     maybeSetChanged(body, 'DISCORD_GITHUB_POLL_INTERVAL_MS', 'cfgGithubPollIntervalMs');
+    maybeSetChanged(body, 'DISCORD_GITHUB_POST_STYLE', 'cfgGithubPostStyle');
+    maybeSetChanged(body, 'DISCORD_GITHUB_HIGHLIGHTS_MAX', 'cfgGithubHighlightsMax');
     maybeSetChanged(body, 'DISCORD_GITHUB_RELEASE_TEMPLATE', 'cfgGithubReleaseTemplate', { allowEmpty: true });
     maybeSetChanged(body, 'GITHUB_TOKEN', 'cfgGithubToken', { allowEmpty: true });
+    const githubHighlightsAiEl = document.getElementById('cfgGithubHighlightsAi');
+    const curGithubHighlightsAi = githubHighlightsAiEl.checked ? 'true' : 'false';
+    if (curGithubHighlightsAi !== (githubHighlightsAiEl.dataset.initialValue || 'false')) body.DISCORD_GITHUB_HIGHLIGHTS_AI = curGithubHighlightsAi;
     const githubWatchEl = document.getElementById('cfgGithubWatchEnabled');
     const curGithubWatch = githubWatchEl.checked ? 'true' : 'false';
     if (curGithubWatch !== (githubWatchEl.dataset.initialValue || 'false')) body.DISCORD_GITHUB_WATCH_ENABLED = curGithubWatch;
