@@ -443,6 +443,12 @@ const config = convict({
       default: '',
       env: 'DISCORD_GITHUB_REPO_COLORS_B64'
     },
+    githubRepoSettingsB64: {
+      doc: 'Base64-kodierte JSON-Zuordnung von GitHub-Repositories zu Watch-Modus und Darstellung',
+      format: String,
+      default: '',
+      env: 'DISCORD_GITHUB_REPO_SETTINGS_B64'
+    },
     githubMode: {
       doc: 'GitHub Watcher Modus: releases (nur Releases), commits (nur Commits) oder both (beides)',
       format: ['releases', 'commits', 'both'],

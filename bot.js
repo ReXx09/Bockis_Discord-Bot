@@ -2834,6 +2834,26 @@ function getGitHubReleaseColorNumber(repository) {
   return Number.parseInt(getGitHubReleaseColor(repository).slice(1), 16);
 }
 
+function getGitHubRepositorySettings(repository) {
+  const defaultSettings = {
+    mode: config.get('discord.githubMode') || 'releases',
+    postStyle: config.get('discord.githubPostStyle') || 'highlights'
+  };
+  const repo = normalizeGitHubRepository(repository);
+  const encodedSettings = String(config.get('discord.githubRepoSettingsB64') || '').trim();
+  if (!repo || !encodedSettings) return defaultSettings;
+  try {
+    const settings = JSON.parse(Buffer.from(encodedSettings, 'base64').toString('utf8'))?.[repo];
+    if (!settings || typeof settings !== 'object') return defaultSettings;
+    return {
+      mode: ['releases', 'commits', 'both'].includes(settings.mode) ? settings.mode : defaultSettings.mode,
+      postStyle: ['highlights', 'image'].includes(settings.postStyle) ? settings.postStyle : defaultSettings.postStyle
+    };
+  } catch {
+    return defaultSettings;
+  }
+}
+
 function renderGitHubReleaseTemplate(release, bodyOverride) {
   const published = release?.published_at
     ? new Date(release.published_at).toLocaleString('de-DE', { dateStyle: 'medium', timeStyle: 'short' })
@@ -3124,6 +3144,41 @@ async function fetchGitHubLatestRelease(repository) {
   };
 }
 
+async function fetchGitHubLatestCommit(repository) {
+  const token = String(config.get('discord.githubToken') || '').trim();
+  const headers = { Accept: 'application/vnd.github+json', 'User-Agent': 'Bockis-Discord-Bot' };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const response = await axios.get(`https://api.github.com/repos/${repository}/commits?per_page=1`, { headers, timeout: 12_000 });
+  const data = Array.isArray(response.data) ? response.data[0] : null;
+  if (!data?.sha) throw new Error('Kein Commit gefunden');
+  return {
+    repository,
+    sha: data.sha,
+    message: data.commit?.message || 'Commit ohne Nachricht',
+    html_url: data.html_url || `https://github.com/${repository}/commit/${data.sha}`,
+    published_at: data.commit?.committer?.date || data.commit?.author?.date || null,
+    author: data.author?.login || data.commit?.author?.name || 'GitHub'
+  };
+}
+
+function buildGitHubCommitPayload(commit) {
+  const firstLine = String(commit.message || 'Commit').split('\n')[0].trim();
+  const description = String(commit.message || 'Commit ohne Nachricht').slice(0, 3900);
+  const repositoryUrl = `https://github.com/${commit.repository}`;
+  const embed = new EmbedBuilder()
+    .setColor(getGitHubReleaseColorNumber(commit.repository))
+    .setTitle(`🔨 ${_shortenAtWord(firstLine, 180)}`)
+    .setURL(commit.html_url)
+    .setDescription(`**Repository:** ${commit.repository}\n**Commit:** \`${commit.sha.slice(0, 7)}\`\n**Autor:** ${commit.author}\n\n${description}`.slice(0, 4000))
+    .setFooter({ text: `${commit.repository} · neuer Commit` });
+  if (commit.published_at) embed.setTimestamp(new Date(commit.published_at));
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setLabel('Commit ansehen').setStyle(ButtonStyle.Link).setURL(commit.html_url),
+    new ButtonBuilder().setLabel('Repository').setStyle(ButtonStyle.Link).setURL(repositoryUrl)
+  );
+  return { embeds: [embed], components: [row], allowedMentions: { parse: [] } };
+}
+
 async function runGitHubReleaseCheck({ notify = true } = {}) {
   if (config.get('discord.githubWatchEnabled') !== true) {
     logger.info('GitHub-Watcher: ABBRUCH - Feature deaktiviert (githubWatchEnabled=false)');
@@ -3145,63 +3200,96 @@ async function runGitHubReleaseCheck({ notify = true } = {}) {
   }
 
   for (const repository of repositories) {
-    try {
-      logger.info(`GitHub-Watcher: Prüfe ${repository}...`);
-      const release = await fetchGitHubLatestRelease(repository);
-      logger.info(`GitHub-Watcher: ${repository} -> Release ${release.tag_name} (ID: ${release.id})`);
-      const previous = githubWatchState[repository];
-      
-      // Baseline-Logik: 
-      // - notify=true (manueller Check): IMMER senden (force), egal ob Release-ID gleich
-      // - notify=false (automatisch): nur bei NEUEM Release ODER beim ersten Check wenn Release < 7 Tage alt
-      const isNewRelease = !previous || String(previous.releaseId) !== String(release.id);
-      const isFresh = !previous && release.published_at && 
-        (Date.now() - new Date(release.published_at).getTime()) < 7 * 24 * 3600 * 1000;
-      const shouldNotify = notify ? true : (isNewRelease || isFresh);
-      
-      logger.info(`GitHub-Watcher: ${repository} -> previous: ${previous?.releaseId || 'none'}, isNewRelease: ${isNewRelease}, isFresh: ${isFresh}, shouldNotify: ${shouldNotify}, notify: ${notify} (manual=force)`);
-      
-      if (shouldNotify) {
-        let payload;
-        const postStyle = String(config.get('discord.githubPostStyle') || 'highlights');
-        if (postStyle !== 'image') {
-          try { payload = await buildReleaseHighlightsPayload(release); }
-          catch (err) { logger.warn(`GitHub-Highlights für ${repository} nicht verfügbar: ${err.message}`); }
-        }
-        if (!payload) try { payload = await buildReleaseNotesAttachmentPayload(release); }
-        catch (err) {
-          logger.warn(`GitHub-Release-Grafik für ${repository} nicht verfügbar: ${err.message}`);
-          payload = { embeds: [new EmbedBuilder().setColor(getGitHubReleaseColorNumber(release.repository)).setTitle(`Neuer Release: ${release.name}`).setURL(release.html_url).setDescription(_releasePlainText(release.body).join('\n').slice(0, 4000))], allowedMentions: { parse: [] } };
-        }
-        
-        let allSent = true;
-        for (const targetChannelId of channelIds) {
-          try {
-            let targetChannel = client.channels.cache.get(targetChannelId);
-            if (!targetChannel) targetChannel = await client.channels.fetch(targetChannelId);
-            if (!targetChannel?.isTextBased?.() || typeof targetChannel.send !== 'function') {
-              throw new Error('kein beschreibbarer Textkanal');
-            }
-            await targetChannel.send(payload);
-            logger.info(`GitHub-Watcher: neuer Release ${repository} ${release.tag_name} in ${targetChannelId} gemeldet`);
-          } catch (err) {
-            logger.warn(`GitHub-Watcher: Versand für ${repository} an Kanal ${targetChannelId} fehlgeschlagen: ${err.message}`);
-            allSent = false;
+    const settings = getGitHubRepositorySettings(repository);
+    const previous = githubWatchState[repository] || {};
+    const nextState = { ...previous };
+    let stateChanged = false;
+
+    const sendPayload = async (payload, activity) => {
+      let allSent = true;
+      for (const targetChannelId of channelIds) {
+        try {
+          let targetChannel = client.channels.cache.get(targetChannelId);
+          if (!targetChannel) targetChannel = await client.channels.fetch(targetChannelId);
+          if (!targetChannel?.isTextBased?.() || typeof targetChannel.send !== 'function') {
+            throw new Error('kein beschreibbarer Textkanal');
           }
+          await targetChannel.send(payload);
+          logger.info(`GitHub-Watcher: ${activity} für ${repository} in ${targetChannelId} gemeldet`);
+        } catch (err) {
+          logger.warn(`GitHub-Watcher: Versand von ${activity} für ${repository} an ${targetChannelId} fehlgeschlagen: ${err.message}`);
+          allSent = false;
         }
-        
-        // State NACH erfolgreichem Versand persistieren (nur wenn mindestens ein Kanal klappte)
-        if (allSent || channelIds.length === 0) {
-          githubWatchState[repository] = { releaseId: release.id, release, checkedAt: new Date().toISOString() };
-          persistState();
-        } else {
-          logger.warn(`GitHub-Watcher: State für ${repository} NICHT persistiert (Versand fehlgeschlagen), wird beim nächsten Check wiederholt`);
+      }
+      return allSent;
+    };
+
+    try {
+      if (settings.mode !== 'commits') {
+        try {
+          logger.info(`GitHub-Watcher: Prüfe Releases für ${repository}...`);
+          const release = await fetchGitHubLatestRelease(repository);
+          const hasPreviousRelease = Boolean(previous.releaseId);
+          const isNewRelease = !hasPreviousRelease || String(previous.releaseId) !== String(release.id);
+          const isFresh = !hasPreviousRelease && release.published_at &&
+            (Date.now() - new Date(release.published_at).getTime()) < 7 * 24 * 3600 * 1000;
+          const shouldNotify = notify ? true : (isNewRelease || isFresh);
+
+          if (shouldNotify) {
+            let payload;
+            if (settings.postStyle !== 'image') {
+              try { payload = await buildReleaseHighlightsPayload(release); }
+              catch (err) { logger.warn(`GitHub-Highlights für ${repository} nicht verfügbar: ${err.message}`); }
+            }
+            if (!payload) try { payload = await buildReleaseNotesAttachmentPayload(release); }
+            catch (err) {
+              logger.warn(`GitHub-Release-Ansicht für ${repository} nicht verfügbar: ${err.message}`);
+              payload = { embeds: [new EmbedBuilder().setColor(getGitHubReleaseColorNumber(release.repository)).setTitle(`Neuer Release: ${release.name}`).setURL(release.html_url).setDescription(_releasePlainText(release.body).join('\n').slice(0, 4000))], allowedMentions: { parse: [] } };
+            }
+            if (await sendPayload(payload, `neuer Release ${release.tag_name}`)) {
+              nextState.releaseId = release.id;
+              nextState.release = release;
+              stateChanged = true;
+            }
+          } else if (!hasPreviousRelease) {
+            nextState.releaseId = release.id;
+            nextState.release = release;
+            stateChanged = true;
+            logger.info(`GitHub-Watcher: Release-Baseline für ${repository} gesetzt`);
+          }
+        } catch (err) {
+          logger.warn(`GitHub-Watcher: Releases für ${repository} konnten nicht geprüft werden: ${err.message}`);
         }
-      } else if (!previous) {
-        // Erster Check, aber Release zu alt -> nur Baseline setzen, nicht senden
-        githubWatchState[repository] = { releaseId: release.id, release, checkedAt: new Date().toISOString() };
+      }
+
+      if (settings.mode !== 'releases') {
+        try {
+          logger.info(`GitHub-Watcher: Prüfe Commits für ${repository}...`);
+          const commit = await fetchGitHubLatestCommit(repository);
+          const hasPreviousCommit = Boolean(previous.commitSha);
+          const isNewCommit = hasPreviousCommit && previous.commitSha !== commit.sha;
+
+          if (notify || isNewCommit) {
+            if (await sendPayload(buildGitHubCommitPayload(commit), `neuer Commit ${commit.sha.slice(0, 7)}`)) {
+              nextState.commitSha = commit.sha;
+              nextState.commit = commit;
+              stateChanged = true;
+            }
+          } else if (!hasPreviousCommit) {
+            nextState.commitSha = commit.sha;
+            nextState.commit = commit;
+            stateChanged = true;
+            logger.info(`GitHub-Watcher: Commit-Baseline für ${repository} gesetzt`);
+          }
+        } catch (err) {
+          logger.warn(`GitHub-Watcher: Commits für ${repository} konnten nicht geprüft werden: ${err.message}`);
+        }
+      }
+
+      if (stateChanged) {
+        nextState.checkedAt = new Date().toISOString();
+        githubWatchState[repository] = nextState;
         persistState();
-        logger.info(`GitHub-Watcher: Baseline für ${repository} gesetzt (Release ${release.tag_name} älter als 7 Tage)`);
       }
     } catch (err) {
       logger.warn(`GitHub-Watcher: ${repository} konnte nicht geprüft werden: ${err.message}`);

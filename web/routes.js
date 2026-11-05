@@ -1666,6 +1666,14 @@ module.exports = function startWebServer({
           githubRepoColors = JSON.stringify(parsedColors);
         }
       } catch {}
+      let githubRepoSettings = '{}';
+      try {
+        const encodedSettings = get('DISCORD_GITHUB_REPO_SETTINGS_B64');
+        const parsedSettings = encodedSettings ? JSON.parse(Buffer.from(encodedSettings, 'base64').toString('utf8')) : {};
+        if (parsedSettings && typeof parsedSettings === 'object' && !Array.isArray(parsedSettings)) {
+          githubRepoSettings = JSON.stringify(parsedSettings);
+        }
+      } catch {}
 
       res.json({
         ok: true,
@@ -1691,6 +1699,7 @@ module.exports = function startWebServer({
         DISCORD_GITHUB_SECONDARY_CHANNEL_ID: get('DISCORD_GITHUB_SECONDARY_CHANNEL_ID') || '',
         DISCORD_GITHUB_REPOS:         get('DISCORD_GITHUB_REPOS') || '',
         DISCORD_GITHUB_REPO_COLORS:   githubRepoColors,
+        DISCORD_GITHUB_REPO_SETTINGS: githubRepoSettings,
         DISCORD_GITHUB_MODE:          get('DISCORD_GITHUB_MODE') || 'releases',
         DISCORD_GITHUB_POLL_INTERVAL_MS: get('DISCORD_GITHUB_POLL_INTERVAL_MS') || '300000',
         DISCORD_GITHUB_POST_STYLE:    get('DISCORD_GITHUB_POST_STYLE') || 'highlights',
@@ -1834,6 +1843,7 @@ module.exports = function startWebServer({
       'DISCORD_GITHUB_SECONDARY_CHANNEL_ID',
       'DISCORD_GITHUB_REPOS',
       'DISCORD_GITHUB_REPO_COLORS',
+      'DISCORD_GITHUB_REPO_SETTINGS',
       'DISCORD_GITHUB_MODE',
       'DISCORD_GITHUB_POLL_INTERVAL_MS',
       'DISCORD_GITHUB_POST_STYLE',
@@ -1954,6 +1964,32 @@ module.exports = function startWebServer({
           normalizedColors[normalizedRepository] = color;
         }
         updates.DISCORD_GITHUB_REPO_COLORS_B64 = Buffer.from(JSON.stringify(normalizedColors), 'utf8').toString('base64');
+        continue;
+      }
+      if (key === 'DISCORD_GITHUB_REPO_SETTINGS') {
+        let parsedSettings;
+        try {
+          parsedSettings = JSON.parse(val);
+        } catch {
+          return res.json({ ok: false, error: 'Repository-Einstellungen müssen gültiges JSON sein' });
+        }
+        if (!parsedSettings || typeof parsedSettings !== 'object' || Array.isArray(parsedSettings) || Object.keys(parsedSettings).length > 100) {
+          return res.json({ ok: false, error: 'Repository-Einstellungen müssen ein Objekt mit höchstens 100 Einträgen sein' });
+        }
+        const normalizedSettings = {};
+        for (const [repository, settings] of Object.entries(parsedSettings)) {
+          const normalizedRepository = repository.trim().toLowerCase();
+          if (!/^[a-z0-9_.-]+\/[a-z0-9_.-]+$/.test(normalizedRepository) || !settings || typeof settings !== 'object' || Array.isArray(settings)) {
+            return res.json({ ok: false, error: 'Ungültige Repository-Einstellung' });
+          }
+          const mode = String(settings.mode || 'releases');
+          const postStyle = String(settings.postStyle || 'highlights');
+          if (!['releases', 'commits', 'both'].includes(mode) || !['highlights', 'image'].includes(postStyle)) {
+            return res.json({ ok: false, error: 'Ungültiger Überwachungs-Modus oder Darstellungsstil' });
+          }
+          normalizedSettings[normalizedRepository] = { mode, postStyle };
+        }
+        updates.DISCORD_GITHUB_REPO_SETTINGS_B64 = Buffer.from(JSON.stringify(normalizedSettings), 'utf8').toString('base64');
         continue;
       }
       if (key === 'DISCORD_COMMAND_TILE_TEMPLATE') {

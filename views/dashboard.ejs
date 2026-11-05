@@ -2361,11 +2361,16 @@
           <label class="cfg-label">GitHub-Repositories</label>
           <input class="cfg-input" id="cfgGithubRepos" type="hidden" value="">
           <input class="cfg-input" id="cfgGithubRepoColors" type="hidden" value="{}">
+          <input class="cfg-input" id="cfgGithubRepoSettings" type="hidden" value="{}">
+          <input class="cfg-input" id="cfgGithubMode" type="hidden" value="releases">
+          <input class="cfg-input" id="cfgGithubPostStyle" type="hidden" value="highlights">
           <div style="overflow-x:auto;border:1px solid var(--border);border-radius:6px">
-            <table style="width:100%;border-collapse:collapse;min-width:420px">
+            <table style="width:100%;border-collapse:collapse;min-width:760px">
               <thead>
                 <tr style="background:var(--surface2);color:var(--muted);font-size:11px;text-align:left">
                   <th style="padding:8px 10px;font-weight:600">Repository</th>
+                  <th style="padding:8px 10px;font-weight:600;min-width:150px">Überwachungs-Modus</th>
+                  <th style="padding:8px 10px;font-weight:600;min-width:170px">Release-Darstellung</th>
                   <th style="padding:8px 10px;font-weight:600;width:100px">Release-Farbe</th>
                   <th style="padding:8px 10px;width:42px"></th>
                 </tr>
@@ -2377,22 +2382,7 @@
             <button class="btn" id="btnAddGithubRepo" type="button">＋ Repository hinzufügen</button>
             <span class="cfg-hint" style="margin:0">Ein Eintrag pro Zeile: <code>owner/repo</code> oder GitHub-URL.</span>
           </div>
-          <div class="cfg-hint">Die Release-Farbe wird für Grafik und Embed genutzt. Neue Repositories starten mit Blau.</div>
-        </div>
-        <div class="cfg-field">
-          <label class="cfg-label" for="cfgGithubMode">Überwachungs-Modus</label>
-          <select class="cfg-input" id="cfgGithubMode">
-            <option value="both">Beides (Releases + Commits)</option>
-            <option value="releases">Nur Releases</option>
-            <option value="commits">Nur Commits</option>
-          </select>
-        </div>
-        <div class="cfg-field">
-          <label class="cfg-label" for="cfgGithubPostStyle">Darstellung neuer Releases</label>
-          <select class="cfg-input" id="cfgGithubPostStyle">
-            <option value="highlights">Kompakte Highlights</option>
-            <option value="image">Bisherige Release-Notes-Ansicht</option>
-          </select>
+          <div class="cfg-hint">Darstellung gilt für Release-Meldungen; Commit-Meldungen zeigen die Commit-Nachricht. Neue Repositories starten mit Blau.</div>
         </div>
         <div class="cfg-field">
           <label class="cfg-label" for="cfgGithubHighlightsMax">Maximale Anzahl Highlights</label>
@@ -5651,17 +5641,36 @@
     }
   }
 
+  function readGitHubRepositorySettings() {
+    try {
+      const parsed = JSON.parse(document.getElementById('cfgGithubRepoSettings')?.value || '{}');
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+      return Object.fromEntries(Object.entries(parsed).flatMap(([repository, settings]) => {
+        const normalizedRepository = normalizeGitHubRepositoryForColors(repository);
+        if (!normalizedRepository || !settings || typeof settings !== 'object' || Array.isArray(settings)) return [];
+        const mode = ['releases', 'commits', 'both'].includes(settings.mode) ? settings.mode : 'releases';
+        const postStyle = ['highlights', 'image'].includes(settings.postStyle) ? settings.postStyle : 'highlights';
+        return [[normalizedRepository, { mode, postStyle }]];
+      }));
+    } catch {
+      return {};
+    }
+  }
+
   function renderGitHubRepositoryColorRows(repositoryValues) {
     const container = document.getElementById('cfgGithubRepoColorRows');
     if (!container) return;
     const repositories = repositoryValues || String(document.getElementById('cfgGithubRepos')?.value || '')
       .split(/[;,\s]+/).map(value => value.trim()).filter(Boolean);
     const colors = readGitHubRepositoryColors();
+    const settings = readGitHubRepositorySettings();
+    const defaultMode = document.getElementById('cfgGithubMode')?.value || 'releases';
+    const defaultPostStyle = document.getElementById('cfgGithubPostStyle')?.value || 'highlights';
     container.replaceChildren();
     if (!repositories.length) {
       const emptyRow = document.createElement('tr');
       const emptyCell = document.createElement('td');
-      emptyCell.colSpan = 3;
+      emptyCell.colSpan = 5;
       emptyCell.className = 'muted';
       emptyCell.style.cssText = 'padding:12px 10px;text-align:center';
       emptyCell.textContent = 'Noch keine Repositories hinzugefügt.';
@@ -5686,6 +5695,36 @@
       name.dataset.githubRepoValue = '1';
       name.style.width = '100%';
       nameCell.appendChild(name);
+      const modeCell = document.createElement('td');
+      modeCell.style.cssText = 'padding:6px 8px';
+      const mode = document.createElement('select');
+      mode.className = 'cfg-input';
+      mode.dataset.repoMode = '1';
+      mode.style.width = '100%';
+      [['releases', 'Nur Releases'], ['commits', 'Nur Commits'], ['both', 'Releases & Commits']].forEach(([value, label]) => {
+        const option = document.createElement('option');
+        option.value = value;
+        option.textContent = label;
+        mode.appendChild(option);
+      });
+      mode.value = settings[repository]?.mode || defaultMode;
+      mode.addEventListener('change', syncGitHubRepositorySettings);
+      modeCell.appendChild(mode);
+      const styleCell = document.createElement('td');
+      styleCell.style.cssText = 'padding:6px 8px';
+      const postStyle = document.createElement('select');
+      postStyle.className = 'cfg-input';
+      postStyle.dataset.repoPostStyle = '1';
+      postStyle.style.width = '100%';
+      [['highlights', 'Kompakte Highlights'], ['image', 'Klassische Release-Notes']].forEach(([value, label]) => {
+        const option = document.createElement('option');
+        option.value = value;
+        option.textContent = label;
+        postStyle.appendChild(option);
+      });
+      postStyle.value = settings[repository]?.postStyle || defaultPostStyle;
+      postStyle.addEventListener('change', syncGitHubRepositorySettings);
+      styleCell.appendChild(postStyle);
       const colorCell = document.createElement('td');
       colorCell.style.cssText = 'padding:6px 8px;text-align:center';
       const color = document.createElement('input');
@@ -5710,6 +5749,7 @@
       remove.addEventListener('click', () => {
         row.remove();
         syncGitHubRepositoryRows();
+        syncGitHubRepositorySettings();
         syncGitHubRepositoryColors();
         if (!container.querySelector('[data-github-repo-value]')) renderGitHubRepositoryColorRows();
       });
@@ -5724,9 +5764,16 @@
       name.addEventListener('change', () => {
         const normalized = normalizeGitHubRepositoryForColors(name.value);
         color.value = colors[normalized] || DEFAULT_GITHUB_RELEASE_COLOR;
+        mode.value = settings[normalized]?.mode || defaultMode;
+        postStyle.value = settings[normalized]?.postStyle || defaultPostStyle;
+        mode.disabled = !normalized;
+        postStyle.disabled = !normalized;
+        syncGitHubRepositorySettings();
         syncGitHubRepositoryColors();
       });
-      row.append(nameCell, colorCell, actionCell);
+      mode.disabled = !repository;
+      postStyle.disabled = !repository;
+      row.append(nameCell, modeCell, styleCell, colorCell, actionCell);
       container.appendChild(row);
     });
   }
@@ -5738,6 +5785,26 @@
     const values = Array.from(container.querySelectorAll('[data-github-repo-value]'))
       .map(input => String(input.value || '').trim()).filter(Boolean);
     const serialized = [...new Set(values)].join(';');
+    if (hidden.value !== serialized) {
+      hidden.value = serialized;
+      hidden.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+  }
+
+  function syncGitHubRepositorySettings() {
+    const hidden = document.getElementById('cfgGithubRepoSettings');
+    const container = document.getElementById('cfgGithubRepoColorRows');
+    if (!hidden || !container) return;
+    const settings = {};
+    container.querySelectorAll('tr').forEach(row => {
+      const repository = normalizeGitHubRepositoryForColors(row.querySelector('[data-github-repo-value]')?.value);
+      if (!repository) return;
+      settings[repository] = {
+        mode: row.querySelector('[data-repo-mode]')?.value || 'releases',
+        postStyle: row.querySelector('[data-repo-post-style]')?.value || 'highlights'
+      };
+    });
+    const serialized = JSON.stringify(settings);
     if (hidden.value !== serialized) {
       hidden.value = serialized;
       hidden.dispatchEvent(new Event('input', { bubbles: true }));
@@ -6100,11 +6167,12 @@
       setCfg('cfgGithubSecondaryChannelId', d.DISCORD_GITHUB_SECONDARY_CHANNEL_ID || '');
       setCfg('cfgGithubRepos', d.DISCORD_GITHUB_REPOS || '');
       setCfg('cfgGithubRepoColors', d.DISCORD_GITHUB_REPO_COLORS || '{}');
+      setCfg('cfgGithubRepoSettings', d.DISCORD_GITHUB_REPO_SETTINGS || '{}');
+      setCfg('cfgGithubMode', d.DISCORD_GITHUB_MODE || 'both');
+      setCfg('cfgGithubPostStyle', d.DISCORD_GITHUB_POST_STYLE || 'highlights');
       renderGitHubRepositoryColorRows();
       updateGitHubReleasePreviewRepositories();
-      setCfg('cfgGithubMode', d.DISCORD_GITHUB_MODE || 'both');
       setCfg('cfgGithubPollIntervalMs', d.DISCORD_GITHUB_POLL_INTERVAL_MS || '600000');
-      setCfg('cfgGithubPostStyle', d.DISCORD_GITHUB_POST_STYLE || 'highlights');
       setCfg('cfgGithubHighlightsMax', d.DISCORD_GITHUB_HIGHLIGHTS_MAX || '5');
       setCheckboxValue('cfgGithubHighlightsAi', (d.DISCORD_GITHUB_HIGHLIGHTS_AI || 'false') === 'true', { force });
       setCfg('cfgGithubReleaseTemplate', d.DISCORD_GITHUB_RELEASE_TEMPLATE || '');
@@ -6338,6 +6406,7 @@
   async function saveConfig() {
     syncCleanupRowsToHiddenInput();
     syncGitHubRepositoryRows();
+    syncGitHubRepositorySettings();
     syncGitHubRepositoryColors();
     const btn = document.getElementById('btnCfgSave');
     const st  = document.getElementById('cfgStatus');
@@ -6440,6 +6509,7 @@
     maybeSetChanged(body, 'DISCORD_GITHUB_SECONDARY_CHANNEL_ID', 'cfgGithubSecondaryChannelId', { allowEmpty: true });
     maybeSetChanged(body, 'DISCORD_GITHUB_REPOS', 'cfgGithubRepos', { allowEmpty: true });
     maybeSetChanged(body, 'DISCORD_GITHUB_REPO_COLORS', 'cfgGithubRepoColors');
+    maybeSetChanged(body, 'DISCORD_GITHUB_REPO_SETTINGS', 'cfgGithubRepoSettings');
     maybeSetChanged(body, 'DISCORD_GITHUB_MODE', 'cfgGithubMode');
     maybeSetChanged(body, 'DISCORD_GITHUB_POLL_INTERVAL_MS', 'cfgGithubPollIntervalMs');
     maybeSetChanged(body, 'DISCORD_GITHUB_POST_STYLE', 'cfgGithubPostStyle');
