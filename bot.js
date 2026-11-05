@@ -2609,7 +2609,7 @@ function buildCommandTileEmbed() {
 function buildCommandTileSvg() {
   const enabled = new Set(getEnabledSlashCommands());
   const tileScale = config.get('discord.commandTileScale');
-  const scale = { compact: 0.88, normal: 1.12, large: 1.38 }[tileScale] || 1.38;
+  const scale = { compact: 0.88, normal: 1.12, large: 1.86 }[tileScale] || 1.86;
   // Basis-Schriftgrößen für gute Lesbarkeit nach Discord-Skalierung (~400-500px Embed-Breite)
   // Ziel: effektive 24-28px bei 1200px Renderbreite = lesbar nach 3-4x Downscale
   const baseFont = {
@@ -2634,7 +2634,7 @@ function buildCommandTileSvg() {
 
   // Breitere Basis für bessere Lesbarkeit: Discord skaliert Embed-Bilder auf ~400-500px runter
   // Bei 1200px Renderbreite und 3x Downscale = 400px Anzeige -> Schrift muss entsprechend groß sein
-  const width = { compact: 1100, normal: 1200, large: 1400 }[tileScale] || 1400;
+  const width = { compact: 1100, normal: 1200, large: 1680 }[tileScale] || 1680;
   const headerHeight = Math.round(142 * scale);
   const tableHeaderHeight = 44;
   const sectionHeaderHeight = 42;
