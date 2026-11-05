@@ -5838,6 +5838,7 @@
     }
   }
 
+  const DEFAULT_GITHUB_RELEASE_TEMPLATE = '🚀 {{title}}\n🏷️ {{tag}} · {{repo}}\n📅 {{date}} · von {{author}}\n\n{{body}}\n\n🔗 {{url}}';
   let githubReleasePreviewData = null;
   let githubReleasePreviewRepo = '';
   let githubReleasePreviewRequest = 0;
@@ -5872,7 +5873,8 @@
     if (!editor || !preview || !status) return;
     if (!githubReleasePreviewData) return;
 
-    const text = editor.value.replace(/\{\{(title|tag|repo|date|url|body|author)\}\}/g, (match, key) =>
+    const template = editor.value || DEFAULT_GITHUB_RELEASE_TEMPLATE;
+    const text = template.replace(/\{\{(title|tag|repo|date|url|body|author)\}\}/g, (match, key) =>
       String(githubReleasePreviewData[key] ?? match));
     preview.textContent = text;
     status.textContent = `${text.length} Zeichen`;
@@ -6175,7 +6177,7 @@
       setCfg('cfgGithubPollIntervalMs', d.DISCORD_GITHUB_POLL_INTERVAL_MS || '600000');
       setCfg('cfgGithubHighlightsMax', d.DISCORD_GITHUB_HIGHLIGHTS_MAX || '5');
       setCheckboxValue('cfgGithubHighlightsAi', (d.DISCORD_GITHUB_HIGHLIGHTS_AI || 'false') === 'true', { force });
-      setCfg('cfgGithubReleaseTemplate', d.DISCORD_GITHUB_RELEASE_TEMPLATE || '');
+      setCfg('cfgGithubReleaseTemplate', d.DISCORD_GITHUB_RELEASE_TEMPLATE || DEFAULT_GITHUB_RELEASE_TEMPLATE);
       loadGitHubReleaseTextPreview();
       setCfg('cfgGithubToken', '');
       document.getElementById('cfgGithubToken').dataset.initialValue = d.GITHUB_TOKEN ? '__MASKED__' : '';

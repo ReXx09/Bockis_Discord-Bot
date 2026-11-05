@@ -2868,7 +2868,8 @@ function renderGitHubReleaseTemplate(release, bodyOverride) {
     body: bodyOverride === undefined ? (release?.body || 'Keine Release Notes vorhanden.') : String(bodyOverride),
     author: release?.author?.login || 'GitHub'
   };
-  const template = String(config.get('discord.githubReleaseTemplate') || '');
+  const template = String(config.get('discord.githubReleaseTemplate') || '').trim() ||
+    '🚀 {{title}}\n🏷️ {{tag}} · {{repo}}\n📅 {{date}} · von {{author}}\n\n{{body}}\n\n🔗 {{url}}';
   return template.replace(/\{\{(title|tag|repo|date|url|body|author)\}\}/g, (match, key) => values[key] ?? match);
 }
 
