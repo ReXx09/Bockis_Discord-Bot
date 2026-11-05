@@ -2638,13 +2638,31 @@ function buildCommandTileSvg() {
   const headerHeight = Math.round(142 * scale);
   const tableHeaderHeight = 44;
   const sectionHeaderHeight = 42;
-  const rowHeight = Math.round(48 * scale);
-  const sectionGap = 20;
-  // Ein-Spalten-Layout für bessere Lesbarkeit, keine Text-Truncation nötig
-  const totalHeight = Math.max(300, headerHeight + sections.reduce((height, section) => {
-    return height + sectionHeaderHeight + section.commands.length * rowHeight + sectionGap;
-  }, tableHeaderHeight) + 80);
+  const rowHeight = Math.round(44 * scale);
+  const sectionGap = 16;
   const cardWidth = width - 72; // volle Breite, eine Spalte
+  const columnGap = 18;
+  const columnWidth = (cardWidth - columnGap) / 2;
+  const columns = [[], []];
+  const columnHeights = [0, 0];
+  const addSectionToColumn = (columnIndex, section) => {
+    if (!section.commands.length) return;
+    columns[columnIndex].push(section);
+    columnHeights[columnIndex] += sectionHeaderHeight + section.commands.length * rowHeight + sectionGap;
+  };
+
+  for (const section of sections) {
+    if (section.commands.length > 8) {
+      const midpoint = Math.ceil(section.commands.length / 2);
+      addSectionToColumn(0, { ...section, commands: section.commands.slice(0, midpoint) });
+      addSectionToColumn(1, { ...section, commands: section.commands.slice(midpoint) });
+    } else {
+      const columnIndex = columnHeights[0] <= columnHeights[1] ? 0 : 1;
+      addSectionToColumn(columnIndex, section);
+    }
+  }
+
+  const totalHeight = Math.max(300, headerHeight + tableHeaderHeight + Math.max(...columnHeights) + 80);
 
   let svg = `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${totalHeight}" viewBox="0 0 ${width} ${totalHeight}">
@@ -2667,35 +2685,37 @@ function buildCommandTileSvg() {
   <text x="${width - 150}" y="96" text-anchor="middle" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="${font('badgeValue')}" font-weight="700" fill="#ffffff">${enabled.size} COMMANDS</text>`;
 
   const tableTop = headerHeight + 18;
-  const commandColumnX = 336;
-  svg += `
-  <rect x="36" y="${tableTop}" width="${cardWidth}" height="${tableHeaderHeight}" rx="8" fill="#263447"/>
-  <text x="56" y="${tableTop + 29}" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="${font('badgeLabel')}" font-weight="700" fill="#c5d3e6">BEFEHL</text>
-  <text x="${commandColumnX + 24}" y="${tableTop + 29}" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="${font('badgeLabel')}" font-weight="700" fill="#c5d3e6">FUNKTION</text>
+  for (let columnIndex = 0; columnIndex < columns.length; columnIndex += 1) {
+    const columnX = 36 + columnIndex * (columnWidth + columnGap);
+    const commandColumnX = columnX + Math.round(columnWidth * 0.34);
+    svg += `
+  <rect x="${columnX}" y="${tableTop}" width="${columnWidth}" height="${tableHeaderHeight}" rx="8" fill="#263447"/>
+  <text x="${columnX + 16}" y="${tableTop + 29}" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="${font('badgeLabel')}" font-weight="700" fill="#c5d3e6">BEFEHL</text>
+  <text x="${commandColumnX + 14}" y="${tableTop + 29}" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="${font('badgeLabel')}" font-weight="700" fill="#c5d3e6">FUNKTION</text>
   <line x1="${commandColumnX}" y1="${tableTop + 8}" x2="${commandColumnX}" y2="${tableTop + tableHeaderHeight - 8}" stroke="#45556d"/>`;
 
-  let currentY = tableTop + tableHeaderHeight + 30;
-  for (const section of sections) {
-    svg += `
-  <rect x="36" y="${currentY - 18}" width="${cardWidth}" height="32" rx="7" fill="#202938"/>
-  <rect x="36" y="${currentY - 18}" width="6" height="32" rx="3" fill="${section.color}"/>
-  <text x="56" y="${currentY + 4}" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="${font('sectionTitle')}" font-weight="700" fill="${section.color}">${_escapeSvgText(section.title)}</text>`;
-    currentY += sectionHeaderHeight;
-    for (let rowIndex = 0; rowIndex < section.commands.length; rowIndex += 1) {
-      const command = section.commands[rowIndex];
-      const x = 36;
-      const rowTop = currentY - 28;
-      const display = `/${getSlashCommandDisplayName(command, 'de')}`;
-      const label = COMMAND_TILE_LABELS[command] || 'verfügbar';
-      const rowColor = rowIndex % 2 === 0 ? '#1b2532' : '#202938';
+    let currentY = tableTop + tableHeaderHeight + 30;
+    for (const section of columns[columnIndex]) {
       svg += `
-  <rect x="${x}" y="${rowTop}" width="${cardWidth}" height="${rowHeight - 4}" rx="6" fill="${rowColor}"/>
-  <text x="${x + 20}" y="${currentY + 8}" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="${font('cmdName')}" font-weight="700" fill="#f3f6fc">${_escapeSvgText(display)}</text>
+  <rect x="${columnX}" y="${currentY - 18}" width="${columnWidth}" height="32" rx="7" fill="#202938"/>
+  <rect x="${columnX}" y="${currentY - 18}" width="6" height="32" rx="3" fill="${section.color}"/>
+  <text x="${columnX + 18}" y="${currentY + 4}" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="${font('sectionTitle')}" font-weight="700" fill="${section.color}">${_escapeSvgText(section.title)}</text>`;
+      currentY += sectionHeaderHeight;
+      for (let rowIndex = 0; rowIndex < section.commands.length; rowIndex += 1) {
+        const command = section.commands[rowIndex];
+        const rowTop = currentY - 28;
+        const display = `/${getSlashCommandDisplayName(command, 'de')}`;
+        const label = COMMAND_TILE_LABELS[command] || 'verfügbar';
+        const rowColor = rowIndex % 2 === 0 ? '#1b2532' : '#202938';
+        svg += `
+  <rect x="${columnX}" y="${rowTop}" width="${columnWidth}" height="${rowHeight - 4}" rx="6" fill="${rowColor}"/>
+  <text x="${columnX + 16}" y="${currentY + 8}" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="${font('cmdName')}" font-weight="700" fill="#f3f6fc">${_escapeSvgText(display)}</text>
   <line x1="${commandColumnX}" y1="${rowTop + 8}" x2="${commandColumnX}" y2="${rowTop + rowHeight - 12}" stroke="#364256"/>
-  <text x="${commandColumnX + 24}" y="${currentY + 8}" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="${font('cmdLabel')}" fill="#c4ccda">${_escapeSvgText(label)}</text>`;
-      currentY += rowHeight;
+  <text x="${commandColumnX + 14}" y="${currentY + 8}" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="${font('cmdLabel')}" fill="#c4ccda">${_escapeSvgText(label)}</text>`;
+        currentY += rowHeight;
+      }
+      currentY += sectionGap;
     }
-    currentY += sectionGap;
   }
 
   svg += `
