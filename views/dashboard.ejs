@@ -1753,7 +1753,7 @@
             <div class="cfg-section-body">
               <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;align-items:stretch">
                 <div style="display:flex;flex-direction:column;min-width:0">
-                  <label class="cfg-label" for="cfgCommandTileTemplate">Discord-Nachrichtentext</label>
+                  <label class="cfg-label" for="cfgCommandTileTemplate">Text für die Befehls-Grafik</label>
                   <div style="display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 8px">
                     <button class="btn" id="btnCommandTileReload" type="button" title="Aktuelle generierte Tabelle in den Editor laden">↻ Tabelle neu laden</button>
                     <button class="btn" type="button" data-command-template-insert="📋" title="Zwischenablage-Emoji einfügen">📋</button>
@@ -1764,12 +1764,13 @@
                     <button class="btn" type="button" data-command-template-insert="★" title="Stern einfügen">★</button>
                   </div>
                   <textarea class="cfg-input" id="cfgCommandTileTemplate" rows="8" maxlength="2000" spellcheck="true" style="box-sizing:border-box;width:100%;height:300px;min-height:300px;max-height:680px;overflow:auto;resize:none;font-family:ui-monospace,Consolas,monospace">{{commands}}</textarea>
-                  <div class="cfg-hint">Bearbeite hier genau den Text aus der Vorschau. Manuelle Änderungen speichern diesen Inhalt. Wenn sich aktive Befehle ändern, klicke „Tabelle neu laden“. Emojis, Sonderzeichen und Zeilenumbrüche sind erlaubt.</div>
+                  <label class="cfg-label" for="cfgCommandTileTextColor" style="display:flex;align-items:center;gap:8px;margin-top:8px">Schriftfarbe <input class="cfg-input" id="cfgCommandTileTextColor" type="color" value="#e8eef9" aria-label="Schriftfarbe der Befehlsübersicht" style="width:48px;height:32px;padding:2px"></label>
+                  <div class="cfg-hint">Der editierbare Text wird als Grafik gesendet. Manuelle Änderungen bleiben erhalten. Wenn sich aktive Befehle ändern, klicke „Tabelle neu laden“.</div>
                 </div>
                 <div>
                   <label class="cfg-label" for="cfgCommandTilePreview">Live-Vorschau</label>
                   <div id="cfgCommandTilePreviewStatus" class="cfg-hint" aria-live="polite">Vorschau wird geladen…</div>
-                  <pre id="cfgCommandTilePreview" aria-label="Vorschau der Discord-Befehlsnachricht" style="box-sizing:border-box;min-height:300px;max-height:680px;overflow:auto;white-space:pre;tab-size:2;margin:0;padding:12px;border:1px solid var(--border);border-radius:8px;background:#10141d;color:var(--text);font:12px/1.45 ui-monospace,Consolas,monospace"></pre>
+                  <div style="max-height:680px;overflow:auto;border:1px solid var(--border);border-radius:8px;background:#10141d"><img id="cfgCommandTilePreview" alt="Grafische Vorschau der Discord-Befehlsnachricht" style="display:block;width:100%;height:auto;min-height:300px;object-fit:contain"></div>
                 </div>
               </div>
             </div>
@@ -2421,45 +2422,48 @@
           <div class="cfg-section-header" onclick="toggleConfigSection(this)">
             <div class="cfg-section-header-title">
               <span class="cfg-section-toggle">▾</span>
-              <span>Release-Notes-Vorlage</span>
+              <span>📝 Release-Notes-Vorlage</span>
             </div>
           </div>
           <div class="cfg-section-content">
             <div class="cfg-section-body">
               <div class="cfg-field" style="border-bottom:1px solid var(--border);padding-bottom:12px">
                 <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-                  <button class="btn" type="button" onclick="loadGitHubReleasePreview()">👁 Release-Ansicht Vorschau</button>
-                  <button class="btn" type="button" onclick="triggerGitHubWatcherCheck()" style="background:#1f6feb">🔄 Jetzt prüfen &amp; senden</button>
+                  <button class="btn" type="button" onclick="triggerGitHubWatcherCheck(this)" style="background:#1f6feb">🔄 Jetzt prüfen &amp; senden</button>
                   <span class="muted" id="githubPreviewStatus"></span>
-                </div>
-                <div id="githubPreviewWrap" style="display:none;margin-top:12px">
-                  <img id="githubPreviewImage" alt="Vorschau der GitHub-Release-Ansicht" style="display:block;width:100%;max-height:560px;object-fit:contain;background:#10141d;border:1px solid var(--border);border-radius:8px">
                 </div>
               </div>
               <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;align-items:start">
                 <div>
-                  <label class="cfg-label" for="cfgGithubReleaseTemplate">Discord-Release-Text</label>
-                  <div style="display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 8px">
-                    <button class="btn" type="button" data-release-template-insert="{{title}}">Titel</button>
-                    <button class="btn" type="button" data-release-template-insert="{{tag}}">Tag</button>
-                    <button class="btn" type="button" data-release-template-insert="{{repo}}">Repository</button>
-                    <button class="btn" type="button" data-release-template-insert="{{date}}">Datum</button>
-                    <button class="btn" type="button" data-release-template-insert="{{url}}">URL</button>
-                    <button class="btn" type="button" data-release-template-insert="{{body}}">Release Notes</button>
-                    <button class="btn" type="button" data-release-template-insert="{{author}}">Autor</button>
-                    <button class="btn" type="button" data-release-template-insert="🚀" title="Raketen-Emoji einfügen">🚀</button>
-                    <button class="btn" type="button" data-release-template-insert="✨" title="Funkeln einfügen">✨</button>
-                    <button class="btn" type="button" data-release-template-insert="✅" title="Häkchen einfügen">✅</button>
-                  </div>
-                  <textarea class="cfg-input" id="cfgGithubReleaseTemplate" rows="10" maxlength="10000" spellcheck="true" style="font-family:ui-monospace,Consolas,monospace;resize:vertical;min-height:220px"
-                    placeholder="Release-Notes-Vorlage mit {{title}}, {{tag}}, {{repo}}, {{date}}, {{url}}, {{body}} und {{author}}"></textarea>
-                  <div class="cfg-hint">Diese gemeinsame Vorlage gilt für alle eingetragenen Repositories. Die Repo-Auswahl rechts ändert nur, welchen Release du in der Vorschau siehst.</div>
+                  <label class="cfg-label" for="githubReleaseMessageEditor">Editierbarer Discord-Text</label>
+                  <textarea class="cfg-input" id="githubReleaseMessageEditor" data-dirty-bound="1" rows="12" maxlength="20000" spellcheck="true" style="font-family:ui-monospace,Consolas,monospace;resize:vertical;min-height:320px"
+                    placeholder="Der Text des ausgewählten Releases wird hier geladen."></textarea>
+                  <label class="cfg-label" for="cfgGithubReleaseTextColor" style="display:flex;align-items:center;gap:8px;margin-top:8px">Schriftfarbe <input class="cfg-input" id="cfgGithubReleaseTextColor" type="color" value="#e8eef9" aria-label="Schriftfarbe der Release-Grafik" style="width:48px;height:32px;padding:2px"></label>
+                  <div class="cfg-hint">Hier bearbeitest du den aufgelösten Text für das ausgewählte Repository. „Jetzt prüfen &amp; senden“ verschickt genau diesen Inhalt als Grafik.</div>
+                  <details style="margin-top:12px">
+                    <summary class="cfg-label" style="cursor:pointer">Vorlage für künftige Releases bearbeiten</summary>
+                    <div style="display:flex;gap:6px;flex-wrap:wrap;margin:8px 0">
+                      <button class="btn" type="button" data-release-template-insert="{{title}}">Titel</button>
+                      <button class="btn" type="button" data-release-template-insert="{{tag}}">Tag</button>
+                      <button class="btn" type="button" data-release-template-insert="{{repo}}">Repository</button>
+                      <button class="btn" type="button" data-release-template-insert="{{date}}">Datum</button>
+                      <button class="btn" type="button" data-release-template-insert="{{url}}">URL</button>
+                      <button class="btn" type="button" data-release-template-insert="{{body}}">Release Notes</button>
+                      <button class="btn" type="button" data-release-template-insert="{{author}}">Autor</button>
+                      <button class="btn" type="button" data-release-template-insert="🚀" title="Raketen-Emoji einfügen">🚀</button>
+                      <button class="btn" type="button" data-release-template-insert="✨" title="Funkeln einfügen">✨</button>
+                      <button class="btn" type="button" data-release-template-insert="✅" title="Häkchen einfügen">✅</button>
+                    </div>
+                    <textarea class="cfg-input" id="cfgGithubReleaseTemplate" rows="8" maxlength="10000" spellcheck="true" style="font-family:ui-monospace,Consolas,monospace;resize:vertical;min-height:180px"
+                      placeholder="Release-Notes-Vorlage mit {{title}}, {{tag}}, {{repo}}, {{date}}, {{url}}, {{body}} und {{author}}"></textarea>
+                    <div class="cfg-hint">Diese gemeinsame Vorlage gilt für alle Repositories. Änderungen daran aktualisieren den Editortext des ausgewählten Repos.</div>
+                  </details>
                 </div>
                 <div>
                   <label class="cfg-label" for="githubReleaseTextPreview">Live-Vorschau des letzten Releases</label>
                   <select class="cfg-input" id="githubReleasePreviewRepoSelect" aria-label="Repository für die Release-Vorschau" style="margin-bottom:8px"></select>
                   <div id="githubReleaseTextPreviewStatus" class="cfg-hint" aria-live="polite">Repository wird geladen…</div>
-                  <pre id="githubReleaseTextPreview" aria-label="Vorschau der Release-Notes" style="box-sizing:border-box;min-height:320px;max-height:680px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;tab-size:2;margin:0;padding:12px;border:1px solid var(--border);border-radius:8px;background:#10141d;color:var(--text);font:12px/1.5 ui-monospace,Consolas,monospace"></pre>
+                  <div style="max-height:680px;overflow:auto;border:1px solid var(--border);border-radius:8px;background:#10141d"><img id="githubReleaseTextPreview" alt="Grafische Vorschau der Release-Notes" style="display:block;width:100%;height:auto;min-height:320px;object-fit:contain"></div>
                   <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px">
                     <button class="btn" type="button" onclick="loadGitHubReleaseTextPreview(true)">↻ Release neu laden</button>
                     <span class="muted" id="githubReleaseTextPreviewRepo"></span>
@@ -5596,19 +5600,6 @@
   
 
   // ── Config laden ─────────────────────────────────────
-  function loadGitHubReleasePreview() {
-    const repository = normalizeGitHubRepositoryForColors(document.getElementById('githubReleasePreviewRepoSelect')?.value)
-      || getGitHubPreviewRepositories()[0];
-    const status = document.getElementById('githubPreviewStatus');
-    const wrap = document.getElementById('githubPreviewWrap');
-    const image = document.getElementById('githubPreviewImage');
-    if (!repository) { if (status) status.textContent = 'Bitte zuerst owner/repo eintragen.'; return; }
-    if (status) status.textContent = 'Lade Release…';
-    image.onload = () => { wrap.style.display = 'block'; if (status) status.textContent = repository; };
-    image.onerror = () => { wrap.style.display = 'none'; if (status) status.textContent = 'Release nicht gefunden oder Vorschau nicht verfügbar'; };
-    image.src = `/api/previews/github-release.png?repo=${encodeURIComponent(repository)}&v=${Date.now()}`;
-  }
-
   const DEFAULT_GITHUB_RELEASE_COLOR = '#1f6feb';
 
   function normalizeGitHubRepositoryForColors(value) {
@@ -5843,6 +5834,9 @@
   let githubReleasePreviewRepo = '';
   let githubReleasePreviewRequest = 0;
   let githubReleasePreviewTimer = null;
+  let githubReleaseGraphicPreviewRequest = 0;
+  let githubReleaseGraphicPreviewTimer = null;
+  let githubReleaseGraphicPreviewUrl = '';
 
   function getGitHubPreviewRepositories() {
     return [...new Set(String(document.getElementById('cfgGithubRepos')?.value || '')
@@ -5866,19 +5860,51 @@
   }
 
   function renderGitHubReleaseTextPreview() {
-    const editor = document.getElementById('cfgGithubReleaseTemplate');
+    const templateEditor = document.getElementById('cfgGithubReleaseTemplate');
+    const editor = document.getElementById('githubReleaseMessageEditor');
     const preview = document.getElementById('githubReleaseTextPreview');
     const status = document.getElementById('githubReleaseTextPreviewStatus');
     const repoLabel = document.getElementById('githubReleaseTextPreviewRepo');
-    if (!editor || !preview || !status) return;
+    if (!templateEditor || !editor || !preview || !status) return;
     if (!githubReleasePreviewData) return;
 
-    const template = editor.value || DEFAULT_GITHUB_RELEASE_TEMPLATE;
-    const text = template.replace(/\{\{(title|tag|repo|date|url|body|author)\}\}/g, (match, key) =>
-      String(githubReleasePreviewData[key] ?? match));
-    preview.textContent = text;
-    status.textContent = `${text.length} Zeichen`;
+    if (editor.dataset.userEdited !== 'true') {
+      const template = templateEditor.value || DEFAULT_GITHUB_RELEASE_TEMPLATE;
+      editor.value = template.replace(/\{\{(title|tag|repo|date|url|body|author)\}\}/g, (match, key) =>
+        String(githubReleasePreviewData[key] ?? match));
+    }
+    const text = editor.value;
     if (repoLabel) repoLabel.textContent = githubReleasePreviewData.repo;
+    status.textContent = `${text.length} Zeichen · Grafik wird aktualisiert…`;
+    const requestId = ++githubReleaseGraphicPreviewRequest;
+    clearTimeout(githubReleaseGraphicPreviewTimer);
+    githubReleaseGraphicPreviewTimer = setTimeout(async () => {
+      try {
+        const response = await fetch('/api/previews/github-release-graphic.png', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            repository: githubReleasePreviewData.repo,
+            text,
+            textColor: document.getElementById('cfgGithubReleaseTextColor')?.value || '#e8eef9'
+          })
+        });
+        if (!response.ok) {
+          const result = await response.json();
+          throw new Error(result.error || 'Grafikvorschau konnte nicht erstellt werden');
+        }
+        const image = await response.blob();
+        if (requestId !== githubReleaseGraphicPreviewRequest) return;
+        if (githubReleaseGraphicPreviewUrl) URL.revokeObjectURL(githubReleaseGraphicPreviewUrl);
+        githubReleaseGraphicPreviewUrl = URL.createObjectURL(image);
+        preview.src = githubReleaseGraphicPreviewUrl;
+        status.textContent = `${text.length} Zeichen`;
+      } catch (error) {
+        if (requestId !== githubReleaseGraphicPreviewRequest) return;
+        preview.removeAttribute('src');
+        status.textContent = error.message;
+      }
+    }, 180);
   }
 
   async function loadGitHubReleaseTextPreview(force = false) {
@@ -5889,12 +5915,14 @@
     const preview = document.getElementById('githubReleaseTextPreview');
     const status = document.getElementById('githubReleaseTextPreviewStatus');
     const repoLabel = document.getElementById('githubReleaseTextPreviewRepo');
+    const editor = document.getElementById('githubReleaseMessageEditor');
     if (!repository) {
       githubReleasePreviewData = null;
-      if (preview) preview.textContent = '';
+      if (preview) preview.removeAttribute('src');
+      if (editor) { editor.value = ''; editor.dataset.userEdited = 'false'; }
       if (status) status.textContent = 'Bitte im GitHub-Watcher zuerst ein Repository als owner/repo eintragen.';
       if (repoLabel) repoLabel.textContent = '';
-      return;
+      return false;
     }
 
     if (force || repository !== githubReleasePreviewRepo || !githubReleasePreviewData) {
@@ -5904,20 +5932,23 @@
         const response = await fetch(`/api/previews/github-release.json?repo=${encodeURIComponent(repository)}&v=${Date.now()}`);
         const result = await response.json();
         if (!response.ok || !result.ok) throw new Error(result.error || 'Release-Vorschau konnte nicht geladen werden');
-        if (requestId !== githubReleasePreviewRequest) return;
+        if (requestId !== githubReleasePreviewRequest) return false;
         githubReleasePreviewData = result.release;
+        if (repository !== githubReleasePreviewRepo && editor) editor.dataset.userEdited = 'false';
         githubReleasePreviewRepo = repository;
       } catch (error) {
-        if (requestId !== githubReleasePreviewRequest) return;
+        if (requestId !== githubReleasePreviewRequest) return false;
         githubReleasePreviewData = null;
-        if (preview) preview.textContent = '';
+        if (preview) preview.removeAttribute('src');
+        if (editor) { editor.value = ''; editor.dataset.userEdited = 'false'; }
         if (status) status.textContent = error.message;
         if (repoLabel) repoLabel.textContent = '';
-        return;
+        return false;
       }
     }
 
     renderGitHubReleaseTextPreview();
+    return true;
   }
 
   function insertGitHubReleaseTemplateText(text) {
@@ -5928,21 +5959,35 @@
     editor.dispatchEvent(new Event('input', { bubbles: true }));
   }
 
-  async function triggerGitHubWatcherCheck() {
-    const btn = event?.target;
+  async function triggerGitHubWatcherCheck(btn) {
     const status = document.getElementById('githubPreviewStatus');
-    if (btn) { btn.disabled = true; btn.textContent = '⏳ Prüfe…'; }
-    if (status) status.textContent = 'GitHub-Watcher läuft…';
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ Lade & sende…'; }
+    if (status) status.textContent = 'Lade aktuellen Release und sende Vorschautext…';
     try {
-      const res = await fetch('/api/github-watcher/check', { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+      const loaded = await loadGitHubReleaseTextPreview(true);
+      if (!loaded) {
+        const previewStatus = document.getElementById('githubReleaseTextPreviewStatus');
+        throw new Error(previewStatus?.textContent || 'Release-Vorschau konnte nicht geladen werden');
+      }
+      const repository = normalizeGitHubRepositoryForColors(document.getElementById('githubReleasePreviewRepoSelect')?.value);
+      const text = document.getElementById('githubReleaseMessageEditor')?.value || '';
+      const res = await fetch('/api/github-watcher/send-preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          repository,
+          text,
+          textColor: document.getElementById('cfgGithubReleaseTextColor')?.value || '#e8eef9'
+        })
+      });
       const data = await res.json();
       if (data.ok) {
-        if (status) status.textContent = '✅ ' + (data.message || 'Erledigt');
+        if (status) status.textContent = '✅ ' + (data.message || 'Vorschautext gesendet');
       } else {
         if (status) status.textContent = '❌ ' + (data.error || 'Fehler');
       }
     } catch (err) {
-      if (status) status.textContent = '❌ Netzwerkfehler: ' + err.message;
+      if (status) status.textContent = '❌ ' + err.message;
     } finally {
       if (btn) { btn.disabled = false; btn.textContent = '🔄 Jetzt prüfen & senden'; }
     }
@@ -5950,6 +5995,7 @@
 
   let commandTilePreviewRequest = 0;
   let commandTilePreviewTimer = null;
+  let commandTilePreviewUrl = '';
 
   function syncCommandTileEditorHeight() {
     const editor = document.getElementById('cfgCommandTileTemplate');
@@ -5970,6 +6016,22 @@
     return String(result.text);
   }
 
+  async function requestCommandTilePreviewImage(template) {
+    const response = await fetch('/api/previews/commands.png', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        template,
+        textColor: document.getElementById('cfgCommandTileTextColor')?.value || '#e8eef9'
+      })
+    });
+    if (!response.ok) {
+      const result = await response.json();
+      throw new Error(result.error || 'Grafikvorschau konnte nicht erstellt werden');
+    }
+    return response.blob();
+  }
+
   async function updateCommandTileEditorPreview() {
     const editor = document.getElementById('cfgCommandTileTemplate');
     const preview = document.getElementById('cfgCommandTilePreview');
@@ -5980,12 +6042,16 @@
     try {
       const text = await requestCommandTilePreviewText(editor.value);
       if (requestId !== commandTilePreviewRequest) return;
-      preview.textContent = text.replace(/```[^\n]*\n/g, '').replace(/\n```/g, '');
+      const image = await requestCommandTilePreviewImage(editor.value);
+      if (requestId !== commandTilePreviewRequest) return;
+      if (commandTilePreviewUrl) URL.revokeObjectURL(commandTilePreviewUrl);
+      commandTilePreviewUrl = URL.createObjectURL(image);
+      preview.src = commandTilePreviewUrl;
       status.textContent = `${text.length} / 2000 Zeichen`;
       syncCommandTileEditorHeight();
     } catch (err) {
       if (requestId !== commandTilePreviewRequest) return;
-      preview.textContent = '';
+      preview.removeAttribute('src');
       status.textContent = err.message;
       syncCommandTileEditorHeight();
     }
@@ -6065,6 +6131,7 @@
         ? await requestCommandTilePreviewText(savedCommandTileTemplate)
         : savedCommandTileTemplate;
       setCfg('cfgCommandTileTemplate', commandTileEditorValue);
+      setCfg('cfgCommandTileTextColor', d.DISCORD_COMMAND_TILE_TEXT_COLOR || '#e8eef9');
       const commandTileEditor = document.getElementById('cfgCommandTileTemplate');
       if (commandTileEditor.value === commandTileEditorValue) {
         commandTileEditor.dataset.generatedValue = commandTileTemplateIsDynamic ? commandTileEditorValue : '';
@@ -6178,6 +6245,7 @@
       setCfg('cfgGithubHighlightsMax', d.DISCORD_GITHUB_HIGHLIGHTS_MAX || '5');
       setCheckboxValue('cfgGithubHighlightsAi', (d.DISCORD_GITHUB_HIGHLIGHTS_AI || 'false') === 'true', { force });
       setCfg('cfgGithubReleaseTemplate', d.DISCORD_GITHUB_RELEASE_TEMPLATE || DEFAULT_GITHUB_RELEASE_TEMPLATE);
+      setCfg('cfgGithubReleaseTextColor', d.DISCORD_GITHUB_RELEASE_TEXT_COLOR || '#e8eef9');
       loadGitHubReleaseTextPreview();
       setCfg('cfgGithubToken', '');
       document.getElementById('cfgGithubToken').dataset.initialValue = d.GITHUB_TOKEN ? '__MASKED__' : '';
@@ -6211,7 +6279,7 @@
         setCfg('cfgOpenaiRateLimit', d.OPENAI_RATE_LIMIT_PER_MINUTE || '5');
         setCfg('cfgOpenaiChannelIds', d.OPENAI_CHANNEL_IDS || '');
         setCheckboxValue('cfgOpenaiAllowDMs', (d.OPENAI_ALLOW_DMS || 'true') === 'true', { force });
-        setCheckboxValue('cfgOpenaiNameTriggerEnabled', (d.OPENAI_NAME_TRIGGER_ENABLED || 'false') === 'true', { force });
+        setCheckboxValue('cfgOpenaiNameTriggerEnabled', (d.OPENAI_NAME_TRIGGER_ENABLED || 'true') === 'true', { force });
 
         if (force) clearConfigDirtyTracking();
     } catch (e) {
@@ -6376,6 +6444,7 @@
       clearTimeout(commandTilePreviewTimer);
       commandTilePreviewTimer = setTimeout(updateCommandTileEditorPreview, 180);
     });
+    document.getElementById('cfgCommandTileTextColor')?.addEventListener('input', updateCommandTileEditorPreview);
     document.querySelectorAll('[data-command-template-insert]').forEach(button => {
       button.addEventListener('click', () => insertCommandTileTemplateText(button.dataset.commandTemplateInsert || ''));
     });
@@ -6386,7 +6455,16 @@
     }
     window.addEventListener('resize', syncCommandTileEditorHeight);
     updateCommandTileEditorPreview();
-    document.getElementById('cfgGithubReleaseTemplate')?.addEventListener('input', renderGitHubReleaseTextPreview);
+    document.getElementById('cfgGithubReleaseTemplate')?.addEventListener('input', () => {
+      const editor = document.getElementById('githubReleaseMessageEditor');
+      if (editor) editor.dataset.userEdited = 'false';
+      renderGitHubReleaseTextPreview();
+    });
+    document.getElementById('cfgGithubReleaseTextColor')?.addEventListener('input', renderGitHubReleaseTextPreview);
+    document.getElementById('githubReleaseMessageEditor')?.addEventListener('input', event => {
+      event.currentTarget.dataset.userEdited = 'true';
+      renderGitHubReleaseTextPreview();
+    });
     document.querySelectorAll('[data-release-template-insert]').forEach(button => {
       button.addEventListener('click', () => insertGitHubReleaseTemplateText(button.dataset.releaseTemplateInsert || ''));
     });
@@ -6433,6 +6511,7 @@
         ? '{{commands}}'
         : commandTileTemplate;
     }
+    maybeSetChanged(body, 'DISCORD_COMMAND_TILE_TEXT_COLOR', 'cfgCommandTileTextColor');
     maybeSetChanged(body, 'DISCORD_TRANSLATE_DEFAULT_TARGET', 'cfgTranslateDefaultTarget');
     maybeSetChanged(body, 'DISCORD_TRANSLATE_DEFAULT_SOURCE', 'cfgTranslateDefaultSource');
     maybeSetChanged(body, 'DISCORD_TRANSLATE_PROVIDER', 'cfgTranslateProvider');
@@ -6517,6 +6596,7 @@
     maybeSetChanged(body, 'DISCORD_GITHUB_POST_STYLE', 'cfgGithubPostStyle');
     maybeSetChanged(body, 'DISCORD_GITHUB_HIGHLIGHTS_MAX', 'cfgGithubHighlightsMax');
     maybeSetChanged(body, 'DISCORD_GITHUB_RELEASE_TEMPLATE', 'cfgGithubReleaseTemplate', { allowEmpty: true });
+    maybeSetChanged(body, 'DISCORD_GITHUB_RELEASE_TEXT_COLOR', 'cfgGithubReleaseTextColor');
     maybeSetChanged(body, 'GITHUB_TOKEN', 'cfgGithubToken', { allowEmpty: true });
     const githubHighlightsAiEl = document.getElementById('cfgGithubHighlightsAi');
     const curGithubHighlightsAi = githubHighlightsAiEl.checked ? 'true' : 'false';

@@ -116,6 +116,12 @@ const config = convict({
       default: 'large',
       env: 'DISCORD_COMMAND_TILE_SCALE'
     },
+    commandTileTextColor: {
+      doc: 'Schriftfarbe der grafischen Befehlsübersicht',
+      format: String,
+      default: '#e8eef9',
+      env: 'DISCORD_COMMAND_TILE_TEXT_COLOR'
+    },
     commandTileMode: {
       doc: 'Darstellungsmodus der Befehls-Kachel: image (SVG-Tabelle als PNG) | text (kopierbares Embed)',
       format: ['text', 'image'],
@@ -492,6 +498,12 @@ const config = convict({
       default: '## 🚀 {{title}}\n\n{{body}}\n\n---\n📦 **Repository:** {{repo}}\n🏷️ **Tag:** {{tag}}\n📅 **Veröffentlicht:** {{date}}\n🔗 **Release:** {{url}}',
       env: 'DISCORD_GITHUB_RELEASE_TEMPLATE'
     },
+    githubReleaseTextColor: {
+      doc: 'Schriftfarbe der grafischen GitHub-Release-Notes',
+      format: String,
+      default: '#e8eef9',
+      env: 'DISCORD_GITHUB_RELEASE_TEXT_COLOR'
+    },
     wigiDashApi: {
       doc: 'WigiDash Status-API Konfiguration (für Hardware-Monitor-Integration)',
       enabled: {
@@ -618,7 +630,7 @@ const config = convict({
     nameTriggerEnabled: {
       doc: 'Bot reagiert im Server auch auf seinen Rufnamen ohne direkte @Erwaehnung',
       format: Boolean,
-      default: false,
+      default: true,
       env: 'OPENAI_NAME_TRIGGER_ENABLED'
     },
     rateLimitPerMinute: {

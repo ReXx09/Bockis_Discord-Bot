@@ -457,6 +457,7 @@ bash ~/bockis-bot/start-bot.sh
 | `OPENAI_CHANNEL_IDS` | ❌ | Komma-Liste erlaubter Kanäle für @-Mention-Chat (leer = alle) |
 | `OPENAI_MAX_TOKENS` | ❌ | Max. Antwortlänge in Tokens (Standard: `600`) |
 | `OPENAI_ALLOW_DMS` | ❌ | Direkte KI-Antworten in DMs erlauben (`true`/`false`) |
+| `OPENAI_NAME_TRIGGER_ENABLED` | ❌ | Auf den Bot-Rufnamen ohne @Erwähnung reagieren (Standard: `true`) |
 | `OPENAI_RATE_LIMIT_PER_MINUTE` | ❌ | Max. Anfragen pro Nutzer/Minute (Standard: `5`) |
 
 > **Tipp:** Wenn `OPENAI_SYSTEM_PROMPT` leer bleibt, generiert der Bot automatisch einen Prompt der alle aktiven Slash-Commands und Features enthält — so kann die KI Fragen wie „Was kannst du?" korrekt beantworten.
@@ -515,7 +516,7 @@ bash ~/bockis-bot/start-bot.sh
 | `/botinfo` | Alle | Technische Bot-Informationen (Version, Uptime, RAM) |
 | `/serverstatus` (`/dienststatus`) | Alle | Einzelnen Dienst oder Gruppe abfragen |
 | `/ki` | Alle | Direkte KI-Frage ohne @-Erwähnung |
-| `/wetter` | Alle | Wetter für eine Stadt/Region abrufen |
+| `/wetter` | Alle | Aktuelle Bedingungen, Tageswerte und Kurzprognose abrufen |
 | `/subscribe` (`/abonnieren`) | Alle | Status-Benachrichtigungen abonnieren oder verwalten |
 | `/remind` (`/erinnern`) | Alle | Erinnerung setzen (Zeitangabe + Nachricht) |
 | `/quote` (`/zitat`) | Alle | Zitat speichern oder ein zufälliges anzeigen |

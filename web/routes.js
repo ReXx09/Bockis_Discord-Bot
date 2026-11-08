@@ -54,6 +54,8 @@ module.exports = function startWebServer({
   getCommandTilePreviewText,
   getGitHubReleasePreviewPng,
   getGitHubReleasePreviewData,
+    getGitHubReleaseGraphicPreviewPng,
+  sendGitHubReleasePreview,
   runGitHubReleaseCheck,
   rootDir           // = __dirname aus bot.js (Projektwurzel)
 }) {
@@ -88,6 +90,18 @@ module.exports = function startWebServer({
       res.status(503).json({ ok: false, error: err.message });
     }
   });
+    app.post('/api/previews/commands.png', dashboardAuth, async (req, res) => {
+      try {
+        if (typeof getCommandTilePreviewPng !== 'function') throw new Error('Befehlsvorschau nicht verfügbar');
+        const textColor = String(req.body?.textColor || '#e8eef9').trim();
+        if (!/^#[0-9a-f]{6}$/i.test(textColor)) return res.status(400).json({ ok: false, error: 'Ungültige Schriftfarbe' });
+        const png = await getCommandTilePreviewPng(String(req.body?.template || ''), textColor);
+        res.set('Cache-Control', 'no-store').type('png').send(png);
+      } catch (err) {
+        logger.error(`/api/previews/commands.png Fehler: ${err.message}`);
+        res.status(400).json({ ok: false, error: err.message });
+      }
+    });
 
   app.post('/api/previews/commands.txt', dashboardAuth, (req, res) => {
     try {
@@ -126,6 +140,43 @@ module.exports = function startWebServer({
     } catch (err) {
       logger.error(`/api/previews/github-release.json Fehler: ${err.message}`);
       res.status(503).json({ ok: false, error: err.message });
+    }
+  });
+  app.post('/api/previews/github-release-graphic.png', dashboardAuth, async (req, res) => {
+    try {
+      if (typeof getGitHubReleaseGraphicPreviewPng !== 'function') throw new Error('Release-Grafikvorschau nicht verfügbar');
+      const repository = String(req.body?.repository || '').trim().toLowerCase();
+      const textColor = String(req.body?.textColor || '#e8eef9').trim();
+      if (!/^[a-z0-9_.-]+\/[a-z0-9_.-]+$/.test(repository)) {
+        return res.status(400).json({ ok: false, error: 'Repository muss owner/repo sein' });
+      }
+      if (!/^#[0-9a-f]{6}$/i.test(textColor)) return res.status(400).json({ ok: false, error: 'Ungültige Schriftfarbe' });
+      const png = await getGitHubReleaseGraphicPreviewPng(repository, String(req.body?.text || ''), textColor);
+      res.set('Cache-Control', 'no-store').type('png').send(png);
+    } catch (err) {
+      logger.error(`/api/previews/github-release-graphic.png Fehler: ${err.message}`);
+      res.status(400).json({ ok: false, error: err.message });
+    }
+  });
+
+  app.post('/api/github-watcher/send-preview', dashboardAuth, async (req, res) => {
+    try {
+      if (typeof sendGitHubReleasePreview !== 'function') throw new Error('Release-Versand nicht verfügbar');
+      const repository = String(req.body?.repository || '').trim().toLowerCase();
+      const text = req.body?.text;
+      if (!/^[a-z0-9_.-]+\/[a-z0-9_.-]+$/.test(repository)) {
+        return res.status(400).json({ ok: false, error: 'Repository muss owner/repo sein' });
+      }
+      if (typeof text !== 'string' || !text.trim() || text.length > 20_000) {
+        return res.status(400).json({ ok: false, error: 'Vorschautext muss zwischen 1 und 20000 Zeichen lang sein' });
+      }
+      const textColor = String(req.body?.textColor || '#e8eef9').trim();
+      if (!/^#[0-9a-f]{6}$/i.test(textColor)) return res.status(400).json({ ok: false, error: 'Ungültige Schriftfarbe' });
+      const channelCount = await sendGitHubReleasePreview(repository, text, textColor);
+      res.json({ ok: true, message: `Release-Text an ${channelCount} Kanal/Kanäle gesendet` });
+    } catch (err) {
+      logger.error(`/api/github-watcher/send-preview Fehler: ${err.message}`);
+      res.status(500).json({ ok: false, error: err.message });
     }
   });
 
@@ -1706,10 +1757,12 @@ module.exports = function startWebServer({
         DISCORD_GITHUB_HIGHLIGHTS_MAX: get('DISCORD_GITHUB_HIGHLIGHTS_MAX') || '5',
         DISCORD_GITHUB_HIGHLIGHTS_AI: get('DISCORD_GITHUB_HIGHLIGHTS_AI') || 'false',
         DISCORD_GITHUB_RELEASE_TEMPLATE: get('DISCORD_GITHUB_RELEASE_TEMPLATE') || '',
+        DISCORD_GITHUB_RELEASE_TEXT_COLOR: get('DISCORD_GITHUB_RELEASE_TEXT_COLOR') || '#e8eef9',
         GITHUB_TOKEN:                 maskSecret(get('GITHUB_TOKEN')),
         DISCORD_ENABLED_COMMANDS:     get('DISCORD_ENABLED_COMMANDS') || 'status,uptime,refresh,help,triggerinfo,coinflip,dice,eightball,cleanup,translate,ping,botinfo,serverstatus,ki,wetter,subscribe,remind,quote,poll,avatar,userinfo,testreply',
         DISCORD_COMMAND_TILE_TEMPLATE: commandTileTemplate,
         DISCORD_COMMAND_TILE_SCALE:   get('DISCORD_COMMAND_TILE_SCALE') || 'large',
+        DISCORD_COMMAND_TILE_TEXT_COLOR: get('DISCORD_COMMAND_TILE_TEXT_COLOR') || '#e8eef9',
         DISCORD_TRANSLATE_ENABLED:    get('DISCORD_TRANSLATE_ENABLED') || 'false',
         DISCORD_TRANSLATE_DEFAULT_TARGET: get('DISCORD_TRANSLATE_DEFAULT_TARGET') || 'de',
         DISCORD_TRANSLATE_DEFAULT_SOURCE: get('DISCORD_TRANSLATE_DEFAULT_SOURCE') || 'auto',
@@ -1775,7 +1828,7 @@ module.exports = function startWebServer({
         OPENAI_CHANNEL_IDS:           get('OPENAI_CHANNEL_IDS') || '',
         OPENAI_MAX_TOKENS:            get('OPENAI_MAX_TOKENS') || '600',
         OPENAI_ALLOW_DMS:             get('OPENAI_ALLOW_DMS') || 'true',
-        OPENAI_NAME_TRIGGER_ENABLED:  get('OPENAI_NAME_TRIGGER_ENABLED') || 'false',
+        OPENAI_NAME_TRIGGER_ENABLED:  get('OPENAI_NAME_TRIGGER_ENABLED') || 'true',
         OPENAI_RATE_LIMIT_PER_MINUTE: get('OPENAI_RATE_LIMIT_PER_MINUTE') || '5',
       });
     } catch (err) {
@@ -1805,6 +1858,7 @@ module.exports = function startWebServer({
       'DISCORD_ENABLED_COMMANDS',
       'DISCORD_COMMAND_TILE_TEMPLATE',
       'DISCORD_COMMAND_TILE_SCALE',
+      'DISCORD_COMMAND_TILE_TEXT_COLOR',
       'DISCORD_TRANSLATE_ENABLED',
       'DISCORD_TRANSLATE_DEFAULT_TARGET',
       'DISCORD_TRANSLATE_DEFAULT_SOURCE',
@@ -1850,6 +1904,7 @@ module.exports = function startWebServer({
       'DISCORD_GITHUB_HIGHLIGHTS_MAX',
       'DISCORD_GITHUB_HIGHLIGHTS_AI',
       'DISCORD_GITHUB_RELEASE_TEMPLATE',
+      'DISCORD_GITHUB_RELEASE_TEXT_COLOR',
       'GITHUB_TOKEN',
       'UPTIME_KUMA_URL',
       'UPTIME_KUMA_API_KEY',
@@ -1944,6 +1999,11 @@ module.exports = function startWebServer({
       const val = key === 'DISCORD_COMMAND_TILE_TEMPLATE'
         ? String(raw).replace(/\r\n?/g, '\n')
         : String(raw).trim();
+      if (key === 'DISCORD_COMMAND_TILE_TEXT_COLOR' || key === 'DISCORD_GITHUB_RELEASE_TEXT_COLOR') {
+        if (!/^#[0-9a-f]{6}$/i.test(val)) return res.json({ ok: false, error: 'Schriftfarbe muss das Format #RRGGBB haben' });
+        updates[key] = val.toLowerCase();
+        continue;
+      }
       if (key === 'DISCORD_GITHUB_REPO_COLORS') {
         let parsedColors;
         try {
