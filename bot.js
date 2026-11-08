@@ -8,7 +8,7 @@
  * SPDX-License-Identifier: MIT
  */
 
-const { Client, GatewayIntentBits, ActivityType, REST, Routes, SlashCommandBuilder, EmbedBuilder, ChannelType, PermissionFlagsBits, AttachmentBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { Client, GatewayIntentBits, ActivityType, REST, Routes, SlashCommandBuilder, EmbedBuilder, ChannelType, PermissionFlagsBits, AttachmentBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
 const axios = require('axios');
 const sharp = require('sharp');
 const winston = require('winston');
@@ -17,6 +17,7 @@ const prom = require('prom-client');
 const { Sequelize, DataTypes, Op } = require('sequelize');
 const fs = require('fs');
 const { execFile } = require('child_process');
+const { randomUUID } = require('crypto');
 
 // #region 1. ENV-VALIDIERUNG
 const path = require('path');
@@ -4340,6 +4341,64 @@ function startPresenceRotation() {
 
 // #region 21. SLASH-COMMAND HANDLER
 client.on('interactionCreate', async interaction => {
+  if (interaction.isButton() && interaction.customId.startsWith('weather-location:')) {
+    const requestId = interaction.customId.slice('weather-location:'.length);
+    const pendingRequest = _pendingWeatherLocationRequests.get(requestId);
+    if (!pendingRequest || Date.now() - pendingRequest.createdAt > 10 * 60 * 1000) {
+      _pendingWeatherLocationRequests.delete(requestId);
+      return interaction.reply({ content: 'Diese Wetteranfrage ist abgelaufen. Bitte stelle die Frage erneut.', ephemeral: true });
+    }
+    if (pendingRequest.userId !== interaction.user.id) {
+      return interaction.reply({ content: 'Nur die Person, die nach dem Wetter gefragt hat, kann den Ort eingeben.', ephemeral: true });
+    }
+
+    const modal = new ModalBuilder()
+      .setCustomId(`weather-location-submit:${requestId}`)
+      .setTitle('Wetter-Ort eingeben')
+      .addComponents(
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder()
+            .setCustomId('weather-location-value')
+            .setLabel('Stadt oder Ort')
+            .setPlaceholder('Zum Beispiel: Traunstein')
+            .setStyle(TextInputStyle.Short)
+            .setMinLength(2)
+            .setMaxLength(100)
+            .setRequired(true)
+        )
+      );
+    return interaction.showModal(modal);
+  }
+
+  if (interaction.isModalSubmit() && interaction.customId.startsWith('weather-location-submit:')) {
+    const requestId = interaction.customId.slice('weather-location-submit:'.length);
+    const pendingRequest = _pendingWeatherLocationRequests.get(requestId);
+    if (!pendingRequest || Date.now() - pendingRequest.createdAt > 10 * 60 * 1000) {
+      _pendingWeatherLocationRequests.delete(requestId);
+      return interaction.reply({ content: 'Diese Wetteranfrage ist abgelaufen. Bitte stelle die Frage erneut.', ephemeral: true });
+    }
+    if (pendingRequest.userId !== interaction.user.id) {
+      return interaction.reply({ content: 'Nur die Person, die nach dem Wetter gefragt hat, kann den Ort eingeben.', ephemeral: true });
+    }
+
+    _pendingWeatherLocationRequests.delete(requestId);
+    const location = interaction.fields.getTextInputValue('weather-location-value').trim();
+    await interaction.deferReply({ ephemeral: true });
+    try {
+      const weatherContext = await _fetchWeather(location, pendingRequest.forecastDays);
+      if (!weatherContext) {
+        return interaction.editReply(`Für „${location}“ konnte ich keine Wetterdaten finden. Prüfe bitte die Schreibweise oder stelle die Frage erneut.`);
+      }
+      const question = `${pendingRequest.question}\n\nDer Nutzer hat als Ort „${location}“ angegeben.`;
+      const reply = await _askOpenAI(question, pendingRequest.userName, weatherContext);
+      if (!reply) return interaction.editReply('🤔 Ich konnte gerade keine Antwort generieren. Bitte versuche es später nochmal.');
+      return interaction.editReply(reply.length > 1900 ? `${reply.slice(0, 1897)}…` : reply);
+    } catch (err) {
+      logger.warn(`Wetter-Rückfrage fehlgeschlagen: ${err.message}`);
+      return interaction.editReply('❌ Die Wetterantwort konnte gerade nicht erstellt werden. Bitte versuche es erneut.');
+    }
+  }
+
   if (!interaction.isChatInputCommand()) return;
 
   const commandName = resolveCanonicalCommandName(interaction.commandName);
@@ -5020,6 +5079,7 @@ client.on('interactionCreate', async interaction => {
 
 // #region 21.5 KI-CHATBOT (OpenAI + Wetter)
 const _chatRateLimitMap = new Map();
+const _pendingWeatherLocationRequests = new Map();
 
 function _getChatAllowedChannelIds() {
   const raw = config.get('openai.channelIds') || '';
@@ -5047,57 +5107,107 @@ function _messageHasAiNameTrigger(message) {
   });
 }
 
-async function _fetchWeather(location) {
+function _parseWeatherRequest(content) {
+  const text = String(content || '').normalize('NFC');
+  const asksForWeek = /\b(?:kommend\w*|nächst\w*|naechst\w*)\s+woche\b|\b(?:nächsten|naechsten)\s+7\s+tage\b|\bwochenende\b/i.test(text);
+  const asksForTomorrow = /\b(?:morgen|übermorgen|uebermorgen|tomorrow)\b/i.test(text);
+  const forecastDays = asksForWeek ? 7 : asksForTomorrow ? 2 : 1;
+  const stopWords = /^(?:heute|morgen|übermorgen|uebermorgen|tomorrow|kommend\w*|nächst\w*|naechst\w*|diese\w*|wird|werden|ist|sind|sein|soll|sollen|erwartet|aussehen|geben|bitte)$/iu;
+
+  const cleanLocation = (candidate) => {
+    const words = String(candidate || '')
+      .replace(/^(?:(?:in|bei|für|for)\s+)+/iu, '')
+      .split(/[,.!?]/, 1)[0]
+      .trim()
+      .split(/\s+/);
+    const locationWords = [];
+    for (const word of words) {
+      if (!word || stopWords.test(word)) break;
+      locationWords.push(word);
+    }
+    const location = locationWords.join(' ').replace(/^(?:der|die|das|dem|den)\s+/iu, '').trim();
+    return location && !/^(?:woche|wochenende)$/iu.test(location) ? location : null;
+  };
+
+  const explicitLocation = text.match(/\b(?:in|bei|für|for)\s+([^,.!?]+)/iu);
+  let location = cleanLocation(explicitLocation?.[1]);
+  if (!location) {
+    const afterWeather = text.match(/\b(?:wetter|weather|wettervorhersage|forecast)\s+([^,.!?]+)/iu);
+    location = cleanLocation(afterWeather?.[1]);
+  }
+
+  return {
+    location,
+    forecastDays,
+    period: asksForWeek ? 'die nächsten sieben Tage' : asksForTomorrow ? 'morgen' : 'heute'
+  };
+}
+
+async function _fetchWeather(location, forecastDays = 1) {
   try {
-    const url = `https://wttr.in/${encodeURIComponent(location)}?format=j1&lang=de`;
-    const res = await axios.get(url, { timeout: 8000, headers: { 'User-Agent': 'BockisDiscordBot/1.0' } });
-    const data = res.data || {};
-    const current = data.current_condition?.[0];
-    if (!current || !Number.isFinite(Number(current.temp_C))) return null;
+    const geocodingResponse = await axios.get('https://geocoding-api.open-meteo.com/v1/search', {
+      params: { name: location, count: 5, language: 'de', format: 'json' },
+      timeout: 8000
+    });
+    const places = geocodingResponse.data?.results || [];
+    if (!places.length) return null;
 
-    const area = data.nearest_area?.[0];
-    const areaName = area?.areaName?.[0]?.value || location;
-    const country = area?.country?.[0]?.value;
-    const place = country ? `${areaName}, ${country}` : areaName;
-    const description = current.weatherDesc?.[0]?.value || 'Wetterdaten verfügbar';
-    const value = (raw, fallback = '–') => {
-      const text = String(raw ?? '').trim();
-      return text || fallback;
+    const normalizedLocation = String(location).normalize('NFD').replace(/\p{Diacritic}/gu, '').toLocaleLowerCase('de-DE');
+    const exactPlaces = places.filter((candidate) => String(candidate.name || '').normalize('NFD').replace(/\p{Diacritic}/gu, '').toLocaleLowerCase('de-DE') === normalizedLocation);
+    const place = exactPlaces.find((candidate) => candidate.country_code === 'DE') || exactPlaces[0] || places[0];
+    const days = Math.min(7, Math.max(1, Number(forecastDays) || 1));
+    const forecastResponse = await axios.get('https://api.open-meteo.com/v1/forecast', {
+      params: {
+        latitude: place.latitude,
+        longitude: place.longitude,
+        current: 'temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,weather_code,cloud_cover,pressure_msl,wind_speed_10m,wind_direction_10m,wind_gusts_10m',
+        daily: 'weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum,wind_speed_10m_max,sunrise,sunset',
+        forecast_days: days,
+        timezone: 'auto'
+      },
+      timeout: 8000
+    });
+    const data = forecastResponse.data || {};
+    const current = data.current;
+    const daily = data.daily;
+    if (!Number.isFinite(Number(current?.temperature_2m)) || !daily?.time?.length) return null;
+
+    const weatherDescriptions = {
+      0: 'klar', 1: 'überwiegend klar', 2: 'teilweise bewölkt', 3: 'bedeckt',
+      45: 'Neblig', 48: 'Nebel mit Reifbildung', 51: 'leichter Nieselregen', 53: 'mäßiger Nieselregen', 55: 'starker Nieselregen',
+      56: 'leichter gefrierender Nieselregen', 57: 'starker gefrierender Nieselregen', 61: 'leichter Regen', 63: 'mäßiger Regen', 65: 'starker Regen',
+      66: 'leichter gefrierender Regen', 67: 'starker gefrierender Regen', 71: 'leichter Schneefall', 73: 'mäßiger Schneefall', 75: 'starker Schneefall',
+      77: 'Schneegriesel', 80: 'leichte Regenschauer', 81: 'mäßige Regenschauer', 82: 'starke Regenschauer',
+      85: 'leichte Schneeschauer', 86: 'starke Schneeschauer', 95: 'Gewitter', 96: 'Gewitter mit leichtem Hagel', 99: 'Gewitter mit starkem Hagel'
     };
-    const observed = String(current.localObsDateTime || '').match(/\s(\d{1,2}):/);
-    const currentHour = observed ? Number(observed[1]) : new Date().getHours();
-    const forecast = [];
-
-    for (const [dayIndex, day] of (data.weather || []).entries()) {
-      for (const hour of day.hourly || []) {
-        const hourValue = Number(hour.time || 0) / 100;
-        if (dayIndex === 0 && hourValue <= currentHour) continue;
-        const time = String(hour.time || '0').padStart(4, '0');
-        const condition = hour.weatherDesc?.[0]?.value || '–';
-        const dateLabel = dayIndex === 0 ? '' : 'morgen ';
-        forecast.push(`• ${dateLabel}${time.slice(0, 2)}:${time.slice(2)} · ${condition}, ${value(hour.tempC)} °C, Regen ${value(hour.precipMM, '0')} mm`);
-        if (forecast.length === 3) break;
-      }
-      if (forecast.length === 3) break;
-    }
-
-    const today = data.weather?.[0];
-    const astronomy = today?.astronomy?.[0];
+    const describe = (code) => weatherDescriptions[Number(code)] || 'Wetterdaten verfügbar';
+    const value = (raw, digits = 0) => {
+      const number = Number(raw);
+      return Number.isFinite(number) ? String(Number(number.toFixed(digits))) : '–';
+    };
+    const direction = Number(current.wind_direction_10m);
+    const directions = ['N', 'NO', 'O', 'SO', 'S', 'SW', 'W', 'NW'];
+    const windDirection = Number.isFinite(direction) ? directions[Math.round(direction / 45) % 8] : '–';
+    const placeName = [place.name, place.admin1, place.country].filter((part, index, parts) => part && parts.indexOf(part) === index).join(', ');
+    const currentTime = String(current.time || '').split('T')[1] || '–';
     const details = [
-      `🌡️ **${value(current.temp_C)} °C** (gefühlt ${value(current.FeelsLikeC)} °C) · ${description}`,
-      `💧 Luftfeuchtigkeit ${value(current.humidity)}% · Bewölkung ${value(current.cloudcover)}%`,
-      `🌬️ Wind ${value(current.windspeedKmph)} km/h ${value(current.winddir16Point)} · Böen ${value(current.WindGustKmph)} km/h`,
-      `🌧️ Niederschlag ${value(current.precipMM, '0')} mm · Sicht ${value(current.visibility)} km`,
-      `🧭 Luftdruck ${value(current.pressure)} hPa · UV-Index ${value(current.uvIndex)}`
+      `Aktuell (${currentTime}): ${describe(current.weather_code)}, ${value(current.temperature_2m)} °C, gefühlt ${value(current.apparent_temperature)} °C`,
+      `Luftfeuchte ${value(current.relative_humidity_2m)} %, Bewölkung ${value(current.cloud_cover)} %, Niederschlag ${value(current.precipitation, 1)} mm`,
+      `Wind ${value(current.wind_speed_10m)} km/h ${windDirection}, Böen ${value(current.wind_gusts_10m)} km/h, Luftdruck ${value(current.pressure_msl)} hPa`
     ];
-    if (today?.maxtempC !== undefined && today?.mintempC !== undefined) {
-      details.push(`📈 Heute ${value(today.mintempC)}–${value(today.maxtempC)} °C`);
+
+    const dayCount = Math.min(days, daily.time.length);
+    details.push('', days > 2 ? '**Tagesprognose**' : '**Tageswerte**');
+    for (let index = 0; index < dayCount; index += 1) {
+      const date = daily.time[index];
+      const label = index === 0 ? 'Heute' : index === 1 ? 'Morgen' : new Date(`${date}T12:00:00Z`).toLocaleDateString('de-DE', { weekday: 'long', day: '2-digit', month: '2-digit', timeZone: 'UTC' });
+      details.push(`• ${label}: ${describe(daily.weather_code?.[index])}, ${value(daily.temperature_2m_min?.[index])}–${value(daily.temperature_2m_max?.[index])} °C, Regen ${value(daily.precipitation_probability_max?.[index])} %, ${value(daily.precipitation_sum?.[index], 1)} mm, Wind bis ${value(daily.wind_speed_10m_max?.[index])} km/h`);
     }
-    if (astronomy?.sunrise && astronomy?.sunset) {
-      details.push(`🌅 Sonnenaufgang ${astronomy.sunrise} · Sonnenuntergang ${astronomy.sunset}`);
+    if (daily.sunrise?.[0] && daily.sunset?.[0]) {
+      details.push(`Sonnenaufgang ${String(daily.sunrise[0]).split('T')[1]} · Sonnenuntergang ${String(daily.sunset[0]).split('T')[1]}`);
     }
-    if (forecast.length) details.push('', '**Nächste Stunden**', ...forecast);
-    return `🌤️ **Wetter für ${place}**\n${details.join('\n')}`;
+    details.push('Datenquelle: Open-Meteo');
+    return `🌤️ **Wetter für ${placeName || location}**\n${details.join('\n')}`;
   } catch {
     return null;
   }
@@ -5280,10 +5390,35 @@ client.on('messageCreate', async (message) => {
   // Wetter-Erkennung
   let weatherContext = null;
   if (/\b(wetter|weather|temperatur(?:en)?|regen|schnee|nebel|wind|forecast|wettervorhersage)\b/i.test(content)) {
-    const locMatch = content.match(/(?:wetter|weather|in|für|für)\s+([a-zäöüßA-ZÄÖÜ][a-zäöüßA-ZÄÖÜ\s\-]{1,40})/i);
-    const location = locMatch ? locMatch[1].trim() : 'Deutschland';
-    weatherContext = await _fetchWeather(location)
-      || `Für ${location} konnten keine aktuellen Wetterdaten abgerufen werden.`;
+    const weatherRequest = _parseWeatherRequest(content);
+    if (!weatherRequest.location) {
+      const requestId = randomUUID();
+      const now = Date.now();
+      for (const [pendingId, pendingRequest] of _pendingWeatherLocationRequests) {
+        if (now - pendingRequest.createdAt > 10 * 60 * 1000) _pendingWeatherLocationRequests.delete(pendingId);
+      }
+      _pendingWeatherLocationRequests.set(requestId, {
+        userId: message.author.id,
+        userName: message.author.displayName || message.author.username,
+        question: content,
+        forecastDays: weatherRequest.forecastDays,
+        period: weatherRequest.period,
+        createdAt: now
+      });
+      const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`weather-location:${requestId}`)
+          .setLabel('Ort eingeben')
+          .setStyle(ButtonStyle.Primary)
+      );
+      await message.reply({
+        content: `Für welchen Ort soll ich das Wetter ${weatherRequest.period} abrufen?`,
+        components: [row]
+      }).catch(() => {});
+      return;
+    }
+    weatherContext = await _fetchWeather(weatherRequest.location, weatherRequest.forecastDays)
+      || `Für ${weatherRequest.location} konnten ${weatherRequest.period} keine passenden Wetterdaten abgerufen werden.`;
   }
 
   // OpenAI Anfrage
