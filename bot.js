@@ -96,11 +96,19 @@ process.on('unhandledRejection', (reason) => {
 // #region 3. KONFIGURATION
 const config = require('./config/config');
 const pkg = require('./package.json');
+const {
+  SERVER_PROFILE_ENV_PATHS,
+  setServerProfileSettings,
+  installServerProfileConfig,
+  withServerProfile,
+} = require('./server-profiles');
+installServerProfileConfig(config);
 // #endregion
 
 // #region 4. DATENBANK-INITIALISIERUNG
 const sequelize = new Sequelize(config.get('database'));
 const MonitorStatus = require('./models/MonitorStatus')(sequelize, DataTypes);
+const ServerProfile = require('./models/ServerProfile')(sequelize, DataTypes);
 // #endregion
 
 // #region 5. PROMETHEUS METRIKEN
@@ -2851,16 +2859,9 @@ function buildCommandTileSvg() {
 }
 
 async function buildCommandTileAttachmentPayload() {
-  const png = await convertSvgToPngBuffer(buildEditableTextSvg(
-    'Bockis Bot · Befehlsübersicht',
-    renderCommandTileText(),
-    '#5865f2',
-    config.get('discord.commandTileTextColor')
-  ));
   return {
-    content: '🤖 Bockis Bot · Befehlsübersicht',
+    content: renderCommandTileText(),
     embeds: [],
-    files: [new AttachmentBuilder(png, { name: 'bockis-befehle.png' })],
     allowedMentions: { parse: [] }
   };
 }
@@ -3374,15 +3375,6 @@ function initializeGitHubWatcher() {
   // Periodisch: nur bei NEUEN Releases senden (notify=false)
   setInterval(() => runGitHubReleaseCheck({ notify: false }), interval);
   logger.info(`GitHub-Watcher gestartet (alle ${Math.round(interval / 1000)}s)`);
-}
-
-async function getCommandTilePreviewPng(template, textColor) {
-  return convertSvgToPngBuffer(buildEditableTextSvg(
-    'Bockis Bot · Befehlsübersicht',
-    renderCommandTileText(template),
-    '#5865f2',
-    textColor || config.get('discord.commandTileTextColor')
-  ));
 }
 
 function getCommandTilePreviewText(template) {
@@ -4340,7 +4332,7 @@ function startPresenceRotation() {
 }
 
 // #region 21. SLASH-COMMAND HANDLER
-client.on('interactionCreate', async interaction => {
+client.on('interactionCreate', withServerProfile(async interaction => {
   if (interaction.isButton() && interaction.customId.startsWith('weather-location:')) {
     const requestId = interaction.customId.slice('weather-location:'.length);
     const pendingRequest = _pendingWeatherLocationRequests.get(requestId);
@@ -5074,7 +5066,7 @@ client.on('interactionCreate', async interaction => {
       ephemeral: true,
     });
   }
-});
+}));
 // #endregion
 
 // #region 21.5 KI-CHATBOT (OpenAI + Wetter)
@@ -5319,7 +5311,7 @@ client.on('messageCreate', (message) => {
   captureWigiDashMessage(message);
 });
 
-client.on('messageCreate', async (message) => {
+client.on('messageCreate', withServerProfile(async (message) => {
   if (message.author?.bot) return;
   if (message.system) return;
 
@@ -5441,7 +5433,7 @@ client.on('messageCreate', async (message) => {
       await message.reply({ content: '❌ KI-Chat momentan nicht verfügbar.' }).catch(() => {});
     }
   }
-});
+}));
 // #endregion
 
 // #region 21.6 AUTO-REPLY
@@ -5647,11 +5639,11 @@ async function _processAutoReplyMessage(message) {
   }
 }
 
-client.on('messageCreate', async (message) => {
+client.on('messageCreate', withServerProfile(async (message) => {
   await _processAutoReplyMessage(message);
-});
+}));
 
-client.on('messageUpdate', async (_oldMessage, newMessage) => {
+client.on('messageUpdate', withServerProfile(async (_oldMessage, newMessage) => {
   try {
     const message = newMessage?.partial ? await newMessage.fetch() : newMessage;
     if (!message || typeof message.content !== 'string') return;
@@ -5660,10 +5652,10 @@ client.on('messageUpdate', async (_oldMessage, newMessage) => {
   } catch {
     // Ignore fetch/update edge cases quietly.
   }
-});
+}));
 // #endregion
 
-client.on('messageCreate', async (message) => {
+client.on('messageCreate', withServerProfile(async (message) => {
   if (!isAutoReactionEnabled()) return;
   if (!message.inGuild()) return;
   if (message.author?.bot) return;
@@ -5683,7 +5675,7 @@ client.on('messageCreate', async (message) => {
   } catch (err) {
     logger.warn(`Auto-Reaction fehlgeschlagen in #${message.channel?.name || message.channelId} mit ${emoji}: ${err.message}`);
   }
-});
+}));
 
 // #region 22. UPDATE-ZYKLUS
 function initializeCleanupTimers() {
@@ -5746,7 +5738,7 @@ function initializeUpdateCycle() {
 // #region 23. STARTUP
 // Webserver SOFORT starten — unabhängig vom Discord-Login
 // Damit ist das Dashboard auch erreichbar wenn der Token noch nicht stimmt
-const _webDeps = { config, logger, client, sequelize, prom, getMonitorData, updateStatusMessage, getWigiDashStatus, getCommandTilePreviewPng, getCommandTilePreviewText, getGitHubReleasePreviewPng, getGitHubReleasePreviewData, getGitHubReleaseGraphicPreviewPng, sendGitHubReleasePreview, runGitHubReleaseCheck, rootDir: __dirname };
+const _webDeps = { config, logger, client, sequelize, ServerProfile, prom, getMonitorData, updateStatusMessage, getWigiDashStatus, getCommandTilePreviewText, ensureCommandTile, getGitHubReleasePreviewPng, getGitHubReleasePreviewData, getGitHubReleaseGraphicPreviewPng, sendGitHubReleasePreview, runGitHubReleaseCheck, rootDir: __dirname };
 let _httpServer = null;
 initializeDatabase().then(() => { _httpServer = startWebServer(_webDeps); }).catch(err => {
   logger.error(`DB/Webserver-Startfehler: ${err.message}`);
@@ -5755,6 +5747,7 @@ initializeDatabase().then(() => { _httpServer = startWebServer(_webDeps); }).cat
 
 client.once('ready', async () => {
   logger.info(`Bot eingeloggt als ${client.user.tag}`);
+  await initializeServerProfiles();
   await applyConfiguredBotName();
   startPresenceRotation();
   await registerSlashCommands();
@@ -5816,6 +5809,37 @@ async function initializeDatabase() {
   // sync() = create-if-not-exists, kein ALTER — SQLite unterstützt kein ALTER COLUMN
   await sequelize.sync();
   logger.info('Datenbank initialisiert');
+}
+
+async function initializeServerProfiles() {
+  const primaryGuildId = String(config.get('discord.guildId') || '').trim();
+  const serviceGuildId = String(config.get('discord.serviceGuildId') || '').trim();
+  for (const guild of client.guilds.cache.values()) {
+    const [profile, created] = await ServerProfile.findOrCreate({
+      where: { guildId: guild.id },
+      defaults: { guildName: guild.name, settingsJson: '{}' }
+    });
+    let settings = {};
+    try { settings = JSON.parse(profile.settingsJson || '{}'); } catch { settings = {}; }
+    if (created) {
+      settings = Object.fromEntries(Object.entries(SERVER_PROFILE_ENV_PATHS).map(([envKey, path]) => [envKey, config.get(path)]));
+      if (guild.id !== primaryGuildId && guild.id !== serviceGuildId) {
+        for (const key of Object.keys(settings)) {
+          if (/_CHANNEL_ID$|_CHANNEL_IDS$|_GUILD_ID$|_CATEGORY_ID$/.test(key) || key === 'SERVICE_CHANNEL_MAP' || key === 'MONITORED_SERVICES') {
+            settings[key] = '';
+          }
+          if (/_ENABLED$/.test(key)) settings[key] = false;
+        }
+        settings.SERVICE_GUILD_ID = guild.id;
+        settings.DISCORD_AUTO_REPLY_RULES_FILE = `./data/auto-replies-${guild.id}.json`;
+      }
+      profile.settingsJson = JSON.stringify(settings);
+    }
+    profile.guildName = guild.name;
+    await profile.save();
+    setServerProfileSettings(guild.id, settings);
+  }
+  logger.info(`Serverprofile geladen: ${client.guilds.cache.size} Guild(s)`);
 }
 // #endregion
 

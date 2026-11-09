@@ -21,6 +21,7 @@ const express     = require('express');
 const axios       = require('axios');
 const { ChannelType } = require('discord.js');
 const { execFile, execFileSync, execSync, spawn } = require('child_process');
+const { SERVER_PROFILE_ENV_PATHS, setServerProfileSettings } = require('../server-profiles');
 
 // Erlaubte Werte für Service-Control (Whitelist gegen Command-Injection)
 const ALLOWED_SERVICES = ['bockis-bot', 'uptime-kuma', 'cloudflared'];
@@ -50,8 +51,9 @@ module.exports = function startWebServer({
   getMonitorData,
   updateStatusMessage,
   getWigiDashStatus,
-  getCommandTilePreviewPng,
+  ServerProfile,
   getCommandTilePreviewText,
+  ensureCommandTile,
   getGitHubReleasePreviewPng,
   getGitHubReleasePreviewData,
     getGitHubReleaseGraphicPreviewPng,
@@ -80,28 +82,97 @@ module.exports = function startWebServer({
     }
   });
 
-  app.get('/api/previews/commands.png', dashboardAuth, async (req, res) => {
+  app.get('/api/server-profiles', dashboardAuth, async (_req, res) => {
     try {
-      if (typeof getCommandTilePreviewPng !== 'function') throw new Error('Befehlsvorschau nicht verfügbar');
-      const png = await getCommandTilePreviewPng();
-      res.set('Cache-Control', 'no-store').type('png').send(png);
+      const guilds = [...client.guilds.cache.values()].map((guild) => ({ id: guild.id, name: guild.name }));
+      const primaryGuildId = String(config.get('discord.guildId') || '').trim() || guilds[0]?.id || '';
+      return res.json({ ok: true, guilds, primaryGuildId });
     } catch (err) {
-      logger.error(`/api/previews/commands.png Fehler: ${err.message}`);
-      res.status(503).json({ ok: false, error: err.message });
+      logger.error(`/api/server-profiles GET Fehler: ${err.message}`);
+      return res.status(500).json({ ok: false, error: 'Serverprofile konnten nicht geladen werden.' });
     }
   });
-    app.post('/api/previews/commands.png', dashboardAuth, async (req, res) => {
-      try {
-        if (typeof getCommandTilePreviewPng !== 'function') throw new Error('Befehlsvorschau nicht verfügbar');
-        const textColor = String(req.body?.textColor || '#e8eef9').trim();
-        if (!/^#[0-9a-f]{6}$/i.test(textColor)) return res.status(400).json({ ok: false, error: 'Ungültige Schriftfarbe' });
-        const png = await getCommandTilePreviewPng(String(req.body?.template || ''), textColor);
-        res.set('Cache-Control', 'no-store').type('png').send(png);
-      } catch (err) {
-        logger.error(`/api/previews/commands.png Fehler: ${err.message}`);
-        res.status(400).json({ ok: false, error: err.message });
+
+  app.get('/api/server-profiles/:guildId', dashboardAuth, async (req, res) => {
+    try {
+      const guild = client.guilds.cache.get(String(req.params.guildId));
+      if (!guild) return res.status(404).json({ ok: false, error: 'Der Bot ist nicht auf diesem Server.' });
+      let profile = await ServerProfile.findByPk(guild.id);
+      if (!profile) {
+        const primaryGuildId = String(config.get('discord.guildId') || '').trim() || guild.id;
+        const settings = Object.fromEntries(Object.entries(SERVER_PROFILE_ENV_PATHS).map(([envKey, path]) => [envKey, config.get(path)]));
+        if (guild.id !== primaryGuildId) {
+          for (const key of Object.keys(settings)) {
+            if (/_CHANNEL_ID$|_CHANNEL_IDS$|_GUILD_ID$|_CATEGORY_ID$/.test(key) || key === 'SERVICE_CHANNEL_MAP' || key === 'MONITORED_SERVICES') settings[key] = '';
+            if (/_ENABLED$/.test(key)) settings[key] = false;
+          }
+          settings.SERVICE_GUILD_ID = guild.id;
+          settings.DISCORD_AUTO_REPLY_RULES_FILE = `./data/auto-replies-${guild.id}.json`;
+        }
+        profile = await ServerProfile.create({ guildId: guild.id, guildName: guild.name, settingsJson: JSON.stringify(settings) });
+        setServerProfileSettings(guild.id, settings);
       }
-    });
+      let settings = {};
+      try { settings = JSON.parse(profile.settingsJson || '{}'); } catch { /* use empty profile */ }
+      return res.json({ ok: true, profile: { guildId: guild.id, guildName: guild.name, settings } });
+    } catch (err) {
+      logger.error(`/api/server-profiles/:guildId GET Fehler: ${err.message}`);
+      return res.status(500).json({ ok: false, error: 'Serverprofil konnte nicht geladen werden.' });
+    }
+  });
+
+  app.put('/api/server-profiles/:guildId', dashboardAuth, async (req, res) => {
+    try {
+      const guild = client.guilds.cache.get(String(req.params.guildId));
+      if (!guild) return res.status(404).json({ ok: false, error: 'Der Bot ist nicht auf diesem Server.' });
+      const changes = req.body?.settings;
+      if (!changes || typeof changes !== 'object' || Array.isArray(changes)) {
+        return res.status(400).json({ ok: false, error: 'Profilwerte müssen als Objekt übermittelt werden.' });
+      }
+      const allowedKeys = new Set(Object.keys(SERVER_PROFILE_ENV_PATHS));
+      const invalidKey = Object.keys(changes).find((key) => !allowedKeys.has(key));
+      if (invalidKey) return res.status(400).json({ ok: false, error: `Einstellung ist nicht serverbezogen oder nicht erlaubt: ${invalidKey}` });
+      if (JSON.stringify(changes).length > 50_000) return res.status(413).json({ ok: false, error: 'Serverprofil ist zu groß.' });
+      const normalizedChanges = {};
+      for (const [key, value] of Object.entries(changes)) {
+        if (value !== null && !['string', 'number', 'boolean'].includes(typeof value)) {
+          return res.status(400).json({ ok: false, error: `Ungültiger Wert für ${key}.` });
+        }
+        const defaultValue = config.get(SERVER_PROFILE_ENV_PATHS[key]);
+        if (typeof defaultValue === 'boolean') {
+          if (value !== true && value !== false && value !== 'true' && value !== 'false') {
+            return res.status(400).json({ ok: false, error: `Für ${key} wird true oder false erwartet.` });
+          }
+          normalizedChanges[key] = value === true || value === 'true';
+        } else if (typeof defaultValue === 'number') {
+          const parsed = Number(value);
+          if (value === '' || !Number.isFinite(parsed)) {
+            return res.status(400).json({ ok: false, error: `Für ${key} wird eine Zahl erwartet.` });
+          }
+          normalizedChanges[key] = parsed;
+        } else {
+          if (typeof value !== 'string' || value.length > 12_000) {
+            return res.status(400).json({ ok: false, error: `Für ${key} wird Text mit maximal 12000 Zeichen erwartet.` });
+          }
+          normalizedChanges[key] = value;
+        }
+      }
+
+      const profile = await ServerProfile.findByPk(guild.id);
+      if (!profile) return res.status(404).json({ ok: false, error: 'Serverprofil wurde nicht gefunden.' });
+      let settings = {};
+      try { settings = JSON.parse(profile.settingsJson || '{}'); } catch { settings = {}; }
+      Object.assign(settings, normalizedChanges);
+      profile.guildName = guild.name;
+      profile.settingsJson = JSON.stringify(settings);
+      await profile.save();
+      setServerProfileSettings(guild.id, settings);
+      return res.json({ ok: true, profile: { guildId: guild.id, guildName: guild.name, settings } });
+    } catch (err) {
+      logger.error(`/api/server-profiles/:guildId PUT Fehler: ${err.message}`);
+      return res.status(500).json({ ok: false, error: 'Serverprofil konnte nicht gespeichert werden.' });
+    }
+  });
 
   app.post('/api/previews/commands.txt', dashboardAuth, (req, res) => {
     try {
@@ -110,6 +181,34 @@ module.exports = function startWebServer({
       res.set('Cache-Control', 'no-store').json({ ok: true, text });
     } catch (err) {
       res.status(400).json({ ok: false, error: err.message });
+    }
+  });
+
+  app.post('/api/command-tile/template', dashboardAuth, async (req, res) => {
+    try {
+      if (typeof req.body?.template !== 'string') {
+        return res.status(400).json({ ok: false, error: 'Vorlage muss Text sein' });
+      }
+      const template = req.body.template.replace(/\r\n?/g, '\n');
+      if (typeof getCommandTilePreviewText !== 'function') throw new Error('Befehlsvorschau nicht verfügbar');
+      const previewText = getCommandTilePreviewText(template);
+      const encodedTemplate = Buffer.from(template, 'utf8').toString('base64');
+      const envPath = path.join(rootDir, '.env');
+      const lines = fs.readFileSync(envPath, 'utf8').split('\n');
+      const key = 'DISCORD_COMMAND_TILE_TEMPLATE_B64';
+      const index = lines.findIndex((line) => line.startsWith(`${key}=`));
+      if (index >= 0) lines[index] = `${key}=${encodedTemplate}`;
+      else lines.push(`${key}=${encodedTemplate}`);
+      const tmpPath = `${envPath}.tmp.${Date.now()}`;
+      fs.writeFileSync(tmpPath, lines.join('\n'), 'utf8');
+      fs.renameSync(tmpPath, envPath);
+
+      config.set('discord.commandTileTemplateB64', encodedTemplate);
+      if (typeof ensureCommandTile === 'function') await ensureCommandTile();
+      return res.json({ ok: true, text: previewText, message: 'Vorlage gespeichert und Befehlsübersicht aktualisiert.' });
+    } catch (err) {
+      logger.error(`/api/command-tile/template Fehler: ${err.message}`);
+      return res.status(400).json({ ok: false, error: err.message });
     }
   });
 
@@ -1685,7 +1784,7 @@ module.exports = function startWebServer({
 
   // ── API: Konfiguration lesen (Token maskiert) ───────────────────────────────
 
-  app.get('/api/config', dashboardAuth, (req, res) => {
+  app.get('/api/config', dashboardAuth, async (req, res) => {
     const envPath = path.join(rootDir, '.env');
     if (!fs.existsSync(envPath)) return res.json({ ok: false, error: '.env nicht gefunden' });
     try {
@@ -1726,7 +1825,7 @@ module.exports = function startWebServer({
         }
       } catch {}
 
-      res.json({
+      const configData = {
         ok: true,
         DISCORD_TOKEN:                maskSecret(token),
         DISCORD_BOT_NAME:             get('DISCORD_BOT_NAME') || '',
@@ -1762,7 +1861,6 @@ module.exports = function startWebServer({
         DISCORD_ENABLED_COMMANDS:     get('DISCORD_ENABLED_COMMANDS') || 'status,uptime,refresh,help,triggerinfo,coinflip,dice,eightball,cleanup,translate,ping,botinfo,serverstatus,ki,wetter,subscribe,remind,quote,poll,avatar,userinfo,testreply',
         DISCORD_COMMAND_TILE_TEMPLATE: commandTileTemplate,
         DISCORD_COMMAND_TILE_SCALE:   get('DISCORD_COMMAND_TILE_SCALE') || 'large',
-        DISCORD_COMMAND_TILE_TEXT_COLOR: get('DISCORD_COMMAND_TILE_TEXT_COLOR') || '#e8eef9',
         DISCORD_TRANSLATE_ENABLED:    get('DISCORD_TRANSLATE_ENABLED') || 'false',
         DISCORD_TRANSLATE_DEFAULT_TARGET: get('DISCORD_TRANSLATE_DEFAULT_TARGET') || 'de',
         DISCORD_TRANSLATE_DEFAULT_SOURCE: get('DISCORD_TRANSLATE_DEFAULT_SOURCE') || 'auto',
@@ -1830,7 +1928,25 @@ module.exports = function startWebServer({
         OPENAI_ALLOW_DMS:             get('OPENAI_ALLOW_DMS') || 'true',
         OPENAI_NAME_TRIGGER_ENABLED:  get('OPENAI_NAME_TRIGGER_ENABLED') || 'true',
         OPENAI_RATE_LIMIT_PER_MINUTE: get('OPENAI_RATE_LIMIT_PER_MINUTE') || '5',
-      });
+      };
+      const guildId = String(req.query?.guildId || '').trim();
+      if (guildId) {
+        const guild = client.guilds.cache.get(guildId);
+        const profile = guild ? await ServerProfile.findByPk(guildId) : null;
+        if (profile) {
+          let settings = {};
+          try { settings = JSON.parse(profile.settingsJson || '{}'); } catch { /* use global values */ }
+          for (const [envKey, value] of Object.entries(settings)) {
+            if (!Object.hasOwn(SERVER_PROFILE_ENV_PATHS, envKey)) continue;
+            if (envKey === 'DISCORD_COMMAND_TILE_TEMPLATE_B64') {
+              configData.DISCORD_COMMAND_TILE_TEMPLATE = Buffer.from(String(value || ''), 'base64').toString('utf8') || '{{commands}}';
+            } else {
+              configData[envKey] = String(value ?? '');
+            }
+          }
+        }
+      }
+      return res.json(configData);
     } catch (err) {
       logger.error(`/api/config GET Fehler: ${err.message}`);
       res.json({ ok: false, error: err.message });
@@ -1858,7 +1974,6 @@ module.exports = function startWebServer({
       'DISCORD_ENABLED_COMMANDS',
       'DISCORD_COMMAND_TILE_TEMPLATE',
       'DISCORD_COMMAND_TILE_SCALE',
-      'DISCORD_COMMAND_TILE_TEXT_COLOR',
       'DISCORD_TRANSLATE_ENABLED',
       'DISCORD_TRANSLATE_DEFAULT_TARGET',
       'DISCORD_TRANSLATE_DEFAULT_SOURCE',
@@ -1999,7 +2114,7 @@ module.exports = function startWebServer({
       const val = key === 'DISCORD_COMMAND_TILE_TEMPLATE'
         ? String(raw).replace(/\r\n?/g, '\n')
         : String(raw).trim();
-      if (key === 'DISCORD_COMMAND_TILE_TEXT_COLOR' || key === 'DISCORD_GITHUB_RELEASE_TEXT_COLOR') {
+      if (key === 'DISCORD_GITHUB_RELEASE_TEXT_COLOR') {
         if (!/^#[0-9a-f]{6}$/i.test(val)) return res.json({ ok: false, error: 'Schriftfarbe muss das Format #RRGGBB haben' });
         updates[key] = val.toLowerCase();
         continue;

@@ -116,16 +116,10 @@ const config = convict({
       default: 'large',
       env: 'DISCORD_COMMAND_TILE_SCALE'
     },
-    commandTileTextColor: {
-      doc: 'Schriftfarbe der grafischen Befehlsübersicht',
-      format: String,
-      default: '#e8eef9',
-      env: 'DISCORD_COMMAND_TILE_TEXT_COLOR'
-    },
     commandTileMode: {
-      doc: 'Darstellungsmodus der Befehls-Kachel: image (SVG-Tabelle als PNG) | text (kopierbares Embed)',
+      doc: 'Darstellungsmodus der Befehlsübersicht',
       format: ['text', 'image'],
-      default: 'image',
+      default: 'text',
       env: 'DISCORD_COMMAND_TILE_MODE'
     },
     translateEnabled: {
