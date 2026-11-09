@@ -88,6 +88,23 @@ function getServerProfileSettings(guildId) {
   return profileSettingsByGuild.get(String(guildId || '')) || null;
 }
 
+function createServerProfileDefaults(config, guildId) {
+  const settings = Object.fromEntries(
+    Object.entries(SERVER_PROFILE_ENV_PATHS).map(([envKey, path]) => [envKey, config.get(path)])
+  );
+  for (const key of Object.keys(settings)) {
+    if (/_CHANNEL_ID$|_CHANNEL_IDS$|_GUILD_ID$|_CATEGORY_ID$/.test(key)
+      || key === 'SERVICE_CHANNEL_MAP' || key === 'MONITORED_SERVICES') {
+      settings[key] = '';
+    }
+    if (/_ENABLED$/.test(key)) settings[key] = false;
+  }
+  settings.DISCORD_ENABLED_COMMANDS = '';
+  settings.SERVICE_GUILD_ID = String(guildId);
+  settings.DISCORD_AUTO_REPLY_RULES_FILE = `./data/auto-replies-${guildId}.json`;
+  return settings;
+}
+
 function getCurrentServerProfileId() {
   return serverProfileContext.getStore() || null;
 }
@@ -120,6 +137,7 @@ function installServerProfileConfig(config) {
 
 module.exports = {
   SERVER_PROFILE_ENV_PATHS,
+  createServerProfileDefaults,
   getServerProfileSettings,
   installServerProfileConfig,
   runWithServerProfile,

@@ -21,7 +21,7 @@ const express     = require('express');
 const axios       = require('axios');
 const { ChannelType } = require('discord.js');
 const { execFile, execFileSync, execSync, spawn } = require('child_process');
-const { SERVER_PROFILE_ENV_PATHS, setServerProfileSettings } = require('../server-profiles');
+const { SERVER_PROFILE_ENV_PATHS, createServerProfileDefaults, setServerProfileSettings } = require('../server-profiles');
 
 // Erlaubte Werte für Service-Control (Whitelist gegen Command-Injection)
 const ALLOWED_SERVICES = ['bockis-bot', 'uptime-kuma', 'cloudflared'];
@@ -85,36 +85,60 @@ module.exports = function startWebServer({
   app.get('/api/server-profiles', dashboardAuth, async (_req, res) => {
     try {
       const guilds = [...client.guilds.cache.values()].map((guild) => ({ id: guild.id, name: guild.name }));
-      const primaryGuildId = String(config.get('discord.guildId') || '').trim() || guilds[0]?.id || '';
-      return res.json({ ok: true, guilds, primaryGuildId });
+      const savedProfiles = await ServerProfile.findAll({ attributes: ['guildId', 'guildName'] });
+      const savedIds = new Set(savedProfiles.map((profile) => String(profile.guildId)));
+      const primaryGuildId = String(config.get('discord.guildId') || '').trim();
+      return res.json({
+        ok: true,
+        profiles: savedProfiles.map((profile) => ({
+          id: String(profile.guildId),
+          name: client.guilds.cache.get(String(profile.guildId))?.name || profile.guildName || `Server ${profile.guildId}`,
+        })),
+        availableGuilds: guilds.filter((guild) => !savedIds.has(guild.id)),
+        primaryGuildId,
+      });
     } catch (err) {
       logger.error(`/api/server-profiles GET Fehler: ${err.message}`);
       return res.status(500).json({ ok: false, error: 'Serverprofile konnten nicht geladen werden.' });
     }
   });
 
+  app.post('/api/server-profiles', dashboardAuth, async (req, res) => {
+    try {
+      const guildId = String(req.body?.guildId || '').trim();
+      const guild = client.guilds.cache.get(guildId);
+      if (!/^\d{17,20}$/.test(guildId)) return res.status(400).json({ ok: false, error: 'Bitte eine gültige Discord-Guild-ID eingeben.' });
+      if (await ServerProfile.findByPk(guildId)) {
+        return res.status(409).json({ ok: false, error: 'Für diesen Server existiert bereits ein Profil.' });
+      }
+      const guildName = String(guild?.name || req.body?.guildName || '').trim();
+      if (!guildName || guildName.length > 100) {
+        return res.status(400).json({ ok: false, error: 'Bitte einen Servernamen mit maximal 100 Zeichen angeben.' });
+      }
+      const settings = createServerProfileDefaults(config, guildId);
+      const profile = await ServerProfile.create({
+        guildId,
+        guildName,
+        settingsJson: JSON.stringify(settings),
+      });
+      if (guild) setServerProfileSettings(guildId, settings);
+      return res.status(201).json({ ok: true, profile: { guildId, guildName } });
+    } catch (err) {
+      logger.error(`/api/server-profiles POST Fehler: ${err.message}`);
+      return res.status(500).json({ ok: false, error: 'Serverprofil konnte nicht angelegt werden.' });
+    }
+  });
+
   app.get('/api/server-profiles/:guildId', dashboardAuth, async (req, res) => {
     try {
-      const guild = client.guilds.cache.get(String(req.params.guildId));
-      if (!guild) return res.status(404).json({ ok: false, error: 'Der Bot ist nicht auf diesem Server.' });
-      let profile = await ServerProfile.findByPk(guild.id);
-      if (!profile) {
-        const primaryGuildId = String(config.get('discord.guildId') || '').trim() || guild.id;
-        const settings = Object.fromEntries(Object.entries(SERVER_PROFILE_ENV_PATHS).map(([envKey, path]) => [envKey, config.get(path)]));
-        if (guild.id !== primaryGuildId) {
-          for (const key of Object.keys(settings)) {
-            if (/_CHANNEL_ID$|_CHANNEL_IDS$|_GUILD_ID$|_CATEGORY_ID$/.test(key) || key === 'SERVICE_CHANNEL_MAP' || key === 'MONITORED_SERVICES') settings[key] = '';
-            if (/_ENABLED$/.test(key)) settings[key] = false;
-          }
-          settings.SERVICE_GUILD_ID = guild.id;
-          settings.DISCORD_AUTO_REPLY_RULES_FILE = `./data/auto-replies-${guild.id}.json`;
-        }
-        profile = await ServerProfile.create({ guildId: guild.id, guildName: guild.name, settingsJson: JSON.stringify(settings) });
-        setServerProfileSettings(guild.id, settings);
-      }
+      const guildId = String(req.params.guildId);
+      const guild = client.guilds.cache.get(guildId);
+      const profile = await ServerProfile.findByPk(guildId);
+      if (!profile) return res.status(404).json({ ok: false, error: 'Für diesen Server wurde noch kein Profil angelegt.' });
       let settings = {};
       try { settings = JSON.parse(profile.settingsJson || '{}'); } catch { /* use empty profile */ }
-      return res.json({ ok: true, profile: { guildId: guild.id, guildName: guild.name, settings } });
+      if (guild) setServerProfileSettings(guildId, settings);
+      return res.json({ ok: true, profile: { guildId, guildName: guild?.name || profile.guildName, settings } });
     } catch (err) {
       logger.error(`/api/server-profiles/:guildId GET Fehler: ${err.message}`);
       return res.status(500).json({ ok: false, error: 'Serverprofil konnte nicht geladen werden.' });
@@ -123,8 +147,8 @@ module.exports = function startWebServer({
 
   app.put('/api/server-profiles/:guildId', dashboardAuth, async (req, res) => {
     try {
-      const guild = client.guilds.cache.get(String(req.params.guildId));
-      if (!guild) return res.status(404).json({ ok: false, error: 'Der Bot ist nicht auf diesem Server.' });
+      const guildId = String(req.params.guildId);
+      const guild = client.guilds.cache.get(guildId);
       const changes = req.body?.settings;
       if (!changes || typeof changes !== 'object' || Array.isArray(changes)) {
         return res.status(400).json({ ok: false, error: 'Profilwerte müssen als Objekt übermittelt werden.' });
@@ -158,16 +182,16 @@ module.exports = function startWebServer({
         }
       }
 
-      const profile = await ServerProfile.findByPk(guild.id);
+      const profile = await ServerProfile.findByPk(guildId);
       if (!profile) return res.status(404).json({ ok: false, error: 'Serverprofil wurde nicht gefunden.' });
       let settings = {};
       try { settings = JSON.parse(profile.settingsJson || '{}'); } catch { settings = {}; }
       Object.assign(settings, normalizedChanges);
-      profile.guildName = guild.name;
+      if (guild) profile.guildName = guild.name;
       profile.settingsJson = JSON.stringify(settings);
       await profile.save();
-      setServerProfileSettings(guild.id, settings);
-      return res.json({ ok: true, profile: { guildId: guild.id, guildName: guild.name, settings } });
+      if (guild) setServerProfileSettings(guildId, settings);
+      return res.json({ ok: true, profile: { guildId, guildName: profile.guildName, settings } });
     } catch (err) {
       logger.error(`/api/server-profiles/:guildId PUT Fehler: ${err.message}`);
       return res.status(500).json({ ok: false, error: 'Serverprofil konnte nicht gespeichert werden.' });
@@ -1931,8 +1955,7 @@ module.exports = function startWebServer({
       };
       const guildId = String(req.query?.guildId || '').trim();
       if (guildId) {
-        const guild = client.guilds.cache.get(guildId);
-        const profile = guild ? await ServerProfile.findByPk(guildId) : null;
+        const profile = await ServerProfile.findByPk(guildId);
         if (profile) {
           let settings = {};
           try { settings = JSON.parse(profile.settingsJson || '{}'); } catch { /* use global values */ }

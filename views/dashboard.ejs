@@ -1039,6 +1039,16 @@
             <select class="cfg-input" id="serverProfileSelect" onchange="switchServerProfile(this.value)" aria-label="Serverprofil auswählen">
               <option value="">Serverprofile werden geladen …</option>
             </select>
+            <button class="btn" id="btnCreateServerProfile" type="button" onclick="toggleServerProfileCreate()">＋ Profil erstellen</button>
+            <div id="serverProfileCreateControls" hidden>
+              <select class="cfg-input" id="serverProfileCreateGuild" onchange="fillServerProfileGuild(this.value)" aria-label="Discord-Server für neues Profil auswählen">
+                <option value="">Server auswählen …</option>
+              </select>
+              <input class="cfg-input" id="serverProfileCreateGuildId" type="text" inputmode="numeric" autocomplete="off" placeholder="Discord-Guild-ID">
+              <input class="cfg-input" id="serverProfileCreateGuildName" type="text" maxlength="100" autocomplete="off" placeholder="Servername (Pflicht, falls nicht beigetreten)">
+              <button class="btn btn-green" id="btnConfirmCreateServerProfile" type="button" onclick="createServerProfile()">Anlegen</button>
+              <button class="btn" type="button" onclick="toggleServerProfileCreate(false)">Abbrechen</button>
+            </div>
             <button class="btn btn-green" id="btnCfgSave" onclick="saveConfig()">💾 Speichern &amp; Neu starten</button>
             <button class="btn" onclick="confirmResetConfig()" title="Lädt alle Eingaben aus der gespeicherten Konfiguration neu">↺ Zurücksetzen</button>
             <span id="cfgDirtyState" title="Ungespeicherte lokale Änderungen in den Einstellungen">● Ungespeicherte Änderungen</span>
@@ -2467,6 +2477,17 @@
                   <label class="cfg-label" for="githubReleaseTextPreview">Live-Vorschau des letzten Releases</label>
                   <select class="cfg-input" id="githubReleasePreviewRepoSelect" aria-label="Repository für die Release-Vorschau" style="margin-bottom:8px"></select>
                   <div id="githubReleaseTextPreviewStatus" class="cfg-hint" aria-live="polite">Repository wird geladen…</div>
+                  <div class="cfg-field" style="margin:10px 0 14px">
+                    <label class="cfg-label">Banner-Kanal</label>
+                    <div id="githubReleaseBannerPreview" hidden style="display:flex;max-width:560px;min-height:84px;overflow:hidden;border-radius:4px;background:#2b2d31;color:#dbdee1">
+                      <div id="githubReleaseBannerAccent" aria-hidden="true" style="width:4px;flex:none;background:#1f6feb"></div>
+                      <div style="padding:12px 16px;min-width:0">
+                        <a id="githubReleaseBannerTitle" target="_blank" rel="noopener noreferrer" style="display:block;color:#00a8fc;font-size:16px;font-weight:600;overflow-wrap:anywhere"></a>
+                        <div id="githubReleaseBannerHighlight" style="margin-top:8px;white-space:pre-wrap;overflow-wrap:anywhere"></div>
+                        <div style="margin-top:10px;color:#949ba4;font-size:12px"><span id="githubReleaseBannerFooter"></span><time id="githubReleaseBannerTime" style="margin-left:8px"></time></div>
+                      </div>
+                    </div>
+                  </div>
                   <div style="max-height:680px;overflow:auto;border:1px solid var(--border);border-radius:8px;background:#10141d"><img id="githubReleaseTextPreview" alt="Grafische Vorschau der Release-Notes" style="display:block;width:100%;height:auto;min-height:320px;object-fit:contain"></div>
                   <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px">
                     <button class="btn" type="button" onclick="loadGitHubReleaseTextPreview(true)">↻ Release neu laden</button>
@@ -5863,6 +5884,31 @@
     select.disabled = repositories.length === 0;
   }
 
+  function renderGitHubReleaseBannerPreview() {
+    const preview = document.getElementById('githubReleaseBannerPreview');
+    const banner = githubReleasePreviewData?.banner;
+    if (!preview || !banner) {
+      if (preview) preview.hidden = true;
+      return;
+    }
+    preview.hidden = false;
+    document.getElementById('githubReleaseBannerAccent').style.backgroundColor = `#${Number(banner.color).toString(16).padStart(6, '0')}`;
+    const title = document.getElementById('githubReleaseBannerTitle');
+    title.textContent = banner.title || '';
+    const url = String(banner.url || '');
+    try {
+      const parsedUrl = new URL(url);
+      if (parsedUrl.protocol === 'https:' && parsedUrl.hostname === 'github.com') title.href = parsedUrl.href;
+      else title.removeAttribute('href');
+    } catch {
+      title.removeAttribute('href');
+    }
+    document.getElementById('githubReleaseBannerHighlight').textContent = banner.description || '';
+    document.getElementById('githubReleaseBannerFooter').textContent = banner.footer?.text || '';
+    const time = document.getElementById('githubReleaseBannerTime');
+    time.textContent = banner.timestamp ? new Date(banner.timestamp).toLocaleString('de-DE') : '';
+  }
+
   function renderGitHubReleaseTextPreview() {
     const templateEditor = document.getElementById('cfgGithubReleaseTemplate');
     const editor = document.getElementById('githubReleaseMessageEditor');
@@ -5879,6 +5925,7 @@
     }
     const text = editor.value;
     if (repoLabel) repoLabel.textContent = githubReleasePreviewData.repo;
+    renderGitHubReleaseBannerPreview();
     status.textContent = `${text.length} Zeichen · Grafik wird aktualisiert…`;
     const requestId = ++githubReleaseGraphicPreviewRequest;
     clearTimeout(githubReleaseGraphicPreviewTimer);
@@ -6084,23 +6131,90 @@
     const select = document.getElementById('serverProfileSelect');
     try {
       const response = await fetch('/api/server-profiles').then(r => r.json());
-      if (!response.ok || !Array.isArray(response.guilds)) throw new Error(response.error || 'Serverliste nicht verfügbar');
+      if (!response.ok || !Array.isArray(response.profiles) || !Array.isArray(response.availableGuilds)) {
+        throw new Error(response.error || 'Serverliste nicht verfügbar');
+      }
       select.replaceChildren();
-      for (const guild of response.guilds) {
+      for (const guild of response.profiles) {
         const option = document.createElement('option');
         option.value = guild.id;
         option.textContent = guild.name;
         select.appendChild(option);
       }
-      activeServerProfileGuildId = response.primaryGuildId || response.guilds[0]?.id || '';
+      if (!response.profiles.length) select.appendChild(new Option('Noch kein Profil angelegt', ''));
+      activeServerProfileGuildId = response.profiles.some(guild => guild.id === response.primaryGuildId)
+        ? response.primaryGuildId
+        : response.profiles[0]?.id || '';
       select.value = activeServerProfileGuildId;
-      select.disabled = response.guilds.length < 2;
+      select.disabled = response.profiles.length < 2;
+
+      const createSelect = document.getElementById('serverProfileCreateGuild');
+      createSelect.replaceChildren(new Option(
+        response.availableGuilds.length ? 'Beigetretenen Server auswählen …' : 'Keine weiteren beigetretenen Server',
+        ''
+      ));
+      for (const guild of response.availableGuilds) createSelect.add(new Option(guild.name, guild.id));
+      document.getElementById('btnCreateServerProfile').disabled = false;
+      document.getElementById('btnConfirmCreateServerProfile').disabled = false;
       document.getElementById('btnCfgSave').textContent = configSaveButtonLabel();
     } catch (error) {
       select.replaceChildren(new Option('Serverprofile nicht verfügbar', ''));
       select.disabled = true;
       document.getElementById('cfgStatus').textContent = error.message;
       document.getElementById('cfgStatus').className = 'warn';
+    }
+  }
+
+  function toggleServerProfileCreate(show) {
+    const controls = document.getElementById('serverProfileCreateControls');
+    controls.hidden = show === undefined ? !controls.hidden : !show;
+  }
+
+  function fillServerProfileGuild(guildId) {
+    const guild = Array.from(document.getElementById('serverProfileCreateGuild').options)
+      .find(option => option.value === guildId);
+    if (!guildId || !guild) return;
+    document.getElementById('serverProfileCreateGuildId').value = guildId;
+    document.getElementById('serverProfileCreateGuildName').value = guild.textContent;
+  }
+
+  async function createServerProfile() {
+    const guildId = document.getElementById('serverProfileCreateGuildId').value.trim()
+      || document.getElementById('serverProfileCreateGuild').value;
+    const guildName = document.getElementById('serverProfileCreateGuildName').value.trim();
+    const status = document.getElementById('cfgStatus');
+    const button = document.getElementById('btnConfirmCreateServerProfile');
+    if (!guildId) {
+      status.textContent = 'Bitte einen Server auswählen oder eine Guild-ID eingeben.';
+      status.className = 'warn';
+      return;
+    }
+    button.disabled = true;
+    try {
+      const result = await fetch('/api/server-profiles', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ guildId, guildName }),
+      }).then(r => r.json());
+      if (!result.ok) throw new Error(result.error || 'Serverprofil konnte nicht angelegt werden.');
+      await initializeServerProfileSelector();
+      activeServerProfileGuildId = guildId;
+      document.getElementById('serverProfileSelect').value = guildId;
+      document.getElementById('btnCfgSave').textContent = configSaveButtonLabel();
+      toggleServerProfileCreate(false);
+      clearConfigDirtyTracking();
+      await loadConfig({ force: true });
+      initConfigDirtyTracking();
+      status.textContent = `Profil für ${result.profile.guildName} angelegt.`;
+      status.className = 'ok';
+      document.getElementById('serverProfileCreateGuildId').value = '';
+      document.getElementById('serverProfileCreateGuildName').value = '';
+      document.getElementById('serverProfileCreateGuild').value = '';
+    } catch (error) {
+      status.textContent = error.message;
+      status.className = 'err';
+    } finally {
+      button.disabled = false;
     }
   }
 

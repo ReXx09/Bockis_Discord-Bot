@@ -98,6 +98,7 @@ const config = require('./config/config');
 const pkg = require('./package.json');
 const {
   SERVER_PROFILE_ENV_PATHS,
+  createServerProfileDefaults,
   setServerProfileSettings,
   installServerProfileConfig,
   withServerProfile,
@@ -3172,6 +3173,21 @@ async function buildReleaseHighlightsPayload(release) {
   return { embeds: [embed], components: [row], allowedMentions: { parse: [] } };
 }
 
+function buildReleaseBannerPayload(release) {
+  const repository = String(release?.repository || 'GitHub');
+  const version = String(release?.tag_name || release?.name || 'Release');
+  const releaseUrl = release?.html_url || `https://github.com/${repository}/releases`;
+  const highlight = extractReleaseHighlights(release?.body, 1).items[0]?.label;
+  const embed = new EmbedBuilder()
+    .setColor(getGitHubReleaseColorNumber(repository))
+    .setTitle(`🚀 ${repository} ${version}`.slice(0, 256))
+    .setURL(releaseUrl)
+    .setDescription(highlight ? `✨ ${_shortenAtWord(highlight, 180)}` : 'Ein neuer Release ist verfügbar.')
+    .setFooter({ text: 'Neuer Release' });
+  if (release?.published_at) embed.setTimestamp(new Date(release.published_at));
+  return { embeds: [embed], allowedMentions: { parse: [] } };
+}
+
 function normalizeGitHubRepository(value) {
   let candidate = String(value || '').trim();
   if (!candidate) return null;
@@ -3259,6 +3275,8 @@ async function runGitHubReleaseCheck({ notify = true } = {}) {
   const channelId = String(config.get('discord.githubChannelId') || '').trim();
   const secondaryChannelId = String(config.get('discord.githubSecondaryChannelId') || '').trim();
   const channelIds = [...new Set([channelId, secondaryChannelId].filter(Boolean))];
+  const commitChannelIds = channelId ? [channelId] : [];
+  const bannerChannelId = secondaryChannelId && secondaryChannelId !== channelId ? secondaryChannelId : '';
   logger.info(`GitHub-Watcher: Channel IDs: ${channelIds.join(', ') || 'KEINE'}`);
   if (!repositories.length) {
     logger.warn('GitHub-Watcher: ABBRUCH - keine Repositories konfiguriert (nach Parsing leer)');
@@ -3275,9 +3293,9 @@ async function runGitHubReleaseCheck({ notify = true } = {}) {
     const nextState = { ...previous };
     let stateChanged = false;
 
-    const sendPayload = async (payload, activity) => {
-      let allSent = true;
-      for (const targetChannelId of channelIds) {
+    const sendPayload = async (payload, activity, targetChannelIds = channelIds) => {
+      let allSent = targetChannelIds.length > 0;
+      for (const targetChannelId of targetChannelIds) {
         try {
           let targetChannel = client.channels.cache.get(targetChannelId);
           if (!targetChannel) targetChannel = await client.channels.fetch(targetChannelId);
@@ -3306,17 +3324,29 @@ async function runGitHubReleaseCheck({ notify = true } = {}) {
           const shouldNotify = notify ? true : (isNewRelease || isFresh);
 
           if (shouldNotify) {
-            let payload;
-            if (settings.postStyle !== 'image') {
-              try { payload = await buildReleaseHighlightsPayload(release); }
-              catch (err) { logger.warn(`GitHub-Highlights für ${repository} nicht verfügbar: ${err.message}`); }
+            let allSent = true;
+            if (channelId) {
+              let payload;
+              if (settings.postStyle !== 'image') {
+                try { payload = await buildReleaseHighlightsPayload(release); }
+                catch (err) { logger.warn(`GitHub-Highlights für ${repository} nicht verfügbar: ${err.message}`); }
+              }
+              if (!payload) try { payload = await buildReleaseNotesAttachmentPayload(release); }
+              catch (err) {
+                logger.warn(`GitHub-Release-Ansicht für ${repository} nicht verfügbar: ${err.message}`);
+                payload = { embeds: [new EmbedBuilder().setColor(getGitHubReleaseColorNumber(release.repository)).setTitle(`Neuer Release: ${release.name}`).setURL(release.html_url).setDescription(_releasePlainText(release.body).join('\n').slice(0, 4000))], allowedMentions: { parse: [] } };
+              }
+              allSent = await sendPayload(payload, `neuer Release ${release.tag_name}`, [channelId]);
             }
-            if (!payload) try { payload = await buildReleaseNotesAttachmentPayload(release); }
-            catch (err) {
-              logger.warn(`GitHub-Release-Ansicht für ${repository} nicht verfügbar: ${err.message}`);
-              payload = { embeds: [new EmbedBuilder().setColor(getGitHubReleaseColorNumber(release.repository)).setTitle(`Neuer Release: ${release.name}`).setURL(release.html_url).setDescription(_releasePlainText(release.body).join('\n').slice(0, 4000))], allowedMentions: { parse: [] } };
+            if (bannerChannelId) {
+              const bannerSent = await sendPayload(
+                buildReleaseBannerPayload(release),
+                `Release-Banner ${release.tag_name}`,
+                [bannerChannelId]
+              );
+              allSent = allSent && bannerSent;
             }
-            if (await sendPayload(payload, `neuer Release ${release.tag_name}`)) {
+            if (allSent) {
               nextState.releaseId = release.id;
               nextState.release = release;
               stateChanged = true;
@@ -3340,7 +3370,7 @@ async function runGitHubReleaseCheck({ notify = true } = {}) {
           const isNewCommit = hasPreviousCommit && previous.commitSha !== commit.sha;
 
           if (notify || isNewCommit) {
-            if (await sendPayload(buildGitHubCommitPayload(commit), `neuer Commit ${commit.sha.slice(0, 7)}`)) {
+            if (await sendPayload(buildGitHubCommitPayload(commit), `neuer Commit ${commit.sha.slice(0, 7)}`, commitChannelIds)) {
               nextState.commitSha = commit.sha;
               nextState.commit = commit;
               stateChanged = true;
@@ -3392,6 +3422,7 @@ async function getGitHubReleasePreviewData(repository) {
   const repo = normalizeGitHubRepository(repository);
   if (!repo) throw new Error('Ungültiges Repository-Format');
   const release = await fetchGitHubLatestRelease(repo);
+  const banner = buildReleaseBannerPayload(release).embeds[0].toJSON();
   return {
     title: release?.name || release?.tag_name || 'GitHub Release',
     tag: release?.tag_name || 'Release',
@@ -3401,7 +3432,8 @@ async function getGitHubReleasePreviewData(repository) {
       : 'unbekannt',
     url: release?.html_url || `https://github.com/${repo}/releases`,
     body: release?.body || 'Keine Release Notes vorhanden.',
-    author: release?.author?.login || 'GitHub'
+    author: release?.author?.login || 'GitHub',
+    banner
   };
 }
 
@@ -5815,28 +5847,20 @@ async function initializeServerProfiles() {
   const primaryGuildId = String(config.get('discord.guildId') || '').trim();
   const serviceGuildId = String(config.get('discord.serviceGuildId') || '').trim();
   for (const guild of client.guilds.cache.values()) {
-    const [profile, created] = await ServerProfile.findOrCreate({
-      where: { guildId: guild.id },
-      defaults: { guildName: guild.name, settingsJson: '{}' }
-    });
+    let profile = await ServerProfile.findByPk(guild.id);
     let settings = {};
-    try { settings = JSON.parse(profile.settingsJson || '{}'); } catch { settings = {}; }
-    if (created) {
+    if (profile) {
+      try { settings = JSON.parse(profile.settingsJson || '{}'); } catch { settings = {}; }
+    } else if (guild.id === primaryGuildId || guild.id === serviceGuildId) {
       settings = Object.fromEntries(Object.entries(SERVER_PROFILE_ENV_PATHS).map(([envKey, path]) => [envKey, config.get(path)]));
-      if (guild.id !== primaryGuildId && guild.id !== serviceGuildId) {
-        for (const key of Object.keys(settings)) {
-          if (/_CHANNEL_ID$|_CHANNEL_IDS$|_GUILD_ID$|_CATEGORY_ID$/.test(key) || key === 'SERVICE_CHANNEL_MAP' || key === 'MONITORED_SERVICES') {
-            settings[key] = '';
-          }
-          if (/_ENABLED$/.test(key)) settings[key] = false;
-        }
-        settings.SERVICE_GUILD_ID = guild.id;
-        settings.DISCORD_AUTO_REPLY_RULES_FILE = `./data/auto-replies-${guild.id}.json`;
-      }
-      profile.settingsJson = JSON.stringify(settings);
+      profile = await ServerProfile.create({ guildId: guild.id, guildName: guild.name, settingsJson: JSON.stringify(settings) });
+    } else {
+      settings = createServerProfileDefaults(config, guild.id);
     }
-    profile.guildName = guild.name;
-    await profile.save();
+    if (profile) {
+      profile.guildName = guild.name;
+      await profile.save();
+    }
     setServerProfileSettings(guild.id, settings);
   }
   logger.info(`Serverprofile geladen: ${client.guilds.cache.size} Guild(s)`);
@@ -5860,7 +5884,8 @@ if (process.env.NODE_ENV === 'test') {
     async simulateStatusCheck() {
       const monitors = await getMonitorData();
       return { checksPerformed: monitors?.length ?? 0 };
-    }
+    },
+    buildReleaseBannerPayload
   };
   module.exports = { client, sequelize, testSuite };
 }
