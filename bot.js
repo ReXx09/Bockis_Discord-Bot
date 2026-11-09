@@ -5857,8 +5857,10 @@ async function initializeServerProfiles() {
     } else {
       settings = createServerProfileDefaults(config, guild.id);
     }
+    settings.GUILD_ID = guild.id;
     if (profile) {
       profile.guildName = guild.name;
+      profile.settingsJson = JSON.stringify(settings);
       await profile.save();
     }
     setServerProfileSettings(guild.id, settings);

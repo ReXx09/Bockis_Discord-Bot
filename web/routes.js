@@ -137,6 +137,7 @@ module.exports = function startWebServer({
       if (!profile) return res.status(404).json({ ok: false, error: 'Für diesen Server wurde noch kein Profil angelegt.' });
       let settings = {};
       try { settings = JSON.parse(profile.settingsJson || '{}'); } catch { /* use empty profile */ }
+      settings.GUILD_ID = guildId;
       if (guild) setServerProfileSettings(guildId, settings);
       return res.json({ ok: true, profile: { guildId, guildName: guild?.name || profile.guildName, settings } });
     } catch (err) {
@@ -156,6 +157,9 @@ module.exports = function startWebServer({
       const allowedKeys = new Set(Object.keys(SERVER_PROFILE_ENV_PATHS));
       const invalidKey = Object.keys(changes).find((key) => !allowedKeys.has(key));
       if (invalidKey) return res.status(400).json({ ok: false, error: `Einstellung ist nicht serverbezogen oder nicht erlaubt: ${invalidKey}` });
+      if (Object.hasOwn(changes, 'GUILD_ID') && String(changes.GUILD_ID) !== guildId) {
+        return res.status(400).json({ ok: false, error: 'Die Guild-ID ist die Identität des Serverprofils und kann hier nicht geändert werden.' });
+      }
       if (JSON.stringify(changes).length > 50_000) return res.status(413).json({ ok: false, error: 'Serverprofil ist zu groß.' });
       const normalizedChanges = {};
       for (const [key, value] of Object.entries(changes)) {
@@ -187,6 +191,7 @@ module.exports = function startWebServer({
       let settings = {};
       try { settings = JSON.parse(profile.settingsJson || '{}'); } catch { settings = {}; }
       Object.assign(settings, normalizedChanges);
+      settings.GUILD_ID = guildId;
       if (guild) profile.guildName = guild.name;
       profile.settingsJson = JSON.stringify(settings);
       await profile.save();
@@ -1959,6 +1964,8 @@ module.exports = function startWebServer({
         if (profile) {
           let settings = {};
           try { settings = JSON.parse(profile.settingsJson || '{}'); } catch { /* use global values */ }
+          settings.GUILD_ID = guildId;
+          if (client.guilds.cache.has(guildId)) setServerProfileSettings(guildId, settings);
           for (const [envKey, value] of Object.entries(settings)) {
             if (!Object.hasOwn(SERVER_PROFILE_ENV_PATHS, envKey)) continue;
             if (envKey === 'DISCORD_COMMAND_TILE_TEMPLATE_B64') {

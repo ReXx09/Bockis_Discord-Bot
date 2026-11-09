@@ -20,6 +20,7 @@ const SERVER_PROFILE_ENV_PATHS = Object.freeze({
   DISCORD_STATUS_BUTTON_LABEL: 'discord.statusButtonLabel',
   DISCORD_WEBUI_BUTTON_LABEL: 'discord.statusWebUiButtonLabel',
   CHANNEL_STATUS_INDICATOR: 'discord.channelStatusIndicator',
+  GUILD_ID: 'discord.guildId',
   SERVICE_GUILD_ID: 'discord.serviceGuildId',
   SERVICE_CATEGORY_NAME: 'discord.serviceCategoryName',
   SERVICE_CATEGORY_ID: 'discord.serviceCategoryId',
@@ -100,6 +101,7 @@ function createServerProfileDefaults(config, guildId) {
     if (/_ENABLED$/.test(key)) settings[key] = false;
   }
   settings.DISCORD_ENABLED_COMMANDS = '';
+  settings.GUILD_ID = String(guildId);
   settings.SERVICE_GUILD_ID = String(guildId);
   settings.DISCORD_AUTO_REPLY_RULES_FILE = `./data/auto-replies-${guildId}.json`;
   return settings;

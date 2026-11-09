@@ -6319,7 +6319,8 @@
       setCfg('cfgWebuiButtonLabel', d.DISCORD_WEBUI_BUTTON_LABEL || '');
       setCfg('cfgSlug', d.STATUS_PAGE_SLUG || 'dienste');
       setCfg('cfgCloudflareUrl', d.CLOUDFLARE_PUBLIC_URL || '');
-      setCfg('cfgGuildId', d.GUILD_ID || '');
+      setCfg('cfgGuildId', d.GUILD_ID || activeServerProfileGuildId || '');
+      document.getElementById('cfgGuildId').readOnly = Boolean(activeServerProfileGuildId);
       setCfg('cfgServiceGuildId', d.SERVICE_GUILD_ID || '');
       setCfg('cfgMsgCleanupChannelIds', d.MESSAGE_CLEANUP_CHANNEL_IDS || '');
       deserializeCleanupRows(d.MESSAGE_CLEANUP_CHANNEL_IDS || '');
@@ -6858,7 +6859,7 @@
           'DISCORD_ENABLED_COMMANDS',
           'DISCORD_COMMANDS_CHANNEL_ID', 'STATUS_CHANNEL_ID', 'DISCORD_NOTIFICATION_CHANNEL',
           'DISCORD_STATUS_RENDER_MODE', 'DISCORD_STATUS_MESSAGE_TITLE', 'DISCORD_STATUS_BUTTON_LABEL',
-          'DISCORD_WEBUI_BUTTON_LABEL', 'CHANNEL_STATUS_INDICATOR', 'SERVICE_GUILD_ID',
+          'DISCORD_WEBUI_BUTTON_LABEL', 'CHANNEL_STATUS_INDICATOR', 'GUILD_ID', 'SERVICE_GUILD_ID',
           'SERVICE_CATEGORY_NAME', 'SERVICE_CATEGORY_ID', 'SERVICE_CHANNEL_NAME_MODE',
           'SERVICE_CHANNEL_AUTO_CREATE', 'SERVICE_CHANNEL_AUTO_QUIET', 'SERVICE_CHANNEL_MAP', 'MONITORED_SERVICES',
           'MESSAGE_CLEANUP_ENABLED', 'MESSAGE_CLEANUP_INFO_ENABLED', 'MESSAGE_CLEANUP_ONLY_BOT_MESSAGES',
