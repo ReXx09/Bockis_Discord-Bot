@@ -25,10 +25,16 @@ describe('OpenLigaDB data formatting', () => {
       { leagueShortcut: '1. Fußball-Bundesliga 2007/2008', leagueSeason: '2007', leagueName: '1. Fußball-Bundesliga', sport: { sportId: 1 } },
       { leagueShortcut: 'bl1', leagueSeason: '2025', leagueName: 'Bundesliga', sport: { sportId: 1 } },
       { leagueShortcut: 'bl1', leagueSeason: '2026', leagueName: 'Bundesliga', sport: { sportId: 1 } },
+      { leagueShortcut: 'bl2', leagueSeason: '2026', leagueName: '2. Fußball-Bundesliga 2026/2027', sport: { sportId: 1 } },
+      { leagueShortcut: 'ucl', leagueSeason: '2026', leagueName: 'Champions League 2026/2027', sport: { sportId: 1 } },
+      { leagueShortcut: 'dfb', leagueSeason: '2026', leagueName: 'DFB Pokal 2026/2027', sport: { sportId: 1 } },
       { leagueShortcut: 'cup', leagueSeason: '2026', leagueName: 'Pokal', sport: { sportId: 2 } },
     ], new Date('2026-11-09T12:00:00Z'));
 
-    expect(leagues).toEqual([{ leagueShortcut: 'bl1', leagueSeason: 2026, leagueName: 'Bundesliga' }]);
+    expect(leagues.map(league => league.leagueShortcut).sort()).toEqual(['bl1', 'bl2', 'dfb', 'ucl']);
+    expect(leagues.find(league => league.leagueShortcut === 'bl2').leagueSeason).toBe(2026);
+    expect(leagues.find(league => league.leagueShortcut === 'ucl').leagueName).toBe('Champions League 2026/2027');
+    expect(leagues.find(league => league.leagueShortcut === 'dfb').leagueSeason).toBe(2026);
   });
 
   test('limits favorite teams to the configured maximum', () => {

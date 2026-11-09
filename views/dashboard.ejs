@@ -2362,6 +2362,9 @@
               <input class="cfg-input" id="cfgOpenLigaDbFeedsValue" type="hidden" value="[]">
               <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
                 <button class="btn" type="button" onclick="addOpenLigaDbFeed()">＋ Liga hinzufügen</button>
+                <button class="btn" type="button" onclick="addOpenLigaDbPreset('bl2')">＋ 2. Bundesliga</button>
+                <button class="btn" type="button" onclick="addOpenLigaDbPreset('ucl')">＋ Champions League</button>
+                <button class="btn" type="button" onclick="addOpenLigaDbPreset('dfb')">＋ DFB-Pokal</button>
                 <span class="cfg-hint" id="cfgOpenLigaDbStatus" style="margin:0" aria-live="polite">Ligenliste wird geladen …</span>
               </div>
             </div>
@@ -6295,12 +6298,34 @@
     status.className = 'cfg-hint';
   }
 
+  async function addOpenLigaDbPreset(leagueShortcut) {
+    const status = document.getElementById('cfgOpenLigaDbStatus');
+    try {
+      const leagues = await ensureOpenLigaDbLeagues();
+      const league = leagues.find(item => item.leagueShortcut === leagueShortcut);
+      if (!league) throw new Error('Diese Liga ist aktuell nicht verfügbar.');
+      const alreadyAdded = serializeOpenLigaDbFeeds().some(feed =>
+        feed.leagueShortcut === league.leagueShortcut && feed.season === league.leagueSeason);
+      if (alreadyAdded) {
+        status.textContent = `${league.leagueName} ist bereits hinzugefügt.`;
+        status.className = 'cfg-hint';
+        return;
+      }
+      await addOpenLigaDbFeed({ leagueShortcut: league.leagueShortcut, season: league.leagueSeason });
+    } catch (error) {
+      status.textContent = error.message;
+      status.className = 'cfg-hint err';
+    }
+  }
+
   async function loadOpenLigaDbTeams(row, selectedTeamIds = []) {
     const leagueSelect = row.querySelector('[data-openliga-role="league"]');
     const teamSelect = row.querySelector('[data-openliga-role="favorites"]');
     const status = row.querySelector('[data-openliga-role="status"]');
     const [leagueShortcut, season] = leagueSelect.value.split('|');
     if (!leagueShortcut || !season) return;
+    teamSelect.replaceChildren();
+    row.dataset.openligaTeamCount = '0';
     const cacheKey = `${leagueShortcut}:${season}`;
     try {
       if (!openLigaDbTeamsCache.has(cacheKey)) {
@@ -6363,9 +6388,10 @@
       <label class="cfg-label">Maximale Favoriten
         <input class="cfg-input" data-openliga-role="max-favorites" type="number" min="1" max="40" step="1" style="max-width:120px">
       </label>
-      <label class="cfg-label">Favoriten für Live-Tore und Spiele
+      <div class="cfg-field">
+        <label class="cfg-label">Favoriten für Live-Tore und Spiele</label>
         <div data-openliga-role="favorites" style="max-height:220px;overflow:auto;border:1px solid var(--border);border-radius:6px;background:var(--surface);display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:2px;padding:4px"></div>
-      </label>
+      </div>
       <div data-openliga-role="status" class="cfg-hint">Teams werden geladen …</div>
       <label class="cfg-label">Kanal für Tor- und Spielmeldungen
         <input class="cfg-input" data-openliga-role="notification" type="text" autocomplete="off" placeholder="Discord-Kanal-ID">
