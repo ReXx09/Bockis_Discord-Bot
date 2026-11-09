@@ -33,11 +33,25 @@ function parseSettings(profile) {
   }
 }
 
-function getAvailableFootballLeagues(leagues) {
+function getFavoriteTeamIds(feedConfig) {
+  const ids = [...new Set((Array.isArray(feedConfig?.favoriteTeamIds) ? feedConfig.favoriteTeamIds : [])
+    .map(Number).filter(teamId => Number.isInteger(teamId) && teamId > 0))];
+  const configuredLimit = Number(feedConfig?.maxFavorites);
+  const limit = Number.isInteger(configuredLimit) && configuredLimit > 0
+    ? Math.min(configuredLimit, 40)
+    : Math.min(40, Math.max(5, ids.length));
+  return ids.slice(0, limit);
+}
+
+function getAvailableFootballLeagues(leagues, now = new Date()) {
   const latest = new Map();
+  const currentYear = now.getFullYear();
+  const currentSeasonYears = new Set([currentYear]);
+  if (now.getMonth() < 6) currentSeasonYears.add(currentYear - 1);
   for (const league of Array.isArray(leagues) ? leagues : []) {
     if (league?.sport?.sportId !== 1 || !league.leagueShortcut || !Number.isFinite(Number(league.leagueSeason))) continue;
     const season = Number(league.leagueSeason);
+    if (!currentSeasonYears.has(season)) continue;
     const previous = latest.get(league.leagueShortcut);
     if (!previous || season > previous.season) {
       latest.set(league.leagueShortcut, {
@@ -349,8 +363,7 @@ function createOpenLigaDbWatcher({ http, client, ServerProfile, logger, requestI
     const leagueShortcut = feedConfig.leagueShortcut;
     const leagueName = metadata?.leagueName || leagueShortcut;
     const currentFeed = await loadFeed(leagueShortcut, season);
-    const favoriteTeamIds = (Array.isArray(feedConfig.favoriteTeamIds) ? feedConfig.favoriteTeamIds : [])
-      .map(Number).filter(teamId => Number.isInteger(teamId) && teamId > 0);
+    const favoriteTeamIds = getFavoriteTeamIds(feedConfig);
     const feedKey = `${leagueShortcut}:${season}`;
 
     if (favoriteTeamIds.length && feedConfig.notificationChannelId) {
@@ -397,7 +410,8 @@ function createOpenLigaDbWatcher({ http, client, ServerProfile, logger, requestI
       for (const { profile, feeds: configuredFeeds } of enabledProfiles) {
         for (const feedConfig of configuredFeeds) {
           const metadata = metadataByShortcut.get(feedConfig.leagueShortcut);
-          const season = Number(feedConfig.season) || metadata?.leagueSeason;
+          if (!metadata) continue;
+          const season = metadata.leagueSeason;
           if (!Number.isFinite(season)) continue;
           try {
             await updateLeague(profile, feedConfig, metadata, season);
@@ -436,6 +450,7 @@ module.exports = {
   fetchAvailableLeagues,
   fetchLatestLeagueTeams,
   getAvailableFootballLeagues,
+  getFavoriteTeamIds,
   getMatchScore,
   getMatchStatus,
   getSeasonForLeague,

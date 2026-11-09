@@ -3,6 +3,8 @@ const {
   buildLiveTablePayload,
   createOpenLigaDbWatcher,
   fetchLatestLeagueTeams,
+  getAvailableFootballLeagues,
+  getFavoriteTeamIds,
   getMatchScore,
   getMatchStatus,
   getSeasonForLeague,
@@ -16,6 +18,21 @@ describe('OpenLigaDB data formatting', () => {
       { leagueShortcut: 'bl2', leagueSeason: '2027' },
     ];
     expect(getSeasonForLeague(leagues, 'bl1')).toBe(2026);
+  });
+
+  test('lists only current-season football leagues', () => {
+    const leagues = getAvailableFootballLeagues([
+      { leagueShortcut: '1. Fußball-Bundesliga 2007/2008', leagueSeason: '2007', leagueName: '1. Fußball-Bundesliga', sport: { sportId: 1 } },
+      { leagueShortcut: 'bl1', leagueSeason: '2025', leagueName: 'Bundesliga', sport: { sportId: 1 } },
+      { leagueShortcut: 'bl1', leagueSeason: '2026', leagueName: 'Bundesliga', sport: { sportId: 1 } },
+      { leagueShortcut: 'cup', leagueSeason: '2026', leagueName: 'Pokal', sport: { sportId: 2 } },
+    ], new Date('2026-11-09T12:00:00Z'));
+
+    expect(leagues).toEqual([{ leagueShortcut: 'bl1', leagueSeason: 2026, leagueName: 'Bundesliga' }]);
+  });
+
+  test('limits favorite teams to the configured maximum', () => {
+    expect(getFavoriteTeamIds({ favoriteTeamIds: [40, 7, 40], maxFavorites: 1 })).toEqual([40]);
   });
 
   test('uses the latest goal score and distinguishes live from finished games', () => {
@@ -132,8 +149,13 @@ describe('OpenLigaDB data formatting', () => {
       client: { user: { id: 'bot' }, channels: { cache: new Map([['channel', channel], ['channel-2', newChannel]]) } },
       ServerProfile: { findAll: async () => [{ guildId: 'guild', settingsJson: JSON.stringify({
         DISCORD_OPENLIGADB_ENABLED: true,
-        DISCORD_OPENLIGADB_CHANNEL_ID: channelId,
-        DISCORD_OPENLIGADB_FAVORITES: '40',
+        DISCORD_OPENLIGADB_FEEDS: JSON.stringify([{
+          leagueShortcut: 'bl1',
+          season: 2025,
+          favoriteTeamIds: [40],
+          notificationChannelId: channelId,
+          tableChannelIds: [],
+        }]),
       }) }] },
       logger: { warn: jest.fn(), info: jest.fn() },
       requestIntervalMs: 0,
@@ -153,5 +175,7 @@ describe('OpenLigaDB data formatting', () => {
     await watcher.checkOnce();
     expect(newChannel.send).toHaveBeenCalledTimes(1);
     expect(typeof newChannel.send.mock.calls[0][0]).toBe('object');
+    expect(http.get.mock.calls.some(([url]) => url.includes('/getmatchdata/bl1/2026/9'))).toBe(true);
+    expect(http.get.mock.calls.some(([url]) => url.includes('/getmatchdata/bl1/2025/9'))).toBe(false);
   }, 20_000);
 });

@@ -6273,6 +6273,28 @@
     return openLigaDbLeaguesCache;
   }
 
+  function getOpenLigaDbFavoriteLimit(row) {
+    const value = Number(row.querySelector('[data-openliga-role="max-favorites"]').value);
+    return Number.isInteger(value) ? Math.min(40, Math.max(1, value)) : 5;
+  }
+
+  function updateOpenLigaDbFavoriteSelection(row, trimOverflow = false) {
+    const teamList = row.querySelector('[data-openliga-role="favorites"]');
+    const status = row.querySelector('[data-openliga-role="status"]');
+    const checkboxes = Array.from(teamList.querySelectorAll('input[type="checkbox"]'));
+    const limit = getOpenLigaDbFavoriteLimit(row);
+    let selected = checkboxes.filter(checkbox => checkbox.checked);
+    if (trimOverflow && selected.length > limit) {
+      selected.slice(limit).forEach(checkbox => { checkbox.checked = false; });
+      selected = selected.slice(0, limit);
+    }
+    checkboxes.forEach(checkbox => {
+      checkbox.disabled = !checkbox.checked && selected.length >= limit;
+    });
+    status.textContent = `${row.dataset.openligaTeamCount || 0} Teams · ${selected.length}/${limit} Favoriten`;
+    status.className = 'cfg-hint';
+  }
+
   async function loadOpenLigaDbTeams(row, selectedTeamIds = []) {
     const leagueSelect = row.querySelector('[data-openliga-role="league"]');
     const teamSelect = row.querySelector('[data-openliga-role="favorites"]');
@@ -6290,22 +6312,35 @@
       const selectedIds = new Set(selectedTeamIds.map(String));
       teamSelect.replaceChildren();
       for (const team of openLigaDbTeamsCache.get(cacheKey)) {
-        const option = document.createElement('option');
-        option.value = String(team.teamId);
-        option.textContent = team.shortName === team.teamName ? team.teamName : `${team.shortName} · ${team.teamName}`;
-        option.selected = selectedIds.has(option.value);
-        teamSelect.appendChild(option);
-        selectedIds.delete(option.value);
+        const teamId = String(team.teamId);
+        const label = document.createElement('label');
+        label.style.cssText = 'display:flex;align-items:center;gap:8px;padding:4px 6px;cursor:pointer';
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.value = teamId;
+        checkbox.checked = selectedIds.has(teamId);
+        checkbox.style.cssText = 'width:16px;height:16px;flex:none;accent-color:var(--green)';
+        const name = document.createElement('span');
+        name.textContent = team.shortName === team.teamName ? team.teamName : `${team.shortName} · ${team.teamName}`;
+        label.append(checkbox, name);
+        teamSelect.appendChild(label);
+        selectedIds.delete(teamId);
       }
       for (const teamId of selectedIds) {
-        const option = document.createElement('option');
-        option.value = teamId;
-        option.textContent = `Gespeichertes Team (${teamId})`;
-        option.selected = true;
-        teamSelect.appendChild(option);
+        const label = document.createElement('label');
+        label.style.cssText = 'display:flex;align-items:center;gap:8px;padding:4px 6px;cursor:pointer';
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.value = teamId;
+        checkbox.checked = true;
+        checkbox.style.cssText = 'width:16px;height:16px;flex:none;accent-color:var(--green)';
+        const name = document.createElement('span');
+        name.textContent = `Gespeichertes Team (${teamId})`;
+        label.append(checkbox, name);
+        teamSelect.appendChild(label);
       }
-      status.textContent = `${openLigaDbTeamsCache.get(cacheKey).length} Teams`;
-      status.className = 'cfg-hint';
+      row.dataset.openligaTeamCount = String(openLigaDbTeamsCache.get(cacheKey).length);
+      updateOpenLigaDbFavoriteSelection(row, true);
     } catch (error) {
       status.textContent = error.message;
       status.className = 'cfg-hint err';
@@ -6325,8 +6360,11 @@
       <label class="cfg-label">Liga und Saison
         <select class="cfg-input" data-openliga-role="league"></select>
       </label>
+      <label class="cfg-label">Maximale Favoriten
+        <input class="cfg-input" data-openliga-role="max-favorites" type="number" min="1" max="40" step="1" style="max-width:120px">
+      </label>
       <label class="cfg-label">Favoriten für Live-Tore und Spiele
-        <select class="cfg-input" data-openliga-role="favorites" multiple size="6" style="min-height:120px"></select>
+        <div data-openliga-role="favorites" style="max-height:220px;overflow:auto;border:1px solid var(--border);border-radius:6px;background:var(--surface);display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:2px;padding:4px"></div>
       </label>
       <div data-openliga-role="status" class="cfg-hint">Teams werden geladen …</div>
       <label class="cfg-label">Kanal für Tor- und Spielmeldungen
@@ -6369,6 +6407,13 @@
     }
     row.querySelector('[data-openliga-role="notification"]').value = feed.notificationChannelId || '';
     row.querySelector('[data-openliga-role="tables"]').value = (feed.tableChannelIds || []).join(',');
+    const favoriteTeamIds = Array.isArray(feed.favoriteTeamIds) ? feed.favoriteTeamIds : [];
+    const savedMaxFavorites = Number(feed.maxFavorites);
+    row.querySelector('[data-openliga-role="max-favorites"]').value = String(
+      Number.isInteger(savedMaxFavorites) && savedMaxFavorites >= 1 && savedMaxFavorites <= 40
+        ? savedMaxFavorites
+        : Math.min(40, Math.max(5, favoriteTeamIds.length)),
+    );
     row.querySelector('[data-openliga-role="title"]').textContent = matchingLeague?.leagueName || configuredShortcut;
     leagueSelect.addEventListener('change', async () => {
       const selected = leagues.find(league => `${league.leagueShortcut}|${league.leagueSeason}` === leagueSelect.value);
@@ -6379,7 +6424,13 @@
       row.remove();
       syncOpenLigaDbFeedsDirtyState();
     });
-    await loadOpenLigaDbTeams(row, feed.favoriteTeamIds || []);
+    row.querySelector('[data-openliga-role="favorites"]').addEventListener('change', () => updateOpenLigaDbFavoriteSelection(row));
+    row.querySelector('[data-openliga-role="max-favorites"]').addEventListener('change', event => {
+      const input = event.currentTarget;
+      input.value = String(getOpenLigaDbFavoriteLimit(row));
+      updateOpenLigaDbFavoriteSelection(row, true);
+    });
+    await loadOpenLigaDbTeams(row, favoriteTeamIds);
     syncOpenLigaDbFeedsDirtyState();
   }
 
@@ -6389,7 +6440,8 @@
       return {
         leagueShortcut,
         season: Number(season) || undefined,
-        favoriteTeamIds: Array.from(row.querySelector('[data-openliga-role="favorites"]').selectedOptions, option => Number(option.value)).filter(Number.isInteger),
+        maxFavorites: getOpenLigaDbFavoriteLimit(row),
+        favoriteTeamIds: Array.from(row.querySelectorAll('[data-openliga-role="favorites"] input[type="checkbox"]:checked'), checkbox => Number(checkbox.value)).filter(Number.isInteger),
         notificationChannelId: row.querySelector('[data-openliga-role="notification"]').value.trim(),
         tableChannelIds: [...new Set(row.querySelector('[data-openliga-role="tables"]').value.split(/[;,]/).map(id => id.trim()).filter(Boolean))],
       };
@@ -6428,7 +6480,11 @@
     }
     try {
       const leagues = await ensureOpenLigaDbLeagues();
-      status.textContent = `${leagues.length} Fußballligen verfügbar`;
+      const currentShortcuts = new Set(leagues.map(league => league.leagueShortcut));
+      const configuredFeedCount = feeds.length;
+      feeds = feeds.filter(feed => currentShortcuts.has(feed.leagueShortcut));
+      const outdatedFeedCount = configuredFeedCount - feeds.length;
+      status.textContent = `${leagues.length} aktuelle Fußballligen verfügbar${outdatedFeedCount ? ` · ${outdatedFeedCount} veraltete Feeds ausgeblendet` : ''}`;
       status.className = 'cfg-hint';
     } catch (error) {
       status.textContent = error.message;

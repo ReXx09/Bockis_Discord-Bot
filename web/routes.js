@@ -34,36 +34,47 @@ function normalizeOpenLigaDbFeeds(value) {
   if (!Array.isArray(feeds) || feeds.length > 12) throw new Error('Es sind höchstens 12 OpenLigaDB-Ligen erlaubt.');
   const seen = new Set();
   return feeds.map(feed => {
+    const leagueShortcut = typeof feed?.leagueShortcut === 'string' ? feed.leagueShortcut.trim() : '';
     if (!feed || typeof feed !== 'object' || Array.isArray(feed)
-      || typeof feed.leagueShortcut !== 'string' || !/^[a-zA-Z0-9_-]{1,30}$/.test(feed.leagueShortcut)) {
+      || !leagueShortcut || leagueShortcut.length > 100 || /[\u0000-\u001f\u007f]/.test(leagueShortcut)) {
       throw new Error('Ungültiger OpenLigaDB-Ligaeintrag.');
     }
     const season = feed.season == null || feed.season === '' ? undefined : Number(feed.season);
     if (season !== undefined && (!Number.isInteger(season) || season < 1900 || season > 2200)) {
-      throw new Error(`Ungültige Saison für ${feed.leagueShortcut}.`);
+      throw new Error(`Ungültige Saison für ${leagueShortcut}.`);
     }
-    const feedKey = `${feed.leagueShortcut}:${season || ''}`;
-    if (seen.has(feedKey)) throw new Error(`Die Liga ${feed.leagueShortcut} ist doppelt eingetragen.`);
+    const feedKey = `${leagueShortcut}:${season || ''}`;
+    if (seen.has(feedKey)) throw new Error(`Die Liga ${leagueShortcut} ist doppelt eingetragen.`);
     seen.add(feedKey);
 
     const favoriteTeamIds = feed.favoriteTeamIds == null ? [] : feed.favoriteTeamIds;
     const tableChannelIds = feed.tableChannelIds == null ? [] : feed.tableChannelIds;
     if (!Array.isArray(favoriteTeamIds) || favoriteTeamIds.length > 40
       || favoriteTeamIds.some(id => !Number.isInteger(Number(id)) || Number(id) <= 0)) {
-      throw new Error(`Ungültige Favoriten für ${feed.leagueShortcut}.`);
+      throw new Error(`Ungültige Favoriten für ${leagueShortcut}.`);
+    }
+    const normalizedFavoriteTeamIds = [...new Set(favoriteTeamIds.map(Number))];
+    const defaultMaxFavorites = Math.min(40, Math.max(5, normalizedFavoriteTeamIds.length));
+    const maxFavorites = feed.maxFavorites == null || feed.maxFavorites === '' ? defaultMaxFavorites : Number(feed.maxFavorites);
+    if (!Number.isInteger(maxFavorites) || maxFavorites < 1 || maxFavorites > 40) {
+      throw new Error(`Die maximale Favoritenzahl für ${leagueShortcut} muss zwischen 1 und 40 liegen.`);
+    }
+    if (normalizedFavoriteTeamIds.length > maxFavorites) {
+      throw new Error(`Für ${leagueShortcut} sind höchstens ${maxFavorites} Favoriten erlaubt.`);
     }
     if (!Array.isArray(tableChannelIds) || tableChannelIds.length > 20
       || tableChannelIds.some(id => !/^\d{1,24}$/.test(String(id)))) {
-      throw new Error(`Ungültige Tabellenkanäle für ${feed.leagueShortcut}.`);
+      throw new Error(`Ungültige Tabellenkanäle für ${leagueShortcut}.`);
     }
     const notificationChannelId = String(feed.notificationChannelId || '').trim();
     if (notificationChannelId && !/^\d{1,24}$/.test(notificationChannelId)) {
-      throw new Error(`Ungültiger Meldungskanal für ${feed.leagueShortcut}.`);
+      throw new Error(`Ungültiger Meldungskanal für ${leagueShortcut}.`);
     }
     return {
-      leagueShortcut: feed.leagueShortcut,
+      leagueShortcut,
       ...(season === undefined ? {} : { season }),
-      favoriteTeamIds: [...new Set(favoriteTeamIds.map(Number))],
+      favoriteTeamIds: normalizedFavoriteTeamIds,
+      maxFavorites,
       notificationChannelId,
       tableChannelIds: [...new Set(tableChannelIds.map(String))],
     };
@@ -264,7 +275,7 @@ module.exports = function startWebServer({
   app.get('/api/openligadb/teams', dashboardAuth, async (req, res) => {
     try {
       const leagueShortcut = String(req.query?.leagueShortcut || '').trim();
-      if (!/^[a-zA-Z0-9_-]{1,30}$/.test(leagueShortcut)) {
+      if (!leagueShortcut || leagueShortcut.length > 100 || /[\u0000-\u001f\u007f]/.test(leagueShortcut)) {
         return res.status(400).json({ ok: false, error: 'Ungültige Ligaauswahl.' });
       }
       const season = Number(req.query?.season);
