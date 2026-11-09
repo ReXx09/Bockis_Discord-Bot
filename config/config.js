@@ -146,6 +146,12 @@ const config = convict({
       default: '',
       env: 'DISCORD_OPENLIGADB_FAVORITES'
     },
+    openLigaDbFeeds: {
+      doc: 'JSON-Konfiguration mehrerer OpenLigaDB-Ligen, Favoriten und Discord-Kanäle',
+      format: String,
+      default: '',
+      env: 'DISCORD_OPENLIGADB_FEEDS'
+    },
     translateDefaultTarget: {
       doc: 'Standard-Zielsprache fuer /translate (z.B. de, en, fr)',
       format: String,

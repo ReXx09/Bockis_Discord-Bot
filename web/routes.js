@@ -22,11 +22,53 @@ const axios       = require('axios');
 const { ChannelType } = require('discord.js');
 const { execFile, execFileSync, execSync, spawn } = require('child_process');
 const { SERVER_PROFILE_ENV_PATHS, createServerProfileDefaults, setServerProfileSettings } = require('../server-profiles');
-const { fetchLatestLeagueTeams } = require('../services/openligadb');
+const { fetchAvailableLeagues, fetchLatestLeagueTeams } = require('../services/openligadb');
 
 // Erlaubte Werte für Service-Control (Whitelist gegen Command-Injection)
 const ALLOWED_SERVICES = ['bockis-bot', 'uptime-kuma', 'cloudflared'];
 const ALLOWED_ACTIONS  = ['start', 'stop', 'restart', 'status'];
+
+function normalizeOpenLigaDbFeeds(value) {
+  let feeds;
+  try { feeds = JSON.parse(String(value)); } catch { throw new Error('OpenLigaDB-Feeds müssen gültiges JSON sein.'); }
+  if (!Array.isArray(feeds) || feeds.length > 12) throw new Error('Es sind höchstens 12 OpenLigaDB-Ligen erlaubt.');
+  const seen = new Set();
+  return feeds.map(feed => {
+    if (!feed || typeof feed !== 'object' || Array.isArray(feed)
+      || typeof feed.leagueShortcut !== 'string' || !/^[a-zA-Z0-9_-]{1,30}$/.test(feed.leagueShortcut)) {
+      throw new Error('Ungültiger OpenLigaDB-Ligaeintrag.');
+    }
+    const season = feed.season == null || feed.season === '' ? undefined : Number(feed.season);
+    if (season !== undefined && (!Number.isInteger(season) || season < 1900 || season > 2200)) {
+      throw new Error(`Ungültige Saison für ${feed.leagueShortcut}.`);
+    }
+    const feedKey = `${feed.leagueShortcut}:${season || ''}`;
+    if (seen.has(feedKey)) throw new Error(`Die Liga ${feed.leagueShortcut} ist doppelt eingetragen.`);
+    seen.add(feedKey);
+
+    const favoriteTeamIds = feed.favoriteTeamIds == null ? [] : feed.favoriteTeamIds;
+    const tableChannelIds = feed.tableChannelIds == null ? [] : feed.tableChannelIds;
+    if (!Array.isArray(favoriteTeamIds) || favoriteTeamIds.length > 40
+      || favoriteTeamIds.some(id => !Number.isInteger(Number(id)) || Number(id) <= 0)) {
+      throw new Error(`Ungültige Favoriten für ${feed.leagueShortcut}.`);
+    }
+    if (!Array.isArray(tableChannelIds) || tableChannelIds.length > 20
+      || tableChannelIds.some(id => !/^\d{1,24}$/.test(String(id)))) {
+      throw new Error(`Ungültige Tabellenkanäle für ${feed.leagueShortcut}.`);
+    }
+    const notificationChannelId = String(feed.notificationChannelId || '').trim();
+    if (notificationChannelId && !/^\d{1,24}$/.test(notificationChannelId)) {
+      throw new Error(`Ungültiger Meldungskanal für ${feed.leagueShortcut}.`);
+    }
+    return {
+      leagueShortcut: feed.leagueShortcut,
+      ...(season === undefined ? {} : { season }),
+      favoriteTeamIds: [...new Set(favoriteTeamIds.map(Number))],
+      notificationChannelId,
+      tableChannelIds: [...new Set(tableChannelIds.map(String))],
+    };
+  });
+}
 
 function execFilePromise(cmd, args, opts = {}) {
   return new Promise((resolve, reject) => {
@@ -167,6 +209,11 @@ module.exports = function startWebServer({
         if (value !== null && !['string', 'number', 'boolean'].includes(typeof value)) {
           return res.status(400).json({ ok: false, error: `Ungültiger Wert für ${key}.` });
         }
+        if (key === 'DISCORD_OPENLIGADB_FEEDS') {
+          try { normalizedChanges[key] = JSON.stringify(normalizeOpenLigaDbFeeds(value)); }
+          catch (error) { return res.status(400).json({ ok: false, error: error.message }); }
+          continue;
+        }
         const defaultValue = config.get(SERVER_PROFILE_ENV_PATHS[key]);
         if (typeof defaultValue === 'boolean') {
           if (value !== true && value !== false && value !== 'true' && value !== 'false') {
@@ -204,13 +251,28 @@ module.exports = function startWebServer({
     }
   });
 
+  app.get('/api/openligadb/leagues', dashboardAuth, async (req, res) => {
+    try {
+      const leagues = await fetchAvailableLeagues(axios);
+      return res.json({ ok: true, leagues });
+    } catch (err) {
+      logger.warn(`OpenLigaDB-Ligen konnten nicht geladen werden: ${err.message}`);
+      return res.status(502).json({ ok: false, error: 'Ligen sind momentan nicht verfügbar.' });
+    }
+  });
+
   app.get('/api/openligadb/teams', dashboardAuth, async (req, res) => {
     try {
-      const league = await fetchLatestLeagueTeams(axios);
+      const leagueShortcut = String(req.query?.leagueShortcut || '').trim();
+      if (!/^[a-zA-Z0-9_-]{1,30}$/.test(leagueShortcut)) {
+        return res.status(400).json({ ok: false, error: 'Ungültige Ligaauswahl.' });
+      }
+      const season = Number(req.query?.season);
+      const league = await fetchLatestLeagueTeams(axios, leagueShortcut, season);
       return res.json({ ok: true, ...league });
     } catch (err) {
       logger.warn(`OpenLigaDB-Teamliste konnte nicht geladen werden: ${err.message}`);
-      return res.status(502).json({ ok: false, error: 'Bundesliga-Teams sind momentan nicht verfügbar.' });
+      return res.status(502).json({ ok: false, error: 'Teams sind momentan nicht verfügbar.' });
     }
   });
 
@@ -1905,6 +1967,7 @@ module.exports = function startWebServer({
         DISCORD_OPENLIGADB_ENABLED: get('DISCORD_OPENLIGADB_ENABLED') || 'false',
         DISCORD_OPENLIGADB_CHANNEL_ID: get('DISCORD_OPENLIGADB_CHANNEL_ID') || '',
         DISCORD_OPENLIGADB_FAVORITES: get('DISCORD_OPENLIGADB_FAVORITES') || '',
+        DISCORD_OPENLIGADB_FEEDS: get('DISCORD_OPENLIGADB_FEEDS') || '',
         DISCORD_TRANSLATE_DEFAULT_TARGET: get('DISCORD_TRANSLATE_DEFAULT_TARGET') || 'de',
         DISCORD_TRANSLATE_DEFAULT_SOURCE: get('DISCORD_TRANSLATE_DEFAULT_SOURCE') || 'auto',
         DISCORD_TRANSLATE_PROVIDER: get('DISCORD_TRANSLATE_PROVIDER') || (get('DISCORD_USE_DEEPL') === 'true' && get('DISCORD_DEEPL_API_KEY') ? 'deepl' : 'auto'),
@@ -2022,6 +2085,7 @@ module.exports = function startWebServer({
       'DISCORD_OPENLIGADB_ENABLED',
       'DISCORD_OPENLIGADB_CHANNEL_ID',
       'DISCORD_OPENLIGADB_FAVORITES',
+      'DISCORD_OPENLIGADB_FEEDS',
       'DISCORD_TRANSLATE_DEFAULT_TARGET',
       'DISCORD_TRANSLATE_DEFAULT_SOURCE',
       'DISCORD_TRANSLATE_PROVIDER',
@@ -2117,6 +2181,7 @@ module.exports = function startWebServer({
       'DISCORD_AUTO_REPLY_CONNECTOR',
       'DISCORD_OPENLIGADB_CHANNEL_ID',
       'DISCORD_OPENLIGADB_FAVORITES',
+      'DISCORD_OPENLIGADB_FEEDS',
       'DISCORD_WELCOME_CHANNEL_ID',
       'DISCORD_WELCOME_MESSAGE_TEMPLATE',
       'DISCORD_GITHUB_CHANNEL_ID',
@@ -2163,6 +2228,11 @@ module.exports = function startWebServer({
       const val = key === 'DISCORD_COMMAND_TILE_TEMPLATE'
         ? String(raw).replace(/\r\n?/g, '\n')
         : String(raw).trim();
+      if (key === 'DISCORD_OPENLIGADB_FEEDS') {
+        try { updates[key] = JSON.stringify(normalizeOpenLigaDbFeeds(val)); }
+        catch (error) { return res.json({ ok: false, error: error.message }); }
+        continue;
+      }
       if (key === 'DISCORD_GITHUB_RELEASE_TEXT_COLOR') {
         if (!/^#[0-9a-f]{6}$/i.test(val)) return res.json({ ok: false, error: 'Schriftfarbe muss das Format #RRGGBB haben' });
         updates[key] = val.toLowerCase();
@@ -2278,6 +2348,8 @@ module.exports = function startWebServer({
         return res.json({ ok: false, error: 'DISCORD_COMMAND_TILE_SCALE muss compact, normal oder large sein' });
       if (key === 'DISCORD_TRANSLATE_ENABLED' && !['true', 'false'].includes(val))
         return res.json({ ok: false, error: 'DISCORD_TRANSLATE_ENABLED muss true oder false sein' });
+      if (key === 'DISCORD_OPENLIGADB_ENABLED' && !['true', 'false'].includes(val))
+        return res.json({ ok: false, error: 'DISCORD_OPENLIGADB_ENABLED muss true oder false sein' });
       if ((key === 'DISCORD_TRANSLATE_DEFAULT_TARGET' || key === 'DISCORD_TRANSLATE_DEFAULT_SOURCE')) {
         if (!/^[a-z]{2,3}(?:-[a-z]{2,4})?$/i.test(val) && !(key === 'DISCORD_TRANSLATE_DEFAULT_SOURCE' && val.toLowerCase() === 'auto')) {
           return res.json({ ok: false, error: `${key} muss auto (nur Quelle) oder Sprachcode wie de/en/fr sein` });

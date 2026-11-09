@@ -66,6 +66,7 @@ const SERVER_PROFILE_ENV_PATHS = Object.freeze({
   DISCORD_OPENLIGADB_ENABLED: 'discord.openLigaDbEnabled',
   DISCORD_OPENLIGADB_CHANNEL_ID: 'discord.openLigaDbChannelId',
   DISCORD_OPENLIGADB_FAVORITES: 'discord.openLigaDbFavorites',
+  DISCORD_OPENLIGADB_FEEDS: 'discord.openLigaDbFeeds',
   DISCORD_TRANSLATE_DEFAULT_TARGET: 'discord.translateDefaultTarget',
   DISCORD_TRANSLATE_DEFAULT_SOURCE: 'discord.translateDefaultSource',
   DISCORD_TRANSLATE_PROVIDER: 'discord.translateProvider',

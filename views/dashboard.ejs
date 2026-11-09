@@ -1027,6 +1027,7 @@
           <button class="cfg-nav-btn" data-cfg-pane-btn="security" onclick="setActiveSettingsPane('security')">🗂 Sicherheit & API</button>
           <button class="cfg-nav-btn" data-cfg-pane-btn="raspi" onclick="setActiveSettingsPane('raspi')">🍓 Raspi & Web</button>
           <button class="cfg-nav-btn" data-cfg-pane-btn="welcome" onclick="setActiveSettingsPane('welcome')">👋 Willkommen & Auto-Reply</button>
+          <button class="cfg-nav-btn" data-cfg-pane-btn="openligadb" onclick="setActiveSettingsPane('openligadb')">⚽ OpenLigaDB</button>
           <button class="cfg-nav-btn" data-cfg-pane-btn="github" onclick="setActiveSettingsPane('github')">🐙 GitHub-Watcher</button>
           <button class="cfg-nav-btn" data-cfg-pane-btn="aichat" onclick="setActiveSettingsPane('aichat')">🤖 KI-Chat (OpenAI)</button>
         </div>
@@ -1226,27 +1227,6 @@
               <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px;margin-bottom:12px">
                 <div>
                   <label class="cfg-label" for="cfgTranslateDefaultTarget" style="font-size:12px;margin-bottom:4px">Standard Zielsprache</label>
-              <div class="cfg-section">
-                <div class="cfg-section-header" onclick="toggleConfigSection(this)">
-                  <div class="cfg-section-header-title">
-                    <span class="cfg-section-toggle">▾</span>
-                    <span>⚽ Bundesliga Live (OpenLigaDB)</span>
-                  </div>
-                </div>
-                <div class="cfg-section-content">
-                  <div class="cfg-section-body">
-                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;margin-bottom:12px">
-                      <input type="checkbox" id="cfgOpenLigaDbEnabled" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
-                      <span>Live-Spielstände und Ereignismeldungen aktivieren</span>
-                    </label>
-                    <label class="cfg-label" for="cfgOpenLigaDbChannelId">Ausgabekanal-ID</label>
-                    <input class="cfg-input" id="cfgOpenLigaDbChannelId" type="text" autocomplete="off" placeholder="Discord-Kanal-ID">
-                    <label class="cfg-label" for="cfgOpenLigaDbFavorites" style="margin-top:10px">Favorisierte Teams der 1. Bundesliga</label>
-                    <select class="cfg-input" id="cfgOpenLigaDbFavorites" multiple size="8" style="min-height:150px"></select>
-                    <div class="cfg-hint" id="cfgOpenLigaDbTeamStatus" style="margin-bottom:0">Teamliste wird geladen …</div>
-                  </div>
-                </div>
-              </div>
                   <select class="cfg-input" id="cfgTranslateDefaultTarget">
                     <option value="de">de - Deutsch</option>
                     <option value="en">en - English</option>
@@ -2357,6 +2337,34 @@
           </div>
         </div>
       </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── PANE: OPENLIGADB ──────────────────────────── -->
+      <div class="cfg-pane-card hidden" data-cfg-pane="openligadb">
+        <div class="cfg-pane-title">⚽ OpenLigaDB · Live-Fußball</div>
+        <div class="cfg-section open">
+          <div class="cfg-section-header" onclick="toggleConfigSection(this)">
+            <div class="cfg-section-header-title">
+              <span class="cfg-section-toggle">▾</span>
+              <span>Live-Feeds &amp; Tabellen</span>
+            </div>
+          </div>
+          <div class="cfg-section-content">
+            <div class="cfg-section-body">
+              <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;margin-bottom:12px">
+                <input type="checkbox" id="cfgOpenLigaDbEnabled" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
+                <span>OpenLigaDB-Live-Feeds aktivieren</span>
+              </label>
+              <div class="cfg-hint">Pro Liga kannst du Favoriten, einen Kanal für Tor-/Spielmeldungen und mehrere Kanäle für die Live-Tabelle festlegen.</div>
+              <div id="cfgOpenLigaDbFeeds" style="display:grid;gap:10px;margin:12px 0"></div>
+              <input class="cfg-input" id="cfgOpenLigaDbFeedsValue" type="hidden" value="[]">
+              <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                <button class="btn" type="button" onclick="addOpenLigaDbFeed()">＋ Liga hinzufügen</button>
+                <span class="cfg-hint" id="cfgOpenLigaDbStatus" style="margin:0" aria-live="polite">Ligenliste wird geladen …</span>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -6254,26 +6262,39 @@
     initConfigDirtyTracking();
   }
 
-  let openLigaDbTeamsCache = null;
+  let openLigaDbLeaguesCache = null;
+  const openLigaDbTeamsCache = new Map();
 
-  async function loadOpenLigaDbTeams(selectedValue) {
-    const select = document.getElementById('cfgOpenLigaDbFavorites');
-    const status = document.getElementById('cfgOpenLigaDbTeamStatus');
-    if (!select || !status) return;
-    const selectedIds = new Set(String(selectedValue || '').split(/[;,]/).map(value => value.trim()).filter(Boolean));
+  async function ensureOpenLigaDbLeagues() {
+    if (openLigaDbLeaguesCache) return openLigaDbLeaguesCache;
+    const response = await fetch('/api/openligadb/leagues').then(result => result.json());
+    if (!response.ok) throw new Error(response.error || 'Ligenliste nicht verfügbar');
+    openLigaDbLeaguesCache = response.leagues || [];
+    return openLigaDbLeaguesCache;
+  }
+
+  async function loadOpenLigaDbTeams(row, selectedTeamIds = []) {
+    const leagueSelect = row.querySelector('[data-openliga-role="league"]');
+    const teamSelect = row.querySelector('[data-openliga-role="favorites"]');
+    const status = row.querySelector('[data-openliga-role="status"]');
+    const [leagueShortcut, season] = leagueSelect.value.split('|');
+    if (!leagueShortcut || !season) return;
+    const cacheKey = `${leagueShortcut}:${season}`;
     try {
-      if (!openLigaDbTeamsCache) {
-        const response = await fetch('/api/openligadb/teams').then(result => result.json());
+      if (!openLigaDbTeamsCache.has(cacheKey)) {
+        const query = new URLSearchParams({ leagueShortcut, season });
+        const response = await fetch(`/api/openligadb/teams?${query}`).then(result => result.json());
         if (!response.ok) throw new Error(response.error || 'Teamliste nicht verfügbar');
-        openLigaDbTeamsCache = response;
+        openLigaDbTeamsCache.set(cacheKey, response.teams || []);
       }
-      select.replaceChildren();
-      for (const team of openLigaDbTeamsCache.teams) {
+      const selectedIds = new Set(selectedTeamIds.map(String));
+      teamSelect.replaceChildren();
+      for (const team of openLigaDbTeamsCache.get(cacheKey)) {
         const option = document.createElement('option');
         option.value = String(team.teamId);
         option.textContent = team.shortName === team.teamName ? team.teamName : `${team.shortName} · ${team.teamName}`;
         option.selected = selectedIds.has(option.value);
-        select.appendChild(option);
+        teamSelect.appendChild(option);
         selectedIds.delete(option.value);
       }
       for (const teamId of selectedIds) {
@@ -6281,15 +6302,145 @@
         option.value = teamId;
         option.textContent = `Gespeichertes Team (${teamId})`;
         option.selected = true;
-        select.appendChild(option);
+        teamSelect.appendChild(option);
       }
-      select.dataset.initialValue = Array.from(select.selectedOptions, option => option.value).join(',');
-      status.textContent = `Saison ${openLigaDbTeamsCache.season} · ${openLigaDbTeamsCache.teams.length} Teams`;
+      status.textContent = `${openLigaDbTeamsCache.get(cacheKey).length} Teams`;
       status.className = 'cfg-hint';
     } catch (error) {
       status.textContent = error.message;
       status.className = 'cfg-hint err';
     }
+  }
+
+  async function addOpenLigaDbFeed(feed = {}) {
+    const container = document.getElementById('cfgOpenLigaDbFeeds');
+    const row = document.createElement('div');
+    row.dataset.openligaFeed = 'true';
+    row.style.cssText = 'border:1px solid var(--border);border-radius:8px;padding:12px;background:var(--surface2);display:grid;gap:8px';
+    row.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+        <strong data-openliga-role="title">Liga</strong>
+        <button class="btn" type="button" data-openliga-role="remove" title="Liga entfernen">Entfernen</button>
+      </div>
+      <label class="cfg-label">Liga und Saison
+        <select class="cfg-input" data-openliga-role="league"></select>
+      </label>
+      <label class="cfg-label">Favoriten für Live-Tore und Spiele
+        <select class="cfg-input" data-openliga-role="favorites" multiple size="6" style="min-height:120px"></select>
+      </label>
+      <div data-openliga-role="status" class="cfg-hint">Teams werden geladen …</div>
+      <label class="cfg-label">Kanal für Tor- und Spielmeldungen
+        <input class="cfg-input" data-openliga-role="notification" type="text" autocomplete="off" placeholder="Discord-Kanal-ID">
+      </label>
+      <label class="cfg-label">Kanäle für die Live-Tabelle
+        <input class="cfg-input" data-openliga-role="tables" type="text" autocomplete="off" placeholder="Kanal-IDs mit Komma oder Semikolon trennen">
+      </label>`;
+    container.appendChild(row);
+    if (container.dataset.dirtyBound !== '1') {
+      container.addEventListener('input', syncOpenLigaDbFeedsDirtyState);
+      container.addEventListener('change', syncOpenLigaDbFeedsDirtyState);
+      container.dataset.dirtyBound = '1';
+    }
+
+    const leagueSelect = row.querySelector('[data-openliga-role="league"]');
+    let leagues = [];
+    try { leagues = await ensureOpenLigaDbLeagues(); } catch (error) {
+      row.querySelector('[data-openliga-role="status"]').textContent = error.message;
+      row.querySelector('[data-openliga-role="status"]').className = 'cfg-hint err';
+    }
+    for (const league of leagues) {
+      const option = document.createElement('option');
+      option.value = `${league.leagueShortcut}|${league.leagueSeason}`;
+      option.textContent = `${league.leagueName} · ${league.leagueSeason}/${Number(league.leagueSeason) + 1}`;
+      leagueSelect.appendChild(option);
+    }
+    const configuredShortcut = feed.leagueShortcut || 'bl1';
+    let configuredSeason = Number(feed.season);
+    const matchingLeague = leagues.find(league => league.leagueShortcut === configuredShortcut
+      && (!configuredSeason || league.leagueSeason === configuredSeason)) || leagues.find(league => league.leagueShortcut === configuredShortcut);
+    if (matchingLeague) {
+      leagueSelect.value = `${matchingLeague.leagueShortcut}|${matchingLeague.leagueSeason}`;
+    } else if (configuredShortcut) {
+      const option = document.createElement('option');
+      option.value = `${configuredShortcut}|${configuredSeason || ''}`;
+      option.textContent = `${configuredShortcut} · gespeicherte Liga`;
+      leagueSelect.appendChild(option);
+      leagueSelect.value = option.value;
+    }
+    row.querySelector('[data-openliga-role="notification"]').value = feed.notificationChannelId || '';
+    row.querySelector('[data-openliga-role="tables"]').value = (feed.tableChannelIds || []).join(',');
+    row.querySelector('[data-openliga-role="title"]').textContent = matchingLeague?.leagueName || configuredShortcut;
+    leagueSelect.addEventListener('change', async () => {
+      const selected = leagues.find(league => `${league.leagueShortcut}|${league.leagueSeason}` === leagueSelect.value);
+      row.querySelector('[data-openliga-role="title"]').textContent = selected?.leagueName || leagueSelect.value;
+      await loadOpenLigaDbTeams(row);
+    });
+    row.querySelector('[data-openliga-role="remove"]').addEventListener('click', () => {
+      row.remove();
+      syncOpenLigaDbFeedsDirtyState();
+    });
+    await loadOpenLigaDbTeams(row, feed.favoriteTeamIds || []);
+    syncOpenLigaDbFeedsDirtyState();
+  }
+
+  function serializeOpenLigaDbFeeds() {
+    return Array.from(document.querySelectorAll('#cfgOpenLigaDbFeeds [data-openliga-feed]')).map(row => {
+      const [leagueShortcut, season] = row.querySelector('[data-openliga-role="league"]').value.split('|');
+      return {
+        leagueShortcut,
+        season: Number(season) || undefined,
+        favoriteTeamIds: Array.from(row.querySelector('[data-openliga-role="favorites"]').selectedOptions, option => Number(option.value)).filter(Number.isInteger),
+        notificationChannelId: row.querySelector('[data-openliga-role="notification"]').value.trim(),
+        tableChannelIds: [...new Set(row.querySelector('[data-openliga-role="tables"]').value.split(/[;,]/).map(id => id.trim()).filter(Boolean))],
+      };
+    }).filter(feed => feed.leagueShortcut);
+  }
+
+  function syncOpenLigaDbFeedsDirtyState() {
+    const field = document.getElementById('cfgOpenLigaDbFeedsValue');
+    if (!field) return;
+    field.value = JSON.stringify(serializeOpenLigaDbFeeds());
+    _setDirtyState(field, _isFieldDirty(field));
+    refreshConfigDirtyIndicator();
+  }
+
+  async function loadOpenLigaDbSettings(configData) {
+    const container = document.getElementById('cfgOpenLigaDbFeeds');
+    const status = document.getElementById('cfgOpenLigaDbStatus');
+    container.replaceChildren();
+    let feeds = [];
+    let hasExplicitFeedConfig = false;
+    if (configData.DISCORD_OPENLIGADB_FEEDS) {
+      try {
+        feeds = JSON.parse(configData.DISCORD_OPENLIGADB_FEEDS);
+        hasExplicitFeedConfig = Array.isArray(feeds);
+      } catch {}
+    }
+    if (!hasExplicitFeedConfig && (!Array.isArray(feeds) || !feeds.length)) {
+      if ((configData.DISCORD_OPENLIGADB_ENABLED || 'false') === 'true') {
+        feeds = [{
+          leagueShortcut: 'bl1',
+          favoriteTeamIds: String(configData.DISCORD_OPENLIGADB_FAVORITES || '').split(/[;,]/).map(Number).filter(id => Number.isInteger(id) && id > 0),
+          notificationChannelId: configData.DISCORD_OPENLIGADB_CHANNEL_ID || '',
+          tableChannelIds: [],
+        }];
+      }
+    }
+    try {
+      const leagues = await ensureOpenLigaDbLeagues();
+      status.textContent = `${leagues.length} Fußballligen verfügbar`;
+      status.className = 'cfg-hint';
+    } catch (error) {
+      status.textContent = error.message;
+      status.className = 'cfg-hint err';
+    }
+    for (const feed of feeds) await addOpenLigaDbFeed(feed);
+    const initialValue = JSON.stringify(serializeOpenLigaDbFeeds());
+    container.dataset.initialValue = initialValue;
+    const field = document.getElementById('cfgOpenLigaDbFeedsValue');
+    field.value = initialValue;
+    field.dataset.initialValue = initialValue;
+    _setDirtyState(field, false);
   }
 
   async function loadConfig({ force = false } = {}) {
@@ -6363,8 +6514,7 @@
       setCfg('cfgTranslateApiUrlSecurity', d.DISCORD_TRANSLATE_API_URL || 'http://localhost:5000/translate');
       setCfg('cfgTranslateAllowedGuildIds', d.DISCORD_TRANSLATE_ALLOWED_GUILD_IDS || '');
       setCfg('cfgTranslateMaxTextLength', d.DISCORD_TRANSLATE_MAX_TEXT_LENGTH || '1800');
-      setCfg('cfgOpenLigaDbChannelId', d.DISCORD_OPENLIGADB_CHANNEL_ID || '');
-      await loadOpenLigaDbTeams(d.DISCORD_OPENLIGADB_FAVORITES || '');
+      await loadOpenLigaDbSettings(d);
       setCfg('cfgWigiDashHost', d.WIGIDASH_API_HOST || '0.0.0.0');
       setCfg('cfgWigiDashPort', d.WIGIDASH_API_PORT || '47900');
       setCfg('cfgWigiDashPath', d.WIGIDASH_API_PATH || '/status');
@@ -6730,11 +6880,9 @@
         : commandTileTemplate;
     }
     maybeSetChanged(body, 'DISCORD_TRANSLATE_DEFAULT_TARGET', 'cfgTranslateDefaultTarget');
-    maybeSetChanged(body, 'DISCORD_OPENLIGADB_CHANNEL_ID', 'cfgOpenLigaDbChannelId', { allowEmpty: true });
-    const openLigaDbFavoritesEl = document.getElementById('cfgOpenLigaDbFavorites');
-    const openLigaDbFavorites = Array.from(openLigaDbFavoritesEl.selectedOptions, option => option.value).join(',');
-    if (openLigaDbFavorites !== (openLigaDbFavoritesEl.dataset.initialValue || '')) {
-      body.DISCORD_OPENLIGADB_FAVORITES = openLigaDbFavorites;
+    const openLigaDbFeeds = JSON.stringify(serializeOpenLigaDbFeeds());
+    if (openLigaDbFeeds !== (document.getElementById('cfgOpenLigaDbFeedsValue').dataset.initialValue || '[]')) {
+      body.DISCORD_OPENLIGADB_FEEDS = openLigaDbFeeds;
     }
     maybeSetChanged(body, 'DISCORD_TRANSLATE_DEFAULT_SOURCE', 'cfgTranslateDefaultSource');
     maybeSetChanged(body, 'DISCORD_TRANSLATE_PROVIDER', 'cfgTranslateProvider');
@@ -6871,9 +7019,7 @@
 
     const openLigaDbEnabledEl = document.getElementById('cfgOpenLigaDbEnabled');
     const currentOpenLigaDbEnabled = openLigaDbEnabledEl.checked ? 'true' : 'false';
-    if (currentOpenLigaDbEnabled !== (openLigaDbEnabledEl.dataset.initialValue || 'false')) {
-      body.DISCORD_OPENLIGADB_ENABLED = currentOpenLigaDbEnabled;
-    }
+    if (currentOpenLigaDbEnabled !== (openLigaDbEnabledEl.dataset.initialValue || 'false')) body.DISCORD_OPENLIGADB_ENABLED = currentOpenLigaDbEnabled;
 
     const msgCleanupEnabledEl = document.getElementById('cfgMsgCleanupEnabled');
     const currentMsgCleanupEnabled = msgCleanupEnabledEl.checked ? 'true' : 'false';
@@ -6950,7 +7096,7 @@
           'DISCORD_TRANSLATE_ENABLED', 'DISCORD_TRANSLATE_DEFAULT_TARGET', 'DISCORD_TRANSLATE_DEFAULT_SOURCE',
           'DISCORD_TRANSLATE_PROVIDER', 'DISCORD_TRANSLATE_API_URL', 'DISCORD_TRANSLATE_ALLOWED_GUILD_IDS',
           'DISCORD_TRANSLATE_MAX_TEXT_LENGTH',
-          'DISCORD_OPENLIGADB_ENABLED', 'DISCORD_OPENLIGADB_CHANNEL_ID', 'DISCORD_OPENLIGADB_FAVORITES',
+          'DISCORD_OPENLIGADB_ENABLED', 'DISCORD_OPENLIGADB_CHANNEL_ID', 'DISCORD_OPENLIGADB_FAVORITES', 'DISCORD_OPENLIGADB_FEEDS',
         ]);
         const settings = Object.fromEntries(Object.entries(body).filter(([key]) => profileKeys.has(key)));
         if (Object.hasOwn(body, 'DISCORD_COMMAND_TILE_TEMPLATE')) {
