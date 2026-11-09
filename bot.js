@@ -103,6 +103,7 @@ const {
   installServerProfileConfig,
   withServerProfile,
 } = require('./server-profiles');
+const { createOpenLigaDbWatcher } = require('./services/openligadb');
 installServerProfileConfig(config);
 // #endregion
 
@@ -5780,6 +5781,7 @@ initializeDatabase().then(() => { _httpServer = startWebServer(_webDeps); }).cat
 client.once('ready', async () => {
   logger.info(`Bot eingeloggt als ${client.user.tag}`);
   await initializeServerProfiles();
+  createOpenLigaDbWatcher({ http: axios, client, ServerProfile, logger }).start();
   await applyConfiguredBotName();
   startPresenceRotation();
   await registerSlashCommands();

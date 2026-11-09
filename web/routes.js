@@ -22,6 +22,7 @@ const axios       = require('axios');
 const { ChannelType } = require('discord.js');
 const { execFile, execFileSync, execSync, spawn } = require('child_process');
 const { SERVER_PROFILE_ENV_PATHS, createServerProfileDefaults, setServerProfileSettings } = require('../server-profiles');
+const { fetchLatestLeagueTeams } = require('../services/openligadb');
 
 // Erlaubte Werte für Service-Control (Whitelist gegen Command-Injection)
 const ALLOWED_SERVICES = ['bockis-bot', 'uptime-kuma', 'cloudflared'];
@@ -200,6 +201,16 @@ module.exports = function startWebServer({
     } catch (err) {
       logger.error(`/api/server-profiles/:guildId PUT Fehler: ${err.message}`);
       return res.status(500).json({ ok: false, error: 'Serverprofil konnte nicht gespeichert werden.' });
+    }
+  });
+
+  app.get('/api/openligadb/teams', dashboardAuth, async (req, res) => {
+    try {
+      const league = await fetchLatestLeagueTeams(axios);
+      return res.json({ ok: true, ...league });
+    } catch (err) {
+      logger.warn(`OpenLigaDB-Teamliste konnte nicht geladen werden: ${err.message}`);
+      return res.status(502).json({ ok: false, error: 'Bundesliga-Teams sind momentan nicht verfügbar.' });
     }
   });
 
@@ -1891,6 +1902,9 @@ module.exports = function startWebServer({
         DISCORD_COMMAND_TILE_TEMPLATE: commandTileTemplate,
         DISCORD_COMMAND_TILE_SCALE:   get('DISCORD_COMMAND_TILE_SCALE') || 'large',
         DISCORD_TRANSLATE_ENABLED:    get('DISCORD_TRANSLATE_ENABLED') || 'false',
+        DISCORD_OPENLIGADB_ENABLED: get('DISCORD_OPENLIGADB_ENABLED') || 'false',
+        DISCORD_OPENLIGADB_CHANNEL_ID: get('DISCORD_OPENLIGADB_CHANNEL_ID') || '',
+        DISCORD_OPENLIGADB_FAVORITES: get('DISCORD_OPENLIGADB_FAVORITES') || '',
         DISCORD_TRANSLATE_DEFAULT_TARGET: get('DISCORD_TRANSLATE_DEFAULT_TARGET') || 'de',
         DISCORD_TRANSLATE_DEFAULT_SOURCE: get('DISCORD_TRANSLATE_DEFAULT_SOURCE') || 'auto',
         DISCORD_TRANSLATE_PROVIDER: get('DISCORD_TRANSLATE_PROVIDER') || (get('DISCORD_USE_DEEPL') === 'true' && get('DISCORD_DEEPL_API_KEY') ? 'deepl' : 'auto'),
@@ -2005,6 +2019,9 @@ module.exports = function startWebServer({
       'DISCORD_COMMAND_TILE_TEMPLATE',
       'DISCORD_COMMAND_TILE_SCALE',
       'DISCORD_TRANSLATE_ENABLED',
+      'DISCORD_OPENLIGADB_ENABLED',
+      'DISCORD_OPENLIGADB_CHANNEL_ID',
+      'DISCORD_OPENLIGADB_FAVORITES',
       'DISCORD_TRANSLATE_DEFAULT_TARGET',
       'DISCORD_TRANSLATE_DEFAULT_SOURCE',
       'DISCORD_TRANSLATE_PROVIDER',
@@ -2098,6 +2115,8 @@ module.exports = function startWebServer({
       'DISCORD_AUTO_REPLY_CHANNEL_IDS',
       'DISCORD_AUTO_REPLY_RULES_FILE',
       'DISCORD_AUTO_REPLY_CONNECTOR',
+      'DISCORD_OPENLIGADB_CHANNEL_ID',
+      'DISCORD_OPENLIGADB_FAVORITES',
       'DISCORD_WELCOME_CHANNEL_ID',
       'DISCORD_WELCOME_MESSAGE_TEMPLATE',
       'DISCORD_GITHUB_CHANNEL_ID',

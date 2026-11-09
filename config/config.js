@@ -128,6 +128,24 @@ const config = convict({
       default: false,
       env: 'DISCORD_TRANSLATE_ENABLED'
     },
+    openLigaDbEnabled: {
+      doc: 'OpenLigaDB-Liveergebnisse und Meldungen aktivieren',
+      format: Boolean,
+      default: false,
+      env: 'DISCORD_OPENLIGADB_ENABLED'
+    },
+    openLigaDbChannelId: {
+      doc: 'Discord-Kanal für Bundesliga-Spielstand und Live-Meldungen',
+      format: String,
+      default: '',
+      env: 'DISCORD_OPENLIGADB_CHANNEL_ID'
+    },
+    openLigaDbFavorites: {
+      doc: 'Favorisierte OpenLigaDB-Team-IDs, getrennt durch Komma',
+      format: String,
+      default: '',
+      env: 'DISCORD_OPENLIGADB_FAVORITES'
+    },
     translateDefaultTarget: {
       doc: 'Standard-Zielsprache fuer /translate (z.B. de, en, fr)',
       format: String,

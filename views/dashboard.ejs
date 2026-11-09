@@ -1226,6 +1226,27 @@
               <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px;margin-bottom:12px">
                 <div>
                   <label class="cfg-label" for="cfgTranslateDefaultTarget" style="font-size:12px;margin-bottom:4px">Standard Zielsprache</label>
+              <div class="cfg-section">
+                <div class="cfg-section-header" onclick="toggleConfigSection(this)">
+                  <div class="cfg-section-header-title">
+                    <span class="cfg-section-toggle">▾</span>
+                    <span>⚽ Bundesliga Live (OpenLigaDB)</span>
+                  </div>
+                </div>
+                <div class="cfg-section-content">
+                  <div class="cfg-section-body">
+                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;margin-bottom:12px">
+                      <input type="checkbox" id="cfgOpenLigaDbEnabled" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
+                      <span>Live-Spielstände und Ereignismeldungen aktivieren</span>
+                    </label>
+                    <label class="cfg-label" for="cfgOpenLigaDbChannelId">Ausgabekanal-ID</label>
+                    <input class="cfg-input" id="cfgOpenLigaDbChannelId" type="text" autocomplete="off" placeholder="Discord-Kanal-ID">
+                    <label class="cfg-label" for="cfgOpenLigaDbFavorites" style="margin-top:10px">Favorisierte Teams der 1. Bundesliga</label>
+                    <select class="cfg-input" id="cfgOpenLigaDbFavorites" multiple size="8" style="min-height:150px"></select>
+                    <div class="cfg-hint" id="cfgOpenLigaDbTeamStatus" style="margin-bottom:0">Teamliste wird geladen …</div>
+                  </div>
+                </div>
+              </div>
                   <select class="cfg-input" id="cfgTranslateDefaultTarget">
                     <option value="de">de - Deutsch</option>
                     <option value="en">en - English</option>
@@ -6233,6 +6254,44 @@
     initConfigDirtyTracking();
   }
 
+  let openLigaDbTeamsCache = null;
+
+  async function loadOpenLigaDbTeams(selectedValue) {
+    const select = document.getElementById('cfgOpenLigaDbFavorites');
+    const status = document.getElementById('cfgOpenLigaDbTeamStatus');
+    if (!select || !status) return;
+    const selectedIds = new Set(String(selectedValue || '').split(/[;,]/).map(value => value.trim()).filter(Boolean));
+    try {
+      if (!openLigaDbTeamsCache) {
+        const response = await fetch('/api/openligadb/teams').then(result => result.json());
+        if (!response.ok) throw new Error(response.error || 'Teamliste nicht verfügbar');
+        openLigaDbTeamsCache = response;
+      }
+      select.replaceChildren();
+      for (const team of openLigaDbTeamsCache.teams) {
+        const option = document.createElement('option');
+        option.value = String(team.teamId);
+        option.textContent = team.shortName === team.teamName ? team.teamName : `${team.shortName} · ${team.teamName}`;
+        option.selected = selectedIds.has(option.value);
+        select.appendChild(option);
+        selectedIds.delete(option.value);
+      }
+      for (const teamId of selectedIds) {
+        const option = document.createElement('option');
+        option.value = teamId;
+        option.textContent = `Gespeichertes Team (${teamId})`;
+        option.selected = true;
+        select.appendChild(option);
+      }
+      select.dataset.initialValue = Array.from(select.selectedOptions, option => option.value).join(',');
+      status.textContent = `Saison ${openLigaDbTeamsCache.season} · ${openLigaDbTeamsCache.teams.length} Teams`;
+      status.className = 'cfg-hint';
+    } catch (error) {
+      status.textContent = error.message;
+      status.className = 'cfg-hint err';
+    }
+  }
+
   async function loadConfig({ force = false } = {}) {
     try {
       const configUrl = activeServerProfileGuildId
@@ -6304,6 +6363,8 @@
       setCfg('cfgTranslateApiUrlSecurity', d.DISCORD_TRANSLATE_API_URL || 'http://localhost:5000/translate');
       setCfg('cfgTranslateAllowedGuildIds', d.DISCORD_TRANSLATE_ALLOWED_GUILD_IDS || '');
       setCfg('cfgTranslateMaxTextLength', d.DISCORD_TRANSLATE_MAX_TEXT_LENGTH || '1800');
+      setCfg('cfgOpenLigaDbChannelId', d.DISCORD_OPENLIGADB_CHANNEL_ID || '');
+      await loadOpenLigaDbTeams(d.DISCORD_OPENLIGADB_FAVORITES || '');
       setCfg('cfgWigiDashHost', d.WIGIDASH_API_HOST || '0.0.0.0');
       setCfg('cfgWigiDashPort', d.WIGIDASH_API_PORT || '47900');
       setCfg('cfgWigiDashPath', d.WIGIDASH_API_PATH || '/status');
@@ -6372,6 +6433,7 @@
       setCheckboxValue('cfgServiceChannelDebug', (d.SERVICE_CHANNEL_DEBUG || 'false') === 'true', { force });
       setCheckboxValue('cfgAutoReactionEnabled', (d.DISCORD_AUTO_REACTION_ENABLED || 'false') === 'true', { force });
       setCheckboxValue('cfgTranslateEnabled', (d.DISCORD_TRANSLATE_ENABLED || 'false') === 'true', { force });
+      setCheckboxValue('cfgOpenLigaDbEnabled', (d.DISCORD_OPENLIGADB_ENABLED || 'false') === 'true', { force });
       setCheckboxValue('cfgWigiDashEnabled', (d.WIGIDASH_API_ENABLED || 'false') === 'true', { force });
       setCheckboxValue('cfgWigiDashMessagesEnabled', (d.WIGIDASH_MESSAGE_ENABLED || 'false') === 'true', { force });
 
@@ -6668,6 +6730,12 @@
         : commandTileTemplate;
     }
     maybeSetChanged(body, 'DISCORD_TRANSLATE_DEFAULT_TARGET', 'cfgTranslateDefaultTarget');
+    maybeSetChanged(body, 'DISCORD_OPENLIGADB_CHANNEL_ID', 'cfgOpenLigaDbChannelId', { allowEmpty: true });
+    const openLigaDbFavoritesEl = document.getElementById('cfgOpenLigaDbFavorites');
+    const openLigaDbFavorites = Array.from(openLigaDbFavoritesEl.selectedOptions, option => option.value).join(',');
+    if (openLigaDbFavorites !== (openLigaDbFavoritesEl.dataset.initialValue || '')) {
+      body.DISCORD_OPENLIGADB_FAVORITES = openLigaDbFavorites;
+    }
     maybeSetChanged(body, 'DISCORD_TRANSLATE_DEFAULT_SOURCE', 'cfgTranslateDefaultSource');
     maybeSetChanged(body, 'DISCORD_TRANSLATE_PROVIDER', 'cfgTranslateProvider');
     const curUseDeepL = document.getElementById('cfgTranslateProvider').value === 'deepl' ? 'true' : 'false';
@@ -6801,6 +6869,12 @@
       body.DISCORD_TRANSLATE_ENABLED = currentTranslateEnabled;
     }
 
+    const openLigaDbEnabledEl = document.getElementById('cfgOpenLigaDbEnabled');
+    const currentOpenLigaDbEnabled = openLigaDbEnabledEl.checked ? 'true' : 'false';
+    if (currentOpenLigaDbEnabled !== (openLigaDbEnabledEl.dataset.initialValue || 'false')) {
+      body.DISCORD_OPENLIGADB_ENABLED = currentOpenLigaDbEnabled;
+    }
+
     const msgCleanupEnabledEl = document.getElementById('cfgMsgCleanupEnabled');
     const currentMsgCleanupEnabled = msgCleanupEnabledEl.checked ? 'true' : 'false';
     const initialMsgCleanupEnabled = msgCleanupEnabledEl.dataset.initialValue || 'false';
@@ -6876,6 +6950,7 @@
           'DISCORD_TRANSLATE_ENABLED', 'DISCORD_TRANSLATE_DEFAULT_TARGET', 'DISCORD_TRANSLATE_DEFAULT_SOURCE',
           'DISCORD_TRANSLATE_PROVIDER', 'DISCORD_TRANSLATE_API_URL', 'DISCORD_TRANSLATE_ALLOWED_GUILD_IDS',
           'DISCORD_TRANSLATE_MAX_TEXT_LENGTH',
+          'DISCORD_OPENLIGADB_ENABLED', 'DISCORD_OPENLIGADB_CHANNEL_ID', 'DISCORD_OPENLIGADB_FAVORITES',
         ]);
         const settings = Object.fromEntries(Object.entries(body).filter(([key]) => profileKeys.has(key)));
         if (Object.hasOwn(body, 'DISCORD_COMMAND_TILE_TEMPLATE')) {
