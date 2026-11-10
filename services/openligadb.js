@@ -5,6 +5,8 @@ const { EmbedBuilder } = require('discord.js');
 const API_BASE = 'https://api.openligadb.de';
 const LEAGUE_SHORTCUT = 'bl1';
 const POLL_INTERVAL_MS = 60_000;
+const MIN_UPDATE_INTERVAL_MINUTES = 1;
+const MAX_UPDATE_INTERVAL_MINUTES = 60;
 const REQUEST_TIMEOUT_MS = 10_000;
 
 let lastApiRequestAt = 0;
@@ -41,6 +43,14 @@ function getFavoriteTeamIds(feedConfig) {
     ? Math.min(configuredLimit, 40)
     : Math.min(40, Math.max(5, ids.length));
   return ids.slice(0, limit);
+}
+
+function getOpenLigaDbUpdateIntervalMs(feedConfig) {
+  const minutes = Number(feedConfig?.updateIntervalMinutes);
+  if (!Number.isInteger(minutes) || minutes < MIN_UPDATE_INTERVAL_MINUTES || minutes > MAX_UPDATE_INTERVAL_MINUTES) {
+    return POLL_INTERVAL_MS;
+  }
+  return minutes * 60_000;
 }
 
 function getAvailableFootballLeagues(leagues, now = new Date()) {
@@ -247,7 +257,7 @@ function getGoalIds(match) {
   return new Set((match.goals || []).map(goal => String(goal.goalID)).filter(id => id !== 'undefined'));
 }
 
-function createOpenLigaDbWatcher({ http, client, ServerProfile, logger, requestIntervalMs = 1050 }) {
+function createOpenLigaDbWatcher({ http, client, ServerProfile, logger, requestIntervalMs = 1050, nowProvider = () => Date.now() }) {
   let timer = null;
   let inFlight = false;
   let leagueCache = null;
@@ -257,6 +267,7 @@ function createOpenLigaDbWatcher({ http, client, ServerProfile, logger, requestI
   const boardSignatures = new Map();
   const tableMessages = new Map();
   const tableSignatures = new Map();
+  const lastPollAtByFeed = new Map();
 
   async function getLeagueMetadata() {
     if (leagueCache && Date.now() - leagueCache.fetchedAt < 6 * 60 * 60 * 1000) return leagueCache.leagues;
@@ -404,21 +415,34 @@ function createOpenLigaDbWatcher({ http, client, ServerProfile, logger, requestI
       const profiles = await ServerProfile.findAll({ attributes: ['guildId', 'settingsJson'] });
       const enabledProfiles = profiles.map(profile => ({ profile, settings: parseSettings(profile) }))
         .map(({ profile, settings }) => ({ profile, feeds: parseLeagueFeeds(settings) }));
-      if (!enabledProfiles.some(({ feeds: configuredFeeds }) => configuredFeeds.length)) return;
+      if (!enabledProfiles.some(({ feeds: configuredFeeds }) => configuredFeeds.length)) {
+        lastPollAtByFeed.clear();
+        return;
+      }
       const metadataList = await getLeagueMetadata();
       const metadataByShortcut = new Map(metadataList.map(league => [league.leagueShortcut, league]));
+      const activeFeedKeys = new Set();
       for (const { profile, feeds: configuredFeeds } of enabledProfiles) {
         for (const feedConfig of configuredFeeds) {
           const metadata = metadataByShortcut.get(feedConfig.leagueShortcut);
           if (!metadata) continue;
           const season = metadata.leagueSeason;
           if (!Number.isFinite(season)) continue;
+          const feedKey = `${profile.guildId}:${feedConfig.leagueShortcut}:${Number(feedConfig.season) || season}`;
+          activeFeedKeys.add(feedKey);
+          const now = nowProvider();
+          const lastPollAt = lastPollAtByFeed.get(feedKey);
+          if (lastPollAt !== undefined && now - lastPollAt < getOpenLigaDbUpdateIntervalMs(feedConfig)) continue;
+          lastPollAtByFeed.set(feedKey, now);
           try {
             await updateLeague(profile, feedConfig, metadata, season);
           } catch (error) {
             logger.warn(`OpenLigaDB ${feedConfig.leagueShortcut} für Guild ${profile.guildId} fehlgeschlagen: ${error.message}`);
           }
         }
+      }
+      for (const feedKey of lastPollAtByFeed.keys()) {
+        if (!activeFeedKeys.has(feedKey)) lastPollAtByFeed.delete(feedKey);
       }
     } catch (error) {
       logger.warn(`OpenLigaDB-Abruf fehlgeschlagen: ${error.message}`);
@@ -451,6 +475,7 @@ module.exports = {
   fetchLatestLeagueTeams,
   getAvailableFootballLeagues,
   getFavoriteTeamIds,
+  getOpenLigaDbUpdateIntervalMs,
   getMatchScore,
   getMatchStatus,
   getSeasonForLeague,

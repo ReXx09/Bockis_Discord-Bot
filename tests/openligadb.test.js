@@ -5,6 +5,7 @@ const {
   fetchLatestLeagueTeams,
   getAvailableFootballLeagues,
   getFavoriteTeamIds,
+  getOpenLigaDbUpdateIntervalMs,
   getMatchScore,
   getMatchStatus,
   getSeasonForLeague,
@@ -39,6 +40,12 @@ describe('OpenLigaDB data formatting', () => {
 
   test('limits favorite teams to the configured maximum', () => {
     expect(getFavoriteTeamIds({ favoriteTeamIds: [40, 7, 40], maxFavorites: 1 })).toEqual([40]);
+  });
+
+  test('uses a safe one-minute default and supports per-feed update intervals', () => {
+    expect(getOpenLigaDbUpdateIntervalMs({})).toBe(60_000);
+    expect(getOpenLigaDbUpdateIntervalMs({ updateIntervalMinutes: 5 })).toBe(300_000);
+    expect(getOpenLigaDbUpdateIntervalMs({ updateIntervalMinutes: 61 })).toBe(60_000);
   });
 
   test('uses the latest goal score and distinguishes live from finished games', () => {
@@ -116,6 +123,48 @@ describe('OpenLigaDB data formatting', () => {
     expect(http.get.mock.calls[1][0]).toContain('/getavailableteams/bl1/2026');
   });
 
+  test('polls each feed only after its configured interval', async () => {
+    let now = Date.now();
+    const http = { get: jest.fn(async url => {
+      if (url.endsWith('/getavailableleagues')) return { data: [{ leagueShortcut: 'bl1', leagueSeason: '2026', leagueName: '1. Bundesliga', sport: { sportId: 1 } }] };
+      if (url.endsWith('/getcurrentgroup/bl1')) return { data: { groupName: '9. Spieltag', groupOrderID: 9 } };
+      if (url.includes('/getlastchangedate/')) return { data: '2026-11-07T14:00:00Z' };
+      if (url.includes('/getmatchdata/')) return { data: [] };
+      if (url.includes('/getbltable/')) return { data: [] };
+      throw new Error(`Unexpected URL: ${url}`);
+    }) };
+    const watcher = createOpenLigaDbWatcher({
+      http,
+      client: { channels: { cache: new Map() } },
+      ServerProfile: { findAll: async () => [{ guildId: 'guild', settingsJson: JSON.stringify({
+        DISCORD_OPENLIGADB_ENABLED: true,
+        DISCORD_OPENLIGADB_FEEDS: JSON.stringify([{
+          leagueShortcut: 'bl1',
+          updateIntervalMinutes: 5,
+          favoriteTeamIds: [],
+          tableChannelIds: [],
+        }]),
+      }) }] },
+      logger: { warn: jest.fn(), info: jest.fn() },
+      requestIntervalMs: 0,
+      nowProvider: () => now,
+    });
+
+    await watcher.checkOnce();
+    expect(http.get.mock.calls.filter(([url]) => url.endsWith('/getcurrentgroup/bl1'))).toHaveLength(1);
+
+    await watcher.checkOnce();
+    expect(http.get.mock.calls.filter(([url]) => url.endsWith('/getcurrentgroup/bl1'))).toHaveLength(1);
+
+    now += 4 * 60_000;
+    await watcher.checkOnce();
+    expect(http.get.mock.calls.filter(([url]) => url.endsWith('/getcurrentgroup/bl1'))).toHaveLength(1);
+
+    now += 60_000;
+    await watcher.checkOnce();
+    expect(http.get.mock.calls.filter(([url]) => url.endsWith('/getcurrentgroup/bl1'))).toHaveLength(2);
+  });
+
   test('announces each newly observed favorite goal only once', async () => {
     let changedAt = '2026-11-07T14:00:00Z';
     let channelId = 'channel';
@@ -150,6 +199,7 @@ describe('OpenLigaDB data formatting', () => {
       messages: { fetch: jest.fn(async () => []) },
       send: jest.fn(async content => content),
     };
+    let now = Date.now();
     const watcher = createOpenLigaDbWatcher({
       http,
       client: { user: { id: 'bot' }, channels: { cache: new Map([['channel', channel], ['channel-2', newChannel]]) } },
@@ -165,12 +215,15 @@ describe('OpenLigaDB data formatting', () => {
       }) }] },
       logger: { warn: jest.fn(), info: jest.fn() },
       requestIntervalMs: 0,
+      nowProvider: () => now,
     });
 
     await watcher.checkOnce();
     changedAt = '2026-11-07T14:31:00Z';
     matches = [{ ...matches[0], goals: [{ goalID: 123, matchMinute: 31, scoreTeam1: 1, scoreTeam2: 0, goalGetterName: 'Spieler' }] }];
+    now += 60_000;
     await watcher.checkOnce();
+    now += 60_000;
     await watcher.checkOnce();
 
     expect(channel.send.mock.calls.filter(([content]) => typeof content === 'string')).toHaveLength(1);
@@ -178,6 +231,7 @@ describe('OpenLigaDB data formatting', () => {
     expect(boardMessage.edit).toHaveBeenCalledTimes(1);
 
     channelId = 'channel-2';
+    now += 60_000;
     await watcher.checkOnce();
     expect(newChannel.send).toHaveBeenCalledTimes(1);
     expect(typeof newChannel.send.mock.calls[0][0]).toBe('object');

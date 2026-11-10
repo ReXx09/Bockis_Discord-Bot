@@ -44,6 +44,12 @@ function normalizeOpenLigaDbFeeds(value) {
     if (season !== undefined && (!Number.isInteger(season) || season < 1900 || season > 2200)) {
       throw new Error(`Ungültige Saison für ${leagueShortcut}.`);
     }
+    const updateIntervalMinutes = feed.updateIntervalMinutes == null || feed.updateIntervalMinutes === ''
+      ? 1
+      : Number(feed.updateIntervalMinutes);
+    if (!Number.isInteger(updateIntervalMinutes) || updateIntervalMinutes < 1 || updateIntervalMinutes > 60) {
+      throw new Error(`Das Aktualisierungsintervall für ${leagueShortcut} muss zwischen 1 und 60 Minuten liegen.`);
+    }
     const feedKey = `${leagueShortcut}:${season || ''}`;
     if (seen.has(feedKey)) throw new Error(`Die Liga ${leagueShortcut} ist doppelt eingetragen.`);
     seen.add(feedKey);
@@ -74,6 +80,7 @@ function normalizeOpenLigaDbFeeds(value) {
     return {
       leagueShortcut,
       ...(season === undefined ? {} : { season }),
+      updateIntervalMinutes,
       favoriteTeamIds: normalizedFavoriteTeamIds,
       maxFavorites,
       notificationChannelId,

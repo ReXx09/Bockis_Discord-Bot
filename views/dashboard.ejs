@@ -2373,6 +2373,10 @@
                 <button class="btn" type="button" onclick="addOpenLigaDbPreset('dfb')">＋ DFB-Pokal</button>
                 <span class="cfg-hint" id="cfgOpenLigaDbStatus" style="margin:0" aria-live="polite">Ligenliste wird geladen …</span>
               </div>
+              <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:12px">
+                <button class="btn btn-green" id="btnOpenLigaDbSave" type="button" onclick="saveOpenLigaDbSettings()">💾 OpenLigaDB speichern</button>
+                <span id="cfgOpenLigaDbSaveStatus" class="cfg-hint" style="margin:0" aria-live="polite"></span>
+              </div>
             </div>
           </div>
         </div>
@@ -6460,6 +6464,9 @@
       <label class="cfg-label">Liga und Saison
         <select class="cfg-input" data-openliga-role="league"></select>
       </label>
+      <label class="cfg-label">Aktualisierungsintervall (Minuten)
+        <input class="cfg-input" data-openliga-role="update-interval" type="number" min="1" max="60" step="1" required style="max-width:120px">
+      </label>
       <label class="cfg-label">Maximale Favoriten
         <input class="cfg-input" data-openliga-role="max-favorites" type="number" min="1" max="40" step="1" style="max-width:120px">
       </label>
@@ -6508,6 +6515,12 @@
     }
     row.querySelector('[data-openliga-role="notification"]').value = feed.notificationChannelId || '';
     row.querySelector('[data-openliga-role="tables"]').value = (feed.tableChannelIds || []).join(',');
+    const savedUpdateInterval = Number(feed.updateIntervalMinutes);
+    row.querySelector('[data-openliga-role="update-interval"]').value = String(
+      Number.isInteger(savedUpdateInterval) && savedUpdateInterval >= 1 && savedUpdateInterval <= 60
+        ? savedUpdateInterval
+        : 1,
+    );
     const favoriteTeamIds = Array.isArray(feed.favoriteTeamIds) ? feed.favoriteTeamIds : [];
     const savedMaxFavorites = Number(feed.maxFavorites);
     row.querySelector('[data-openliga-role="max-favorites"]').value = String(
@@ -6546,6 +6559,7 @@
       return {
         leagueShortcut,
         season: Number(season) || undefined,
+        updateIntervalMinutes: Number(row.querySelector('[data-openliga-role="update-interval"]').value),
         maxFavorites: getOpenLigaDbFavoriteLimit(row),
         favoriteTeamIds: Array.from(row.querySelectorAll('[data-openliga-role="favorites"] input[type="checkbox"]:checked'), checkbox => Number(checkbox.value)).filter(Number.isInteger),
         notificationChannelId: row.querySelector('[data-openliga-role="notification"]').value.trim(),
@@ -6559,6 +6573,26 @@
     if (!field) return;
     field.value = JSON.stringify(serializeOpenLigaDbFeeds());
     _setDirtyState(field, _isFieldDirty(field));
+    refreshConfigDirtyIndicator();
+  }
+
+  function markOpenLigaDbSettingsSaved() {
+    const enabled = document.getElementById('cfgOpenLigaDbEnabled');
+    if (enabled) {
+      enabled.dataset.initialValue = enabled.checked ? 'true' : 'false';
+      _setDirtyState(enabled, false);
+    }
+    document.querySelectorAll('#cfgOpenLigaDbFeeds input, #cfgOpenLigaDbFeeds select, #cfgOpenLigaDbFeeds textarea').forEach((input) => {
+      input.dataset.initialValue = input.type === 'checkbox' ? (input.checked ? 'true' : 'false') : String(input.value ?? '');
+      _setDirtyState(input, false);
+    });
+    const serialized = JSON.stringify(serializeOpenLigaDbFeeds());
+    const container = document.getElementById('cfgOpenLigaDbFeeds');
+    const field = document.getElementById('cfgOpenLigaDbFeedsValue');
+    container.dataset.initialValue = serialized;
+    field.value = serialized;
+    field.dataset.initialValue = serialized;
+    _setDirtyState(field, false);
     refreshConfigDirtyIndicator();
   }
 
@@ -7018,7 +7052,132 @@
     return activeServerProfileGuildId ? '💾 Serverprofil speichern' : '💾 Speichern & Neu starten';
   }
 
+  async function waitForOpenLigaDbRestart(restartId) {
+    const deadline = Date.now() + 90_000;
+    const fetchJsonWithTimeout = async (url) => {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 3000);
+      try {
+        const response = await fetch(url, { signal: controller.signal });
+        return { response, data: await response.json() };
+      } finally {
+        clearTimeout(timeout);
+      }
+    };
+
+    while (Date.now() < deadline) {
+      try {
+        const restart = await fetchJsonWithTimeout(`/api/restart-status?id=${encodeURIComponent(restartId)}`);
+        if (restart.data.ok && restart.data.status === 'failed') {
+          throw new Error(`Neustart fehlgeschlagen: ${restart.data.error || 'Unbekannter Fehler'}`);
+        }
+        if (restart.response.ok
+          && (restart.data.status === 'success' || (!restart.data.ok && restart.data.error === 'Unbekannte restartId'))) {
+          return true;
+        }
+      } catch (error) {
+        if (error.message.startsWith('Neustart fehlgeschlagen:')) throw error;
+        if (error.name !== 'AbortError' && !(error instanceof TypeError)) throw error;
+        // Während des Service-Neustarts kann die Verbindung vorübergehend ausfallen.
+      }
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+    return false;
+  }
+
+  async function saveOpenLigaDbSettings() {
+    const invalidUpdateInterval = Array.from(document.querySelectorAll('#cfgOpenLigaDbFeeds [data-openliga-role="update-interval"]'))
+      .find(input => !input.checkValidity());
+    if (invalidUpdateInterval) {
+      const feedRow = invalidUpdateInterval.closest('[data-openliga-feed]');
+      if (feedRow) selectOpenLigaDbFeed(feedRow.dataset.openligaFeedId);
+      invalidUpdateInterval.reportValidity();
+      return;
+    }
+
+    const button = document.getElementById('btnOpenLigaDbSave');
+    const status = document.getElementById('cfgOpenLigaDbSaveStatus');
+    button.disabled = true;
+    button.textContent = '⏳ OpenLigaDB wird gespeichert…';
+    status.textContent = '';
+    status.className = 'cfg-hint';
+
+    try {
+      const body = {};
+      const enabled = document.getElementById('cfgOpenLigaDbEnabled');
+      const enabledValue = enabled.checked ? 'true' : 'false';
+      if (enabledValue !== (enabled.dataset.initialValue || 'false')) {
+        body.DISCORD_OPENLIGADB_ENABLED = enabledValue;
+      }
+      const feedsValue = JSON.stringify(serializeOpenLigaDbFeeds());
+      const feedsField = document.getElementById('cfgOpenLigaDbFeedsValue');
+      if (feedsValue !== (feedsField.dataset.initialValue || '[]')) {
+        body.DISCORD_OPENLIGADB_FEEDS = feedsValue;
+      }
+
+      if (!Object.keys(body).length) {
+        status.textContent = 'Keine OpenLigaDB-Änderungen erkannt.';
+        status.className = 'cfg-hint warn';
+        return;
+      }
+
+      const response = activeServerProfileGuildId
+        ? await fetch(`/api/server-profiles/${encodeURIComponent(activeServerProfileGuildId)}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ settings: body }),
+        }).then(result => result.json())
+        : await fetch('/api/config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        }).then(result => result.json());
+
+      if (!response.ok) throw new Error(response.error || 'OpenLigaDB-Einstellungen konnten nicht gespeichert werden.');
+      markOpenLigaDbSettingsSaved();
+
+      if (activeServerProfileGuildId) {
+        status.textContent = '✓ OpenLigaDB-Einstellungen im Serverprofil gespeichert.';
+        status.className = 'cfg-hint ok';
+        toast('✓ OpenLigaDB-Einstellungen gespeichert', 'ok');
+        return;
+      }
+
+      if (response.restartId) {
+        status.textContent = '✓ OpenLigaDB-Einstellungen gespeichert. Bot startet neu …';
+        status.className = 'cfg-hint';
+        const restarted = await waitForOpenLigaDbRestart(response.restartId);
+        if (restarted) {
+          status.textContent = '✓ OpenLigaDB-Einstellungen gespeichert; Bot wurde neu gestartet.';
+          status.className = 'cfg-hint ok';
+        } else {
+          status.textContent = 'OpenLigaDB-Einstellungen sind gespeichert, aber der Bot-Neustart konnte nicht bestätigt werden.';
+          status.className = 'cfg-hint warn';
+        }
+      } else {
+        status.textContent = '✓ OpenLigaDB-Einstellungen gespeichert.';
+        status.className = 'cfg-hint ok';
+      }
+      toast('✓ OpenLigaDB-Einstellungen gespeichert', 'ok');
+    } catch (error) {
+      status.textContent = `✗ ${error.message}`;
+      status.className = 'cfg-hint err';
+      toast(`Fehler: ${error.message}`, 'err');
+    } finally {
+      button.disabled = false;
+      button.textContent = '💾 OpenLigaDB speichern';
+    }
+  }
+
   async function saveConfig() {
+    const invalidUpdateInterval = Array.from(document.querySelectorAll('#cfgOpenLigaDbFeeds [data-openliga-role="update-interval"]'))
+      .find(input => !input.checkValidity());
+    if (invalidUpdateInterval) {
+      const feedRow = invalidUpdateInterval.closest('[data-openliga-feed]');
+      if (feedRow) selectOpenLigaDbFeed(feedRow.dataset.openligaFeedId);
+      invalidUpdateInterval.reportValidity();
+      return;
+    }
     syncCleanupRowsToHiddenInput();
     syncGitHubRepositoryRows();
     syncGitHubRepositorySettings();

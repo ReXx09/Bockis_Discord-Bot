@@ -153,7 +153,7 @@ const config = convict({
       env: 'DISCORD_OPENLIGADB_FAVORITES'
     },
     openLigaDbFeeds: {
-      doc: 'JSON-Konfiguration mehrerer OpenLigaDB-Ligen, Favoriten und Discord-Kanäle',
+      doc: 'JSON-Konfiguration mehrerer OpenLigaDB-Ligen, Aktualisierungsintervalle, Favoriten und Discord-Kanäle',
       format: String,
       default: '',
       env: 'DISCORD_OPENLIGADB_FEEDS'
