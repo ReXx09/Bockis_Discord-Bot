@@ -6345,6 +6345,25 @@
 
   let openLigaDbLeaguesCache = null;
   const openLigaDbTeamsCache = new Map();
+  const openLigaDbCountdownColors = {
+    bl1: '#D6B32A',
+    bl2: '#3498DB',
+    bl3: '#8E44AD',
+    dfb: '#E74C3C',
+    ucl: '#5865F2',
+    uel: '#F1C40F',
+    uecl: '#2ECC71',
+    unl: '#1ABC9C',
+  };
+
+  function getOpenLigaDbCountdownColor(leagueShortcut) {
+    const shortcut = String(leagueShortcut || '').toLowerCase();
+    const colorKey = ['ucl', 'uel', 'uecl', 'unl'].find(key => shortcut.startsWith(key)) || shortcut;
+    if (openLigaDbCountdownColors[colorKey]) return openLigaDbCountdownColors[colorKey];
+    const colors = Object.values(openLigaDbCountdownColors);
+    const index = Array.from(shortcut).reduce((total, character) => total + character.charCodeAt(0), 0) % colors.length;
+    return colors[index];
+  }
 
   async function ensureOpenLigaDbLeagues() {
     if (openLigaDbLeaguesCache) return openLigaDbLeaguesCache;
@@ -6460,6 +6479,7 @@
           teamName: teamName.trim(),
           leagueName: row.querySelector('[data-openliga-role="title"]').textContent.trim(),
           countdownStyle: row.querySelector('[data-openliga-role="countdown-style"]').value,
+          countdownColor: row.querySelector('[data-openliga-role="countdown-color"]').value,
         }),
       });
       const result = await response.json();
@@ -6475,6 +6495,14 @@
       preview.querySelector('[data-openliga-role="countdown-preview-title"]').textContent = embed.title || '';
       preview.querySelector('[data-openliga-role="countdown-preview-description"]').innerHTML = formatOpenLigaDbEmbedText(embed.description);
       preview.querySelector('[data-openliga-role="countdown-preview-footer"]').textContent = embed.footer?.text || '';
+      const graphic = preview.querySelector('[data-openliga-role="countdown-preview-image"]');
+      if (result.graphic) {
+        graphic.src = `data:image/png;base64,${result.graphic}`;
+        graphic.hidden = false;
+      } else {
+        graphic.removeAttribute('src');
+        graphic.hidden = true;
+      }
       const fields = preview.querySelector('[data-openliga-role="countdown-preview-fields"]');
       fields.replaceChildren();
       for (const field of embed.fields || []) {
@@ -6715,8 +6743,13 @@
           <option value="competition">9 · Wettbewerbs-Embed</option>
           <option value="spotlight">10 · Spotlight</option>
           <option value="live_timer">11 · Live-Timer – Tage, Stunden, Minuten</option>
+          <option value="graphic_timer">12 · SVG-Grafik – Live-Countdown</option>
         </select>
       </label>
+      <label class="cfg-label">Countdown-Farbe (pro Liga)
+        <input class="cfg-input" data-openliga-role="countdown-color" type="color" style="width:76px;height:40px;padding:4px">
+      </label>
+      <div class="cfg-hint">Die Grafik wird als SVG erstellt und für Discord als PNG eingebettet. Teams und Live-Countdown stehen im Mittelpunkt.</div>
       <div style="display:flex;flex-wrap:wrap;gap:8px">
         <button class="btn" type="button" data-openliga-role="countdown-preview-button" disabled>Countdown-Vorschau anzeigen</button>
         <button class="btn" type="button" data-openliga-role="countdown-test-button" disabled>Countdown-Test an Discord senden</button>
@@ -6728,9 +6761,10 @@
         <strong data-openliga-role="countdown-preview-title"></strong>
         <div data-openliga-role="countdown-preview-description" style="margin-top:8px;line-height:1.45"></div>
         <div data-openliga-role="countdown-preview-fields" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:12px"></div>
+        <img data-openliga-role="countdown-preview-image" alt="Vorschau der Countdown-Grafik" hidden style="display:block;max-width:100%;height:auto;margin-top:12px;border-radius:6px">
         <div data-openliga-role="countdown-preview-footer" style="margin-top:12px;color:#b9bbbe;font-size:12px"></div>
       </div>
-      <div class="cfg-hint">Der Test sendet die ausgewählte Embed-Variante mit Beispieldaten an den Countdown-Kanal (oder ersatzweise den Meldungskanal). Alle Varianten sind Discord-Embeds. Der Live-Timer wird vom Bot minütlich aktualisiert; die übrigen Varianten nutzen Discords automatische relative Zeit.</div>
+      <div class="cfg-hint">Der Test sendet die ausgewählte Embed-Variante mit Beispieldaten an den Countdown-Kanal (oder ersatzweise den Meldungskanal). Live-Timer und SVG-Grafik werden vom Bot minütlich aktualisiert; die übrigen Varianten nutzen Discords automatische relative Zeit.</div>
       <label class="cfg-label">Kanal für den Countdown (optional)
         <input class="cfg-input" data-openliga-role="countdown-channel" type="text" autocomplete="off" placeholder="Discord-Kanal-ID · leer = Meldungskanal">
       </label>
@@ -6781,9 +6815,12 @@
       : String(feed.countdownTeamId);
     const countdownStyle = [
       'classic', 'compact', 'detailed', 'focus', 'calendar',
-      'matchday', 'homeaway', 'minimal', 'competition', 'spotlight', 'live_timer',
+      'matchday', 'homeaway', 'minimal', 'competition', 'spotlight', 'live_timer', 'graphic_timer',
     ].includes(feed.countdownStyle) ? feed.countdownStyle : 'classic';
     row.querySelector('[data-openliga-role="countdown-style"]').value = countdownStyle;
+    row.querySelector('[data-openliga-role="countdown-color"]').value = /^#[\da-f]{6}$/i.test(feed.countdownColor || '')
+      ? feed.countdownColor
+      : getOpenLigaDbCountdownColor(configuredShortcut);
     const savedUpdateInterval = Number(feed.updateIntervalMinutes);
     row.querySelector('[data-openliga-role="update-interval"]').value = String(
       Number.isInteger(savedUpdateInterval) && savedUpdateInterval >= 1 && savedUpdateInterval <= 60
@@ -6809,6 +6846,9 @@
     leagueSelect.addEventListener('change', async () => {
       const selected = leagues.find(league => `${league.leagueShortcut}|${league.leagueSeason}` === leagueSelect.value);
       row.querySelector('[data-openliga-role="title"]').textContent = selected?.leagueName || leagueSelect.value;
+      row.querySelector('[data-openliga-role="countdown-color"]').value = getOpenLigaDbCountdownColor(
+        selected?.leagueShortcut || leagueSelect.value.split('|')[0],
+      );
       refreshOpenLigaDbNavigation();
       await loadOpenLigaDbTeams(row);
     });
@@ -6838,6 +6878,11 @@
       else if (!preview.hidden) void renderOpenLigaDbCountdownPreview(row);
     });
     row.querySelector('[data-openliga-role="countdown-style"]').addEventListener('change', () => {
+      if (!row.querySelector('[data-openliga-role="countdown-preview"]').hidden) {
+        void renderOpenLigaDbCountdownPreview(row);
+      }
+    });
+    row.querySelector('[data-openliga-role="countdown-color"]').addEventListener('input', () => {
       if (!row.querySelector('[data-openliga-role="countdown-preview"]').hidden) {
         void renderOpenLigaDbCountdownPreview(row);
       }
@@ -6904,6 +6949,7 @@
           teamName: teamName.trim(),
           leagueName: row.querySelector('[data-openliga-role="title"]').textContent.trim(),
           countdownStyle: row.querySelector('[data-openliga-role="countdown-style"]').value,
+          countdownColor: row.querySelector('[data-openliga-role="countdown-color"]').value,
         }),
       });
       const result = await response.json();
@@ -6996,6 +7042,7 @@
         favoriteTeamIds: Array.from(row.querySelectorAll('[data-openliga-role="favorites"] input[type="checkbox"]:checked'), checkbox => Number(checkbox.value)).filter(Number.isInteger),
         countdownTeamId: row.querySelector('[data-openliga-role="countdown-team"]').value || null,
         countdownStyle: row.querySelector('[data-openliga-role="countdown-style"]').value,
+        countdownColor: row.querySelector('[data-openliga-role="countdown-color"]').value,
         countdownChannelId: row.querySelector('[data-openliga-role="countdown-channel"]').value.trim(),
         notificationChannelId: row.querySelector('[data-openliga-role="notification"]').value.trim(),
         tableChannelIds: [...new Set(row.querySelector('[data-openliga-role="tables"]').value.split(/[;,]/).map(id => id.trim()).filter(Boolean))],

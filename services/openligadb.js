@@ -1,6 +1,7 @@
 'use strict';
 
 const { AttachmentBuilder, EmbedBuilder } = require('discord.js');
+const { createHash } = require('crypto');
 const sharp = require('sharp');
 
 const API_BASE = 'https://api.openligadb.de';
@@ -21,7 +22,28 @@ const OPENLIGADB_COUNTDOWN_STYLES = Object.freeze([
   'competition',
   'spotlight',
   'live_timer',
+  'graphic_timer',
 ]);
+
+const COUNTDOWN_COLOR_PALETTE = Object.freeze({
+  bl1: '#D6B32A',
+  bl2: '#3498DB',
+  bl3: '#8E44AD',
+  dfb: '#E74C3C',
+  ucl: '#5865F2',
+  uel: '#F1C40F',
+  uecl: '#2ECC71',
+  unl: '#1ABC9C',
+});
+
+function getDefaultCountdownColor(leagueShortcut) {
+  const shortcut = String(leagueShortcut || '').toLowerCase();
+  const colorKey = ['ucl', 'uel', 'uecl', 'unl'].find(key => shortcut.startsWith(key)) || shortcut;
+  if (COUNTDOWN_COLOR_PALETTE[colorKey]) return COUNTDOWN_COLOR_PALETTE[colorKey];
+  const colors = Object.values(COUNTDOWN_COLOR_PALETTE);
+  const index = Array.from(shortcut).reduce((total, character) => total + character.charCodeAt(0), 0) % colors.length;
+  return colors[index];
+}
 
 let lastApiRequestAt = 0;
 let apiQueue = Promise.resolve();
@@ -347,24 +369,36 @@ function buildScoreboardPayload({ leagueName, group, matches, favoriteTeamIds, n
   return { embeds: [embed] };
 }
 
-function buildNextMatchCountdownPayload({ leagueName, match, teamId, teamInfo, countdownStyle = 'classic', now = Date.now() }) {
+function buildNextMatchCountdownPayload({
+  leagueName,
+  match,
+  teamId,
+  teamInfo,
+  countdownStyle = 'classic',
+  countdownColor = '#D6B32A',
+  now = Date.now(),
+}) {
   const team = [match?.team1, match?.team2].find(candidate => Number(candidate?.teamId) === Number(teamId));
   const opponent = [match?.team1, match?.team2].find(candidate => candidate && candidate !== team);
   const teamName = team?.shortName || team?.teamName || teamInfo?.shortName || teamInfo?.teamName || 'Favorit';
   const matchTime = Date.parse(match?.matchDateTimeUTC || match?.matchDateTime || '');
+  const style = OPENLIGADB_COUNTDOWN_STYLES.includes(countdownStyle) ? countdownStyle : 'classic';
+  const normalizedColor = /^#[\da-f]{6}$/i.test(countdownColor) ? countdownColor : '#D6B32A';
   const embed = new EmbedBuilder()
-    .setColor(0xD6B32A)
+    .setColor(Number.parseInt(normalizedColor.slice(1), 16))
     .setTitle(`⏳ Nächstes Spiel: ${teamName}`)
     .setFooter({ text: 'OpenLigaDB · Daten unter ODbL 1.0' });
 
   if (!match || match.matchIsFinished === true || !Number.isFinite(matchTime)) {
     embed.setDescription('Für diese Mannschaft ist derzeit kein nächstes Spiel terminiert.');
+    if (style === 'graphic_timer') embed.setTitle('\u200b').setDescription('\u200b');
     return { embeds: [embed] };
   }
   if (matchTime <= now) {
-    embed.setDescription(countdownStyle === 'live_timer'
+    embed.setDescription(style === 'live_timer'
       ? '⚽ Das Spiel hat begonnen.'
       : 'Das nächste Spiel hat bereits begonnen; ein Countdown ist nicht mehr verfügbar.');
+    if (style === 'graphic_timer') embed.setTitle('\u200b').setDescription('\u200b');
     return { embeds: [embed] };
   }
 
@@ -375,8 +409,6 @@ function buildNextMatchCountdownPayload({ leagueName, match, teamId, teamInfo, c
   const matchLabel = `**${teamName} · ${opponentName}**`;
   const round = match.group?.groupName || '';
   const competition = [leagueName, round].filter(Boolean).join(' · ').slice(0, 1024);
-  const style = OPENLIGADB_COUNTDOWN_STYLES.includes(countdownStyle) ? countdownStyle : 'classic';
-
   switch (style) {
     case 'compact':
       embed.setColor(0x5865F2)
@@ -450,12 +482,67 @@ function buildNextMatchCountdownPayload({ leagueName, match, teamId, teamInfo, c
       if (competition) embed.addFields({ name: 'Wettbewerb', value: competition, inline: false });
       break;
     }
+    case 'graphic_timer':
+      embed.setTitle('\u200b').setDescription('\u200b');
+      break;
     default:
       embed.setDescription(`${matchLabel}\n${fullTime}\nAnpfiff ${relativeTime}`);
       if (competition) embed.addFields({ name: 'Wettbewerb', value: competition, inline: false });
       break;
   }
+  embed.setColor(Number.parseInt(normalizedColor.slice(1), 16));
   return { embeds: [embed] };
+}
+
+function buildNextMatchCountdownSvg({ leagueName, match, teamId, teamInfo, countdownColor = '#D6B32A', now = Date.now() }) {
+  const accent = /^#[\da-f]{6}$/i.test(countdownColor) ? countdownColor : '#D6B32A';
+  const team = [match?.team1, match?.team2].find(candidate => Number(candidate?.teamId) === Number(teamId));
+  const opponent = [match?.team1, match?.team2].find(candidate => candidate && candidate !== team);
+  const teamName = fitSvgText(team?.shortName || team?.teamName || teamInfo?.shortName || teamInfo?.teamName || 'Favorit', 28);
+  const opponentName = fitSvgText(opponent?.shortName || opponent?.teamName || 'Gegner offen', 28);
+  const matchTime = Date.parse(match?.matchDateTimeUTC || match?.matchDateTime || '');
+  const competition = fitSvgText(leagueName, 55);
+  const hasUpcomingMatch = match && match.matchIsFinished !== true && Number.isFinite(matchTime) && matchTime > now;
+  const remainingMinutes = hasUpcomingMatch ? Math.ceil((matchTime - now) / 60_000) : 0;
+  const days = Math.floor(remainingMinutes / 1440);
+  const hours = Math.floor((remainingMinutes % 1440) / 60);
+  const minutes = remainingMinutes % 60;
+  const status = hasUpcomingMatch
+    ? `${days} TAGE  ·  ${hours} STD.  ·  ${minutes} MIN.`
+    : match && Number.isFinite(matchTime) && matchTime <= now && match.matchIsFinished !== true
+      ? 'DAS SPIEL LÄUFT'
+      : 'DERZEIT KEIN SPIEL TERMINIERT';
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="520" viewBox="0 0 1200 520">
+    <defs>
+      <linearGradient id="background" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#10141d"/><stop offset="1" stop-color="#242b3d"/></linearGradient>
+      <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="${accent}" stop-opacity=".45"/><stop offset="1" stop-color="${accent}"/></linearGradient>
+    </defs>
+    <rect width="1200" height="520" rx="26" fill="url(#background)"/>
+    <rect x="0" y="0" width="14" height="520" rx="7" fill="url(#accent)"/>
+    <circle cx="600" cy="210" r="205" fill="none" stroke="${accent}" stroke-opacity=".08" stroke-width="2"/>
+    <text x="600" y="76" text-anchor="middle" fill="${accent}" font-family="Arial, sans-serif" font-size="24" font-weight="700" letter-spacing="5">NÄCHSTES SPIEL</text>
+    <text x="600" y="126" text-anchor="middle" fill="#b9c0ce" font-family="Arial, sans-serif" font-size="22">${escapeSvgText(competition)}</text>
+    <text x="330" y="232" text-anchor="middle" fill="#f5f6fa" font-family="Arial, sans-serif" font-size="42" font-weight="700">${escapeSvgText(teamName)}</text>
+    <text x="600" y="232" text-anchor="middle" fill="${accent}" font-family="Arial, sans-serif" font-size="28" font-weight="700">VS</text>
+    <text x="870" y="232" text-anchor="middle" fill="#f5f6fa" font-family="Arial, sans-serif" font-size="42" font-weight="700">${escapeSvgText(opponentName)}</text>
+    <path d="M170 284h860" stroke="${accent}" stroke-opacity=".45" stroke-width="2"/>
+    <text x="600" y="380" text-anchor="middle" fill="#ffffff" font-family="Arial, sans-serif" font-size="56" font-weight="800" letter-spacing="2">${escapeSvgText(status)}</text>
+    <text x="600" y="468" text-anchor="middle" fill="#929bad" font-family="Arial, sans-serif" font-size="18">OpenLigaDB · Daten unter ODbL 1.0</text>
+  </svg>`;
+}
+
+async function buildNextMatchCountdownPng(options) {
+  return sharp(Buffer.from(buildNextMatchCountdownSvg(options))).png().toBuffer();
+}
+
+async function buildNextMatchCountdownMessage(options) {
+  const payload = buildNextMatchCountdownPayload(options);
+  if (options.countdownStyle === 'graphic_timer') {
+    const png = await buildNextMatchCountdownPng(options);
+    payload.files = [new AttachmentBuilder(png, { name: 'openligadb-countdown.png' })];
+    payload.embeds[0].setImage('attachment://openligadb-countdown.png');
+  }
+  return payload;
 }
 
 function getKnockoutLoserId(match) {
@@ -780,7 +867,12 @@ function createOpenLigaDbWatcher({ http, client, ServerProfile, logger, requestI
     const boardKey = `${profile.guildId}:${key}:${channelId}`;
     const footerText = payload.embeds[0].toJSON().footer?.text || 'OpenLigaDB · ODbL 1.0';
     payload.embeds[0].setFooter({ text: `${footerText} · ${marker}` });
-    const signature = JSON.stringify(payload.embeds[0].toJSON());
+    const fileSignatures = (payload.files || []).map(file => {
+      const attachment = file.attachment;
+      const data = Buffer.isBuffer(attachment) ? attachment : Buffer.from(String(attachment || ''));
+      return createHash('sha256').update(data).digest('hex');
+    });
+    const signature = JSON.stringify({ embed: payload.embeds[0].toJSON(), files: fileSignatures });
     if (signatures.get(boardKey) === signature && messages.has(boardKey)) return;
 
     let message = messages.get(boardKey);
@@ -789,7 +881,7 @@ function createOpenLigaDbWatcher({ http, client, ServerProfile, logger, requestI
       const existingMessages = await findMarkedMessages(channel, marker);
       [message, ...duplicateMessages] = existingMessages;
     }
-    if (message) message = await message.edit(payload);
+    if (message) message = await message.edit({ ...payload, attachments: [] });
     else message = await channel.send(payload);
     messages.set(boardKey, message);
     signatures.set(boardKey, signature);
@@ -906,12 +998,15 @@ function createOpenLigaDbWatcher({ http, client, ServerProfile, logger, requestI
       countdownChannelsByFeed.set(countdownStateKey, countdownChannelId);
       const nextMatch = await loadNextMatch(metadata?.leagueId, countdownTeamId);
       const teamInfo = currentFeed.table.find(team => Number(team.teamId) === countdownTeamId);
-      const payload = buildNextMatchCountdownPayload({
+      const countdownStyle = feedConfig.countdownStyle || 'classic';
+      const countdownColor = feedConfig.countdownColor || getDefaultCountdownColor(leagueShortcut);
+      const payload = await buildNextMatchCountdownMessage({
         leagueName,
         match: nextMatch,
         teamId: countdownTeamId,
         teamInfo,
-        countdownStyle: feedConfig.countdownStyle,
+        countdownStyle,
+        countdownColor,
         now: nowProvider(),
       });
       const marker = `OpenLigaDB-Countdown:${countdownKey}`;
@@ -926,7 +1021,7 @@ function createOpenLigaDbWatcher({ http, client, ServerProfile, logger, requestI
         messages: countdownMessages,
         signatures: countdownSignatures,
       });
-      if (feedConfig.countdownStyle === 'live_timer') {
+      if (['live_timer', 'graphic_timer'].includes(countdownStyle)) {
         liveCountdowns.set(countdownStateKey, {
           profile,
           channelId: countdownChannelId,
@@ -935,6 +1030,8 @@ function createOpenLigaDbWatcher({ http, client, ServerProfile, logger, requestI
           match: nextMatch,
           teamId: countdownTeamId,
           teamInfo,
+          countdownStyle,
+          countdownColor,
         });
       } else {
         liveCountdowns.delete(countdownStateKey);
@@ -979,12 +1076,13 @@ function createOpenLigaDbWatcher({ http, client, ServerProfile, logger, requestI
   async function refreshLiveCountdowns() {
     for (const countdown of liveCountdowns.values()) {
       try {
-        const payload = buildNextMatchCountdownPayload({
+        const payload = await buildNextMatchCountdownMessage({
           leagueName: countdown.leagueName,
           match: countdown.match,
           teamId: countdown.teamId,
           teamInfo: countdown.teamInfo,
-          countdownStyle: 'live_timer',
+          countdownStyle: countdown.countdownStyle,
+          countdownColor: countdown.countdownColor,
           now: nowProvider(),
         });
         await upsertEmbedMessage({
@@ -1069,6 +1167,8 @@ function createOpenLigaDbWatcher({ http, client, ServerProfile, logger, requestI
 module.exports = {
   buildScoreboardPayload,
   buildFinishedMatchPng,
+  buildNextMatchCountdownMessage,
+  buildNextMatchCountdownPng,
   buildNextMatchCountdownPayload,
   buildLiveTablePayload,
   createOpenLigaDbWatcher,
@@ -1076,6 +1176,7 @@ module.exports = {
   fetchLatestLeagueTeams,
   getAvailableFootballLeagues,
   getFavoriteTeamIds,
+  getDefaultCountdownColor,
   getOpenLigaDbUpdateIntervalMs,
   getMatchScore,
   getMatchStatus,

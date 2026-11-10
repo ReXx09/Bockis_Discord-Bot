@@ -25,9 +25,10 @@ const { createDashboardAuth, timingSafeStringEqual } = require('./dashboard-auth
 const { SERVER_PROFILE_ENV_PATHS, createServerProfileDefaults, setServerProfileSettings } = require('../server-profiles');
 const {
   buildFinishedMatchPng,
-  buildNextMatchCountdownPayload,
+  buildNextMatchCountdownMessage,
   fetchAvailableLeagues,
   fetchLatestLeagueTeams,
+  getDefaultCountdownColor,
   OPENLIGADB_COUNTDOWN_STYLES,
 } = require('../services/openligadb');
 
@@ -95,6 +96,12 @@ function normalizeOpenLigaDbFeeds(value) {
     if (!OPENLIGADB_COUNTDOWN_STYLES.includes(countdownStyle)) {
       throw new Error(`Ungültige Countdown-Variante für ${leagueShortcut}.`);
     }
+    const countdownColor = feed.countdownColor == null || feed.countdownColor === ''
+      ? getDefaultCountdownColor(leagueShortcut)
+      : String(feed.countdownColor).trim();
+    if (!/^#[\da-f]{6}$/i.test(countdownColor)) {
+      throw new Error(`Ungültige Countdown-Farbe für ${leagueShortcut}.`);
+    }
     const defaultMaxFavorites = Math.min(40, Math.max(5, normalizedFavoriteTeamIds.length));
     const maxFavorites = feed.maxFavorites == null || feed.maxFavorites === '' ? defaultMaxFavorites : Number(feed.maxFavorites);
     if (!Number.isInteger(maxFavorites) || maxFavorites < 1 || maxFavorites > 40) {
@@ -122,6 +129,7 @@ function normalizeOpenLigaDbFeeds(value) {
       favoriteTeamIds: normalizedFavoriteTeamIds,
       countdownTeamId,
       countdownStyle,
+      countdownColor,
       maxFavorites,
       finishedMatchImage: {
         enabled: normalizeImageFlag('enabled', false),
@@ -385,16 +393,20 @@ module.exports = function startWebServer({
     }
   });
 
-  app.post('/api/openligadb/countdown-preview', dashboardAuth, (req, res) => {
+  app.post('/api/openligadb/countdown-preview', dashboardAuth, async (req, res) => {
     const teamId = Number(req.body?.teamId);
     const teamName = String(req.body?.teamName || '').trim().slice(0, 100);
     const leagueName = String(req.body?.leagueName || '').trim().slice(0, 100);
     const countdownStyle = String(req.body?.countdownStyle || 'classic');
+    const countdownColor = String(req.body?.countdownColor || '#D6B32A');
     if (!Number.isSafeInteger(teamId) || teamId <= 0 || !teamName) {
       return res.status(400).json({ ok: false, error: 'Bitte eine Favoritenmannschaft auswählen.' });
     }
     if (!OPENLIGADB_COUNTDOWN_STYLES.includes(countdownStyle)) {
       return res.status(400).json({ ok: false, error: 'Ungültige Countdown-Variante.' });
+    }
+    if (!/^#[\da-f]{6}$/i.test(countdownColor)) {
+      return res.status(400).json({ ok: false, error: 'Ungültige Countdown-Farbe.' });
     }
     try {
       const now = Date.now();
@@ -404,14 +416,19 @@ module.exports = function startWebServer({
         team1: { teamId, teamName, shortName: teamName },
         team2: { teamId: teamId + 1, teamName: 'Beispielgegner', shortName: 'Beispielgegner' },
       };
-      const payload = buildNextMatchCountdownPayload({
+      const payload = await buildNextMatchCountdownMessage({
         leagueName,
         match,
         teamId,
         countdownStyle,
+        countdownColor,
         now,
       });
-      return res.set('Cache-Control', 'no-store').json({ ok: true, embed: payload.embeds[0].toJSON() });
+      return res.set('Cache-Control', 'no-store').json({
+        ok: true,
+        embed: payload.embeds[0].toJSON(),
+        graphic: payload.files?.[0]?.attachment.toString('base64') || null,
+      });
     } catch (err) {
       logger.error(`OpenLigaDB-Countdownvorschau fehlgeschlagen: ${err.message}`);
       return res.status(500).json({ ok: false, error: 'Countdown-Vorschau konnte nicht erstellt werden.' });
@@ -426,6 +443,7 @@ module.exports = function startWebServer({
       const teamName = String(req.body?.teamName || '').trim().slice(0, 100);
       const leagueName = String(req.body?.leagueName || '').trim().slice(0, 100);
       const countdownStyle = String(req.body?.countdownStyle || 'classic');
+      const countdownColor = String(req.body?.countdownColor || '#D6B32A');
       if (!/^\d{1,24}$/.test(guildId) || !/^\d{5,24}$/.test(channelId)) {
         return res.status(400).json({ ok: false, error: 'Bitte einen gültigen Server und Countdown-Kanal auswählen.' });
       }
@@ -434,6 +452,9 @@ module.exports = function startWebServer({
       }
       if (!OPENLIGADB_COUNTDOWN_STYLES.includes(countdownStyle)) {
         return res.status(400).json({ ok: false, error: 'Ungültige Countdown-Variante.' });
+      }
+      if (!/^#[\da-f]{6}$/i.test(countdownColor)) {
+        return res.status(400).json({ ok: false, error: 'Ungültige Countdown-Farbe.' });
       }
       const guild = client.guilds.cache.get(guildId);
       if (!guild) return res.status(404).json({ ok: false, error: 'Der ausgewählte Discord-Server ist nicht erreichbar.' });
@@ -454,11 +475,12 @@ module.exports = function startWebServer({
         team1: { teamId, teamName, shortName: teamName },
         team2: { teamId: teamId + 1, teamName: 'Beispielgegner', shortName: 'Beispielgegner' },
       };
-      const payload = buildNextMatchCountdownPayload({
+      const payload = await buildNextMatchCountdownMessage({
         leagueName,
         match,
         teamId,
         countdownStyle,
+        countdownColor,
         now,
       });
       await channel.send({

@@ -1,12 +1,15 @@
 const {
   buildScoreboardPayload,
   buildFinishedMatchPng,
+  buildNextMatchCountdownMessage,
+  buildNextMatchCountdownPng,
   buildNextMatchCountdownPayload,
   buildLiveTablePayload,
   createOpenLigaDbWatcher,
   fetchLatestLeagueTeams,
   getAvailableFootballLeagues,
   getFavoriteTeamIds,
+  getDefaultCountdownColor,
   getOpenLigaDbUpdateIntervalMs,
   getMatchScore,
   getMatchStatus,
@@ -200,7 +203,31 @@ describe('OpenLigaDB data formatting', () => {
     expect(afterMinute.embeds[0].toJSON().description).toContain('Noch 10 Tage · 7 Std. · 29 Min.');
   });
 
-  test('provides eleven distinct countdown embed variants', () => {
+  test('renders the SVG-based countdown graphic as a colored Discord PNG embed', async () => {
+    const options = {
+      leagueName: '1. Bundesliga',
+      teamId: 40,
+      countdownStyle: 'graphic_timer',
+      countdownColor: '#123456',
+      match: {
+        matchDateTimeUTC: '2026-11-20T19:30:00Z',
+        team1: { teamId: 40, shortName: 'Bayern' },
+        team2: { teamId: 65, shortName: 'Köln' },
+      },
+      now: Date.parse('2026-11-10T12:00:00Z'),
+    };
+    const payload = await buildNextMatchCountdownMessage(options);
+    const png = await buildNextMatchCountdownPng(options);
+
+    expect(payload.embeds[0].toJSON().color).toBe(0x123456);
+    expect(payload.embeds[0].toJSON().image.url).toBe('attachment://openligadb-countdown.png');
+    expect(payload.embeds[0].toJSON().description).toBe('\u200b');
+    expect(payload.files[0].attachment.subarray(0, 8)).toEqual(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+    expect(png).toEqual(payload.files[0].attachment);
+    expect(getDefaultCountdownColor('uel')).toBe('#F1C40F');
+  });
+
+  test('provides twelve distinct countdown embed variants', () => {
     const payloads = OPENLIGADB_COUNTDOWN_STYLES.map(countdownStyle => buildNextMatchCountdownPayload({
       leagueName: '1. Bundesliga',
       teamId: 40,
@@ -214,8 +241,8 @@ describe('OpenLigaDB data formatting', () => {
       now: Date.parse('2026-11-10T12:00:00Z'),
     }));
 
-    expect(OPENLIGADB_COUNTDOWN_STYLES).toHaveLength(11);
-    expect(new Set(payloads.map(payload => JSON.stringify(payload.embeds[0].toJSON()))).size).toBe(11);
+    expect(OPENLIGADB_COUNTDOWN_STYLES).toHaveLength(12);
+    expect(new Set(payloads.map(payload => JSON.stringify(payload.embeds[0].toJSON()))).size).toBe(12);
   });
 
   test('adds in-progress scores to the official table as provisional standings', () => {
@@ -537,7 +564,8 @@ describe('OpenLigaDB data formatting', () => {
           updateIntervalMinutes: 5,
           favoriteTeamIds: [40],
           countdownTeamId: 40,
-          countdownStyle: 'live_timer',
+          countdownStyle: 'graphic_timer',
+          countdownColor: '#123456',
           countdownChannelId: 'countdown-channel',
         }]),
       }) }] },
@@ -547,13 +575,13 @@ describe('OpenLigaDB data formatting', () => {
     });
 
     await watcher.checkOnce();
-    const initialDescription = channel.send.mock.calls[0][0].embeds[0].toJSON().description;
+    const initialPayload = channel.send.mock.calls[0][0];
     now += 60_000;
     await watcher.checkOnce();
-    const updatedDescription = countdownMessage.edit.mock.calls[0][0].embeds[0].toJSON().description;
+    const updatedPayload = countdownMessage.edit.mock.calls[0][0];
 
-    expect(initialDescription).toContain('Noch 10 Tage · 7 Std. · 30 Min.');
-    expect(updatedDescription).toContain('Noch 10 Tage · 7 Std. · 29 Min.');
+    expect(initialPayload.embeds[0].toJSON().color).toBe(0x123456);
+    expect(initialPayload.files[0].attachment.equals(updatedPayload.files[0].attachment)).toBe(false);
     expect(http.get.mock.calls.filter(([url]) => url.endsWith('/getnextmatchbyleagueteam/4937/40'))).toHaveLength(1);
   });
 
