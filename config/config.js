@@ -33,7 +33,7 @@ const config = convict({
       env: 'DB_DIALECT'
     },
     storage: {
-      doc: 'Pfad zur SQLite-Datei',
+      doc: 'Pfad zur SQLite-Datei; relative Pfade beziehen sich auf das Bot-Verzeichnis',
       format: String,
       default: './data/status.db',
       env: 'DB_STORAGE'
@@ -153,7 +153,7 @@ const config = convict({
       env: 'DISCORD_OPENLIGADB_FAVORITES'
     },
     openLigaDbFeeds: {
-      doc: 'JSON-Konfiguration mehrerer OpenLigaDB-Ligen, Aktualisierungsintervalle, Favoriten und Discord-Kanäle',
+      doc: 'JSON-Konfiguration mehrerer OpenLigaDB-Ligen, Intervalle, Favoriten, Kanäle, Ergebnisgrafiken und Spiel-Countdowns',
       format: String,
       default: '',
       env: 'DISCORD_OPENLIGADB_FEEDS'

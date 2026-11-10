@@ -1,5 +1,6 @@
 const {
   buildScoreboardPayload,
+  buildNextMatchCountdownPayload,
   buildLiveTablePayload,
   createOpenLigaDbWatcher,
   fetchLatestLeagueTeams,
@@ -21,19 +22,27 @@ describe('OpenLigaDB data formatting', () => {
     expect(getSeasonForLeague(leagues, 'bl1')).toBe(2026);
   });
 
-  test('lists only current-season football leagues', () => {
+  test('lists only selected current competitions and deduplicates aliases', () => {
     const leagues = getAvailableFootballLeagues([
       { leagueShortcut: '1. Fußball-Bundesliga 2007/2008', leagueSeason: '2007', leagueName: '1. Fußball-Bundesliga', sport: { sportId: 1 } },
       { leagueShortcut: 'bl1', leagueSeason: '2025', leagueName: 'Bundesliga', sport: { sportId: 1 } },
       { leagueShortcut: 'bl1', leagueSeason: '2026', leagueName: 'Bundesliga', sport: { sportId: 1 } },
       { leagueShortcut: 'bl2', leagueSeason: '2026', leagueName: '2. Fußball-Bundesliga 2026/2027', sport: { sportId: 1 } },
+      { leagueShortcut: 'bl2h', leagueSeason: '2026', leagueName: '2. Bundesliga 2026/27 (Herren)', sport: { sportId: 1 } },
+      { leagueShortcut: 'bl3', leagueSeason: '2026', leagueName: '3. Liga 2026/2027', sport: { sportId: 1 } },
       { leagueShortcut: 'ucl', leagueSeason: '2026', leagueName: 'Champions League 2026/2027', sport: { sportId: 1 } },
+      { leagueShortcut: 'ucl2026', leagueSeason: '2026', leagueName: 'Champions League 2026/27', sport: { sportId: 1 } },
       { leagueShortcut: 'dfb', leagueSeason: '2026', leagueName: 'DFB Pokal 2026/2027', sport: { sportId: 1 } },
+      { leagueShortcut: 'pl', leagueSeason: '2026', leagueName: 'Premier League England', sport: { sportId: 1 } },
+      { leagueShortcut: 'bl1test', leagueSeason: '2026', leagueName: 'Bundesliga', sport: { sportId: 1 } },
+      { leagueShortcut: 'ffb1', leagueSeason: '2026', leagueName: '1. Frauen Fußballbundesliga', sport: { sportId: 1 } },
+      { leagueShortcut: 'dfbf', leagueSeason: '2026', leagueName: 'DFB-Pokal Frauen', sport: { sportId: 1 } },
       { leagueShortcut: 'cup', leagueSeason: '2026', leagueName: 'Pokal', sport: { sportId: 2 } },
     ], new Date('2026-11-09T12:00:00Z'));
 
-    expect(leagues.map(league => league.leagueShortcut).sort()).toEqual(['bl1', 'bl2', 'dfb', 'ucl']);
+    expect(leagues.map(league => league.leagueShortcut).sort()).toEqual(['bl1', 'bl2', 'bl3', 'dfb', 'ucl']);
     expect(leagues.find(league => league.leagueShortcut === 'bl2').leagueSeason).toBe(2026);
+    expect(leagues.find(league => league.leagueShortcut === 'bl2').leagueName).toBe('2. Fußball-Bundesliga 2026/2027');
     expect(leagues.find(league => league.leagueShortcut === 'ucl').leagueName).toBe('Champions League 2026/2027');
     expect(leagues.find(league => league.leagueShortcut === 'dfb').leagueSeason).toBe(2026);
   });
@@ -48,16 +57,20 @@ describe('OpenLigaDB data formatting', () => {
       { leagueShortcut: 'wm2022', leagueSeason: '2022', leagueName: 'WM 2022', sport: { sportId: 1 } },
       { leagueShortcut: 'wm26', leagueSeason: '2026', leagueName: 'WM 2026', sport: { sportId: 1 } },
       { leagueShortcut: 'wm2026', leagueSeason: '2026', leagueName: 'WM 2026 USA', sport: { sportId: 1 } },
+      { leagueShortcut: 'wm2026_xlife', leagueSeason: '2026', leagueName: 'FIFA World Cup 2026', sport: { sportId: 1 } },
+      { leagueShortcut: 'wm_mueller', leagueSeason: '2026', leagueName: 'WM2026', sport: { sportId: 1 } },
       { leagueShortcut: 'wm30', leagueSeason: '2030', leagueName: 'WM 2030', sport: { sportId: 1 } },
+      { leagueShortcut: 'fef2025', leagueSeason: '2025', leagueName: 'Fußball-Europameisterschaft der Frauen 2025', sport: { sportId: 1 } },
       { leagueShortcut: 'DFBNAT2526', leagueSeason: '2025', leagueName: 'Deutsche Fußballnationalmannschaft-Spiele 25/26', sport: { sportId: 1 } },
       { leagueShortcut: 'DFBN', leagueSeason: '2026', leagueName: 'DFB Nationalspiele', sport: { sportId: 1 } },
       { leagueShortcut: 'fna', leagueSeason: '2026', leagueName: 'Frauen-Nationalmannschaft', sport: { sportId: 1 } },
       { leagueShortcut: 'u21dfb', leagueSeason: '2026', leagueName: 'DFB U21', sport: { sportId: 1 } },
+      { leagueShortcut: 'u21test', leagueSeason: '2026', leagueName: 'UEFA U21 Championship', sport: { sportId: 1 } },
     ], new Date('2026-11-09T12:00:00Z'));
     const shortcuts = leagues.map(league => league.leagueShortcut);
 
     expect(shortcuts).toEqual(expect.arrayContaining(['em2024', 'em2028', 'wm26', 'wm30', 'DFBN', 'fna', 'u21dfb']));
-    for (const excludedShortcut of ['em', 'em2020', 'em2024mitKarten', 'wm2022', 'wm2026', 'DFBNAT2526']) {
+    for (const excludedShortcut of ['em', 'em2020', 'em2024mitKarten', 'wm2022', 'wm2026', 'wm2026_xlife', 'wm_mueller', 'fef2025', 'DFBNAT2526', 'u21test']) {
       expect(shortcuts).not.toContain(excludedShortcut);
     }
   });
@@ -66,17 +79,19 @@ describe('OpenLigaDB data formatting', () => {
     const leagues = getAvailableFootballLeagues([
       { leagueShortcut: 'uel2024', leagueSeason: '2024', leagueName: 'Europa League 2024/25', sport: { sportId: 1 } },
       { leagueShortcut: 'uel2026', leagueSeason: '2026', leagueName: 'Europa League 2026/27', sport: { sportId: 1 } },
+      { leagueShortcut: 'uel', leagueSeason: '2026', leagueName: 'Europa League 2026/27', sport: { sportId: 1 } },
       { leagueShortcut: 'uel-test', leagueSeason: '2026', leagueName: 'Europa League unused', sport: { sportId: 1 } },
       { leagueShortcut: 'uecl2023', leagueSeason: '2023', leagueName: 'UEFA Europa Conference League 2023', sport: { sportId: 1 } },
       { leagueShortcut: 'uecl2026', leagueSeason: '2026', leagueName: 'Conference League 2026/27', sport: { sportId: 1 } },
+      { leagueShortcut: 'uecl', leagueSeason: '2026', leagueName: 'Conference League 2026/27', sport: { sportId: 1 } },
       { leagueShortcut: 'unl2024', leagueSeason: '2024', leagueName: 'Nations League 2024/25 (DE)', sport: { sportId: 1 } },
       { leagueShortcut: 'unl', leagueSeason: '2026', leagueName: 'Nations League 2026/27', sport: { sportId: 1 } },
       { leagueShortcut: 'nla', leagueSeason: '2026', leagueName: 'Nations League A 2026', sport: { sportId: 1 } },
     ], new Date('2026-11-09T12:00:00Z'));
     const shortcuts = leagues.map(league => league.leagueShortcut);
 
-    expect(shortcuts).toEqual(expect.arrayContaining(['uel2026', 'uecl2026', 'unl']));
-    for (const excludedShortcut of ['uel2024', 'uel-test', 'uecl2023', 'unl2024', 'nla']) {
+    expect(shortcuts.sort()).toEqual(['uecl2026', 'uel2026', 'unl']);
+    for (const excludedShortcut of ['uel2024', 'uel', 'uel-test', 'uecl2023', 'uecl', 'unl2024', 'nla']) {
       expect(shortcuts).not.toContain(excludedShortcut);
     }
   });
@@ -116,11 +131,30 @@ describe('OpenLigaDB data formatting', () => {
         { team1: { teamId: 80, shortName: 'Union' }, team2: { teamId: 6, shortName: 'Leverkusen' }, goals: [] },
       ],
     });
+
     const embed = payload.embeds[0].toJSON();
 
     expect(embed.fields).toHaveLength(1);
     expect(embed.fields[0].name).toContain('Bayern');
     expect(embed.footer.text).toContain('ODbL 1.0');
+  });
+
+  test('builds a dynamic Discord countdown for the selected favorite team', () => {
+    const payload = buildNextMatchCountdownPayload({
+      leagueName: '1. Bundesliga',
+      teamId: 40,
+      match: {
+        matchDateTimeUTC: '2026-11-20T19:30:00Z',
+        group: { groupName: '10. Spieltag' },
+        team1: { teamId: 40, shortName: 'Bayern' },
+        team2: { teamId: 65, shortName: 'Köln' },
+      },
+      now: Date.parse('2026-11-10T12:00:00Z'),
+    });
+
+    expect(payload.embeds[0].toJSON().title).toContain('Bayern');
+    expect(payload.embeds[0].toJSON().description).toContain('Bayern · Köln');
+    expect(payload.embeds[0].toJSON().description).toContain('<t:1795203000:R>');
   });
 
   test('adds in-progress scores to the official table as provisional standings', () => {
@@ -208,6 +242,74 @@ describe('OpenLigaDB data formatting', () => {
     expect(http.get.mock.calls.filter(([url]) => url.endsWith('/getcurrentgroup/bl1'))).toHaveLength(2);
   });
 
+  test('maintains one countdown message for the selected favorite team', async () => {
+    let now = Date.parse('2026-11-10T12:00:00Z');
+    let nextMatch = {
+      matchDateTimeUTC: '2026-11-20T19:30:00Z',
+      group: { groupName: '10. Spieltag' },
+      team1: { teamId: 40, teamName: 'FC Bayern München', shortName: 'Bayern' },
+      team2: { teamId: 65, teamName: '1. FC Köln', shortName: 'Köln' },
+    };
+    const http = { get: jest.fn(async url => {
+      if (url.endsWith('/getavailableleagues')) return { data: [{
+        leagueId: 4937,
+        leagueShortcut: 'bl1',
+        leagueSeason: '2026',
+        leagueName: '1. Fußball-Bundesliga 2026/2027',
+        sport: { sportId: 1 },
+      }] };
+      if (url.endsWith('/getcurrentgroup/bl1')) return { data: { groupName: '9. Spieltag', groupOrderID: 9 } };
+      if (url.includes('/getlastchangedate/')) return { data: '2026-11-10T11:00:00Z' };
+      if (url.includes('/getmatchdata/')) return { data: [] };
+      if (url.includes('/getbltable/')) return { data: [{ teamId: 40, teamName: 'FC Bayern München', shortName: 'Bayern' }] };
+      if (url.endsWith('/getnextmatchbyleagueteam/4937/40')) return { data: nextMatch };
+      throw new Error(`Unexpected URL: ${url}`);
+    }) };
+    const countdownMessage = { edit: jest.fn(async () => countdownMessage) };
+    const channel = {
+      isTextBased: () => true,
+      messages: { fetch: jest.fn(async () => []) },
+      send: jest.fn(async () => countdownMessage),
+    };
+    const watcher = createOpenLigaDbWatcher({
+      http,
+      client: { user: { id: 'bot' }, channels: { cache: new Map([['channel', channel]]) } },
+      ServerProfile: { findAll: async () => [{ guildId: 'guild', settingsJson: JSON.stringify({
+        DISCORD_OPENLIGADB_ENABLED: true,
+        DISCORD_OPENLIGADB_FEEDS: JSON.stringify([{
+          leagueShortcut: 'bl1',
+          season: 2026,
+          favoriteTeamIds: [40],
+          countdownTeamId: 40,
+          notificationChannelId: 'channel',
+          tableChannelIds: [],
+        }]),
+      }) }] },
+      logger: { warn: jest.fn(), info: jest.fn() },
+      requestIntervalMs: 0,
+      nowProvider: () => now,
+    });
+
+    await watcher.checkOnce();
+    const countdownPayload = channel.send.mock.calls
+      .map(([payload]) => payload)
+      .find(payload => payload?.embeds?.[0]?.data?.title?.startsWith('⏳ Nächstes Spiel'));
+    expect(countdownPayload.embeds[0].toJSON().description).toContain('<t:1795203000:R>');
+    expect(http.get.mock.calls.some(([url]) => url.endsWith('/getnextmatchbyleagueteam/4937/40'))).toBe(true);
+
+    await watcher.checkOnce();
+    expect(channel.send).toHaveBeenCalledTimes(2);
+    nextMatch = {
+      ...nextMatch,
+      matchDateTimeUTC: '2026-11-27T19:30:00Z',
+      team2: { teamId: 7, teamName: 'Borussia Dortmund', shortName: 'Dortmund' },
+    };
+    now += 60_000;
+    await watcher.checkOnce();
+    expect(countdownMessage.edit).toHaveBeenCalledTimes(1);
+    expect(channel.send).toHaveBeenCalledTimes(2);
+  });
+
   test('announces each newly observed favorite goal only once', async () => {
     let changedAt = '2026-11-07T14:00:00Z';
     let channelId = 'channel';
@@ -254,6 +356,13 @@ describe('OpenLigaDB data formatting', () => {
           favoriteTeamIds: [40],
           notificationChannelId: channelId,
           tableChannelIds: [],
+          finishedMatchImage: {
+            enabled: true,
+            showScorers: true,
+            showCompetition: true,
+            showDate: true,
+            template: 'minimal',
+          },
         }]),
       }) }] },
       logger: { warn: jest.fn(), info: jest.fn() },
@@ -272,6 +381,21 @@ describe('OpenLigaDB data formatting', () => {
     expect(channel.send.mock.calls.filter(([content]) => typeof content === 'string')).toHaveLength(1);
     expect(channel.send.mock.calls.find(([content]) => typeof content === 'string')[0]).toContain('Tor');
     expect(boardMessage.edit).toHaveBeenCalledTimes(1);
+
+    changedAt = '2026-11-07T16:30:00Z';
+    matches = [{
+      ...matches[0],
+      matchIsFinished: true,
+      matchResults: [{ resultTypeKind: 'After90Minutes', pointsTeam1: 1, pointsTeam2: 0 }],
+    }];
+    now += 60_000;
+    await watcher.checkOnce();
+    const finishedImagePayload = channel.send.mock.calls
+      .map(([content]) => content)
+      .find(content => content && typeof content === 'object' && Array.isArray(content.files));
+    expect(finishedImagePayload.content).toContain('Endergebnis');
+    expect(finishedImagePayload.files[0].name).toBe('openligadb-endergebnis.png');
+    expect(Buffer.isBuffer(finishedImagePayload.files[0].attachment)).toBe(true);
 
     channelId = 'channel-2';
     now += 60_000;

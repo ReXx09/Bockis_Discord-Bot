@@ -108,7 +108,13 @@ installServerProfileConfig(config);
 // #endregion
 
 // #region 4. DATENBANK-INITIALISIERUNG
-const sequelize = new Sequelize(config.get('database'));
+const databaseConfig = config.get('database');
+if (databaseConfig.dialect === 'sqlite'
+  && databaseConfig.storage !== ':memory:'
+  && !path.isAbsolute(databaseConfig.storage)) {
+  databaseConfig.storage = path.resolve(__dirname, databaseConfig.storage);
+}
+const sequelize = new Sequelize(databaseConfig);
 const MonitorStatus = require('./models/MonitorStatus')(sequelize, DataTypes);
 const ServerProfile = require('./models/ServerProfile')(sequelize, DataTypes);
 // #endregion
@@ -5790,7 +5796,7 @@ client.login(config.get('discord.token')).catch(err => {
 async function initializeDatabase() {
   // sync() = create-if-not-exists, kein ALTER — SQLite unterstützt kein ALTER COLUMN
   await sequelize.sync();
-  logger.info('Datenbank initialisiert');
+  logger.info(`Datenbank initialisiert: ${databaseConfig.storage}`);
 }
 
 async function initializeServerProfiles() {

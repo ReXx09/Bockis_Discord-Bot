@@ -54,6 +54,21 @@ function normalizeOpenLigaDbFeeds(value) {
     if (seen.has(feedKey)) throw new Error(`Die Liga ${leagueShortcut} ist doppelt eingetragen.`);
     seen.add(feedKey);
 
+    const finishedMatchImage = feed.finishedMatchImage == null ? {} : feed.finishedMatchImage;
+    if (typeof finishedMatchImage !== 'object' || Array.isArray(finishedMatchImage)) {
+      throw new Error(`Ungültige Ergebnisgrafik-Einstellungen für ${leagueShortcut}.`);
+    }
+    const normalizeImageFlag = (key, defaultValue) => {
+      const flag = finishedMatchImage[key];
+      if (flag == null) return defaultValue;
+      if (typeof flag !== 'boolean') throw new Error(`Ungültige Ergebnisgrafik-Einstellung "${key}" für ${leagueShortcut}.`);
+      return flag;
+    };
+    const imageTemplate = finishedMatchImage.template == null ? 'stadium' : finishedMatchImage.template;
+    if (!['stadium', 'classic', 'minimal'].includes(imageTemplate)) {
+      throw new Error(`Ungültige Ergebnisgrafik-Vorlage für ${leagueShortcut}.`);
+    }
+
     const favoriteTeamIds = feed.favoriteTeamIds == null ? [] : feed.favoriteTeamIds;
     const tableChannelIds = feed.tableChannelIds == null ? [] : feed.tableChannelIds;
     if (!Array.isArray(favoriteTeamIds) || favoriteTeamIds.length > 40
@@ -61,6 +76,13 @@ function normalizeOpenLigaDbFeeds(value) {
       throw new Error(`Ungültige Favoriten für ${leagueShortcut}.`);
     }
     const normalizedFavoriteTeamIds = [...new Set(favoriteTeamIds.map(Number))];
+    const countdownTeamId = feed.countdownTeamId == null || feed.countdownTeamId === ''
+      ? null
+      : Number(feed.countdownTeamId);
+    if (countdownTeamId !== null
+      && (!Number.isInteger(countdownTeamId) || countdownTeamId <= 0 || !normalizedFavoriteTeamIds.includes(countdownTeamId))) {
+      throw new Error(`Die Countdown-Mannschaft für ${leagueShortcut} muss ein gültiger Favorit sein.`);
+    }
     const defaultMaxFavorites = Math.min(40, Math.max(5, normalizedFavoriteTeamIds.length));
     const maxFavorites = feed.maxFavorites == null || feed.maxFavorites === '' ? defaultMaxFavorites : Number(feed.maxFavorites);
     if (!Number.isInteger(maxFavorites) || maxFavorites < 1 || maxFavorites > 40) {
@@ -82,7 +104,15 @@ function normalizeOpenLigaDbFeeds(value) {
       ...(season === undefined ? {} : { season }),
       updateIntervalMinutes,
       favoriteTeamIds: normalizedFavoriteTeamIds,
+      countdownTeamId,
       maxFavorites,
+      finishedMatchImage: {
+        enabled: normalizeImageFlag('enabled', false),
+        showScorers: normalizeImageFlag('showScorers', true),
+        showCompetition: normalizeImageFlag('showCompetition', true),
+        showDate: normalizeImageFlag('showDate', false),
+        template: imageTemplate,
+      },
       notificationChannelId,
       tableChannelIds: [...new Set(tableChannelIds.map(String))],
     };

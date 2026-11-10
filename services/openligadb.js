@@ -1,6 +1,7 @@
 'use strict';
 
-const { EmbedBuilder } = require('discord.js');
+const { AttachmentBuilder, EmbedBuilder } = require('discord.js');
+const sharp = require('sharp');
 
 const API_BASE = 'https://api.openligadb.de';
 const LEAGUE_SHORTCUT = 'bl1';
@@ -56,8 +57,8 @@ function getOpenLigaDbUpdateIntervalMs(feedConfig) {
 function getDfbNationalTeamCategory(league) {
   const shortcut = String(league?.leagueShortcut || '').toLowerCase();
   const name = String(league?.leagueName || '');
-  if (/\bu21\b/i.test(name) || shortcut.includes('u21')) return 'dfb-u21';
-  if (shortcut === 'fna' || (/\b(frauen|women)\b/i.test(name) && /\bnational/i.test(name))) return 'dfb-women';
+  if (shortcut === 'u21dfb' || (/\bu21\b/i.test(name) && /\b(dfb|deutsch)/i.test(name))) return 'dfb-u21';
+  if (shortcut === 'fna' || (/\b(frauen|women)\b/i.test(name) && /\bnational/i.test(name) && /\b(dfb|deutsch)/i.test(name))) return 'dfb-women';
   if (/\bnational/i.test(name) && /\b(dfb|deutsch)/i.test(name)) return 'dfb-men';
   return null;
 }
@@ -107,11 +108,40 @@ function getEuropeanCompetitionEntryPriority(league, category, season) {
   return 2;
 }
 
+function getCoreLeagueCategory(league) {
+  const shortcut = String(league?.leagueShortcut || '').toLowerCase();
+  const name = String(league?.leagueName || '');
+  if (isExcludedCompetitionName(name) || /\b(frauen|women)\b/i.test(name)) return null;
+  if (/\bchampions league\b/i.test(name)) return 'champions-league';
+  if (/\bdfb[-\s]*pokal\b/i.test(name)) return 'dfb-pokal';
+  if (/^1\.\s*(?:fu(?:ß|ss)ball[\s-]*)?bundesliga\b/i.test(name)) return 'bundesliga-1';
+  if (/^2\.\s*(?:fu(?:ß|ss)ball[\s-]*)?bundesliga\b/i.test(name)) return 'bundesliga-2';
+  if (/\b3\.\s*liga\b/i.test(name)) return 'bundesliga-3';
+  if (shortcut === 'bl1') return 'bundesliga-1';
+  if (shortcut === 'bl2') return 'bundesliga-2';
+  if (shortcut === 'bl3') return 'bundesliga-3';
+  if (shortcut === 'dfb') return 'dfb-pokal';
+  if (shortcut === 'ucl') return 'champions-league';
+  return null;
+}
+
+function getCoreLeagueEntryPriority(league, category) {
+  const preferredShortcuts = {
+    'bundesliga-1': 'bl1',
+    'bundesliga-2': 'bl2',
+    'bundesliga-3': 'bl3',
+    'dfb-pokal': 'dfb',
+    'champions-league': 'ucl',
+  };
+  return String(league.leagueShortcut || '').toLowerCase() === preferredShortcuts[category] ? 0 : 1;
+}
+
 function getAvailableFootballLeagues(leagues, now = new Date()) {
   const latest = new Map();
   const nationalTeams = new Map();
   const tournaments = new Map();
   const europeanCompetitions = new Map();
+  const coreCompetitions = new Map();
   const currentYear = now.getFullYear();
   const currentSeasonYears = new Set([currentYear]);
   if (now.getMonth() < 6) currentSeasonYears.add(currentYear - 1);
@@ -127,8 +157,10 @@ function getAvailableFootballLeagues(leagues, now = new Date()) {
     }
     const tournamentCategory = getInternationalTournamentCategory(league);
     if (tournamentCategory) {
-      if (!tournaments.has(tournamentCategory)) tournaments.set(tournamentCategory, []);
-      tournaments.get(tournamentCategory).push(league);
+      if (tournamentCategory === 'euro-men' || tournamentCategory === 'world-men') {
+        if (!tournaments.has(tournamentCategory)) tournaments.set(tournamentCategory, []);
+        tournaments.get(tournamentCategory).push(league);
+      }
       continue;
     }
     const europeanCompetitionCategory = getEuropeanCompetitionCategory(league);
@@ -137,15 +169,26 @@ function getAvailableFootballLeagues(leagues, now = new Date()) {
       europeanCompetitions.get(europeanCompetitionCategory).push(league);
       continue;
     }
-    if (!currentSeasonYears.has(season)) continue;
-    const previous = latest.get(league.leagueShortcut);
-    if (!previous || season > previous.season) {
-      latest.set(league.leagueShortcut, {
-        leagueShortcut: league.leagueShortcut,
-        leagueSeason: season,
-        leagueName: league.leagueName || league.leagueShortcut,
-      });
+    const coreCategory = getCoreLeagueCategory(league);
+    if (coreCategory) {
+      if (!currentSeasonYears.has(season)) continue;
+      const key = `${coreCategory}:${season}`;
+      if (!coreCompetitions.has(key)) coreCompetitions.set(key, []);
+      coreCompetitions.get(key).push(league);
+      continue;
     }
+  }
+  for (const [key, entries] of coreCompetitions) {
+    const [category, seasonValue] = key.split(':');
+    const season = Number(seasonValue);
+    entries.sort((a, b) => getCoreLeagueEntryPriority(a, category) - getCoreLeagueEntryPriority(b, category));
+    const league = entries[0];
+    latest.set(league.leagueShortcut, {
+      leagueShortcut: league.leagueShortcut,
+      leagueSeason: season,
+      leagueName: league.leagueName || league.leagueShortcut,
+      leagueId: Number(league.leagueId) || undefined,
+    });
   }
   for (const [category, entries] of europeanCompetitions) {
     const seasons = [...new Set(entries.map(league => Number(league.leagueSeason)))].sort((a, b) => a - b);
@@ -160,6 +203,7 @@ function getAvailableFootballLeagues(leagues, now = new Date()) {
         leagueShortcut: league.leagueShortcut,
         leagueSeason: season,
         leagueName: league.leagueName || league.leagueShortcut,
+        leagueId: Number(league.leagueId) || undefined,
       });
     }
   }
@@ -168,6 +212,7 @@ function getAvailableFootballLeagues(leagues, now = new Date()) {
       leagueShortcut: league.leagueShortcut,
       leagueSeason: Number(league.leagueSeason),
       leagueName: league.leagueName || league.leagueShortcut,
+      leagueId: Number(league.leagueId) || undefined,
     });
   }
   for (const [category, entries] of tournaments) {
@@ -186,6 +231,7 @@ function getAvailableFootballLeagues(leagues, now = new Date()) {
         leagueShortcut: league.leagueShortcut,
         leagueSeason: season,
         leagueName: league.leagueName || league.leagueShortcut,
+        leagueId: Number(league.leagueId) || undefined,
       });
     }
   }
@@ -288,6 +334,33 @@ function buildScoreboardPayload({ leagueName, group, matches, favoriteTeamIds, n
   return { embeds: [embed] };
 }
 
+function buildNextMatchCountdownPayload({ leagueName, match, teamId, teamInfo, now = Date.now() }) {
+  const team = [match?.team1, match?.team2].find(candidate => Number(candidate?.teamId) === Number(teamId));
+  const opponent = [match?.team1, match?.team2].find(candidate => candidate && candidate !== team);
+  const teamName = team?.shortName || team?.teamName || teamInfo?.shortName || teamInfo?.teamName || 'Favorit';
+  const matchTime = Date.parse(match?.matchDateTimeUTC || match?.matchDateTime || '');
+  const embed = new EmbedBuilder()
+    .setColor(0xD6B32A)
+    .setTitle(`⏳ Nächstes Spiel: ${teamName}`)
+    .setFooter({ text: 'OpenLigaDB · Daten unter ODbL 1.0' });
+
+  if (!match || match.matchIsFinished === true || !Number.isFinite(matchTime)) {
+    embed.setDescription('Für diese Mannschaft ist derzeit kein nächstes Spiel terminiert.');
+    return { embeds: [embed] };
+  }
+  if (matchTime <= now) {
+    embed.setDescription('Das nächste Spiel hat bereits begonnen; ein Countdown ist nicht mehr verfügbar.');
+    return { embeds: [embed] };
+  }
+
+  const opponentName = opponent?.shortName || opponent?.teamName || 'Gegner offen';
+  const timestamp = Math.floor(matchTime / 1000);
+  embed.setDescription(`**${teamName} · ${opponentName}**\n<t:${timestamp}:F>\nAnpfiff <t:${timestamp}:R>`);
+  const details = [leagueName, match.group?.groupName].filter(Boolean).join(' · ');
+  if (details) embed.addFields({ name: 'Wettbewerb', value: details.slice(0, 1024), inline: false });
+  return { embeds: [embed] };
+}
+
 function buildLiveTablePayload({ leagueName, table, matches, now = Date.now() }) {
   const standings = new Map((table || []).map(row => [Number(row.teamId), {
     ...row,
@@ -375,6 +448,85 @@ function getGoalIds(match) {
   return new Set((match.goals || []).map(goal => String(goal.goalID)).filter(id => id !== 'undefined'));
 }
 
+function escapeSvgText(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
+function fitSvgText(value, maxLength = 34) {
+  const text = String(value ?? '').replace(/\s+/g, ' ').trim();
+  const characters = Array.from(text);
+  return characters.length > maxLength
+    ? `${characters.slice(0, maxLength - 1).join('')}…`
+    : text;
+}
+
+function buildFinishedMatchSvg({ leagueName, group, match, settings = {} }) {
+  const templates = {
+    stadium: { background: '#101b24', panel: '#1a2a35', accent: '#f5c400', text: '#ffffff', muted: '#b2c2cb' },
+    classic: { background: '#101525', panel: '#202a40', accent: '#d8b15a', text: '#fffaf0', muted: '#c4c6ce' },
+    minimal: { background: '#f1f3f5', panel: '#ffffff', accent: '#176b53', text: '#17212b', muted: '#566575' },
+  };
+  const palette = templates[settings.template] || templates.stadium;
+  const [home, away] = getMatchScore(match);
+  const team1 = fitSvgText(match.team1?.shortName || match.team1?.teamName || 'Heimteam');
+  const team2 = fitSvgText(match.team2?.shortName || match.team2?.teamName || 'Auswärtsteam');
+  const goals = (Array.isArray(match.goals) ? match.goals : [])
+    .map(goal => {
+      const scorer = String(goal.goalGetterName || '').trim();
+      if (!scorer) return '';
+      const minute = goal.matchMinute == null ? '' : ` ${goal.matchMinute}'`;
+      return `${scorer}${minute}`;
+    })
+    .filter(Boolean);
+  const scorerText = fitSvgText(goals.length > 4 ? `${goals.slice(0, 4).join(' · ')} · +${goals.length - 4}` : goals.join(' · '), 90);
+  const matchDate = Date.parse(match.matchDateTimeUTC || match.matchDateTime || '');
+  const dateText = Number.isFinite(matchDate)
+    ? new Intl.DateTimeFormat('de-DE', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Europe/Berlin' }).format(matchDate)
+    : '';
+  const competition = fitSvgText(
+    [leagueName, group?.groupName].filter(Boolean).join(' · '),
+    70,
+  );
+  const showCompetition = settings.showCompetition !== false && competition;
+  const showScorers = settings.showScorers !== false && scorerText;
+  const showDate = settings.showDate === true && dateText;
+  const decorativeShapes = settings.template === 'minimal'
+    ? '<rect x="0" y="0" width="1200" height="14" fill="#176b53"/><circle cx="600" cy="330" r="220" fill="#f1f3f5"/>'
+    : settings.template === 'classic'
+      ? '<path d="M0 0h1200v18H0zM0 657h1200v18H0z" fill="#d8b15a"/><path d="M70 115h1060v435H70z" fill="#202a40" opacity=".8"/>'
+      : '<path d="M0 560 1200 250v425H0z" fill="#142b30" opacity=".7"/><circle cx="600" cy="335" r="205" fill="#1a2a35" opacity=".92"/>';
+  const infoLines = [
+    showCompetition ? `<text x="600" y="108" text-anchor="middle" fill="${palette.muted}" font-size="25">${escapeSvgText(competition)}</text>` : '',
+    `<text x="600" y="610" text-anchor="middle" fill="${palette.muted}" font-size="17">OpenLigaDB · ODbL 1.0</text>`,
+    showScorers ? `<text x="600" y="500" text-anchor="middle" fill="${palette.text}" font-size="21">${escapeSvgText(`Torschützen: ${scorerText}`)}</text>` : '',
+    showDate ? `<text x="600" y="548" text-anchor="middle" fill="${palette.muted}" font-size="20">${escapeSvgText(dateText)}</text>` : '',
+  ].filter(Boolean).join('');
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="675" viewBox="0 0 1200 675">
+    <defs><linearGradient id="background" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${palette.background}"/><stop offset="1" stop-color="${palette.panel}"/></linearGradient></defs>
+    <rect width="1200" height="675" fill="url(#background)"/>${decorativeShapes}
+    <text x="600" y="72" text-anchor="middle" fill="${palette.accent}" font-size="25" font-weight="700" letter-spacing="5">ENDERGEBNIS</text>
+    ${infoLines}
+    <text x="300" y="290" text-anchor="middle" fill="${palette.text}" font-size="34" font-weight="700">${escapeSvgText(team1)}</text>
+    <text x="900" y="290" text-anchor="middle" fill="${palette.text}" font-size="34" font-weight="700">${escapeSvgText(team2)}</text>
+    <text x="480" y="390" text-anchor="middle" fill="${palette.accent}" font-size="96" font-weight="800">${home}</text>
+    <text x="600" y="382" text-anchor="middle" fill="${palette.muted}" font-size="50">:</text>
+    <text x="720" y="390" text-anchor="middle" fill="${palette.accent}" font-size="96" font-weight="800">${away}</text>
+    <path d="M280 430h640" stroke="${palette.accent}" stroke-width="3" opacity=".8"/>
+  </svg>`;
+}
+
+async function buildFinishedMatchAttachment({ leagueName, group, match, settings }) {
+  const image = await sharp(Buffer.from(buildFinishedMatchSvg({ leagueName, group, match, settings })))
+    .png()
+    .toBuffer();
+  return new AttachmentBuilder(image, { name: 'openligadb-endergebnis.png' });
+}
+
 function createOpenLigaDbWatcher({ http, client, ServerProfile, logger, requestIntervalMs = 1050, nowProvider = () => Date.now() }) {
   let timer = null;
   let inFlight = false;
@@ -385,6 +537,9 @@ function createOpenLigaDbWatcher({ http, client, ServerProfile, logger, requestI
   const boardSignatures = new Map();
   const tableMessages = new Map();
   const tableSignatures = new Map();
+  const countdownMessages = new Map();
+  const countdownSignatures = new Map();
+  const checkedDisabledCountdowns = new Set();
   const lastPollAtByFeed = new Map();
 
   async function getLeagueMetadata() {
@@ -420,6 +575,21 @@ function createOpenLigaDbWatcher({ http, client, ServerProfile, logger, requestI
     return feed;
   }
 
+  async function loadNextMatch(leagueId, teamId) {
+    if (!Number.isInteger(Number(leagueId)) || Number(leagueId) <= 0) {
+      throw new Error('OpenLigaDB-Liga-ID für den Countdown fehlt');
+    }
+    try {
+      const response = await apiGet(http,
+        `${API_BASE}/getnextmatchbyleagueteam/${Number(leagueId)}/${Number(teamId)}`,
+        requestIntervalMs);
+      return response.data || null;
+    } catch (error) {
+      if (error.response?.status === 404) return null;
+      throw error;
+    }
+  }
+
   async function getChannel(channelId) {
     let channel = client.channels.cache.get(channelId);
     if (!channel) channel = await client.channels.fetch(channelId);
@@ -452,7 +622,26 @@ function createOpenLigaDbWatcher({ http, client, ServerProfile, logger, requestI
     signatures.set(boardKey, signature);
   }
 
-  async function sendMatchEvents(profile, feedConfig, currentFeed, favoriteTeamIds) {
+  async function clearCountdownMessage(profile, channelId, feedKey) {
+    channelId = String(channelId || '').trim();
+    if (!channelId) return;
+    const key = `${profile.guildId}:countdown:${feedKey}:${channelId}`;
+    if (checkedDisabledCountdowns.has(key)) return;
+    checkedDisabledCountdowns.add(key);
+    try {
+      const channel = await getChannel(channelId);
+      if (!channel) return;
+      const marker = `OpenLigaDB-Countdown:${profile.guildId}:${feedKey}`;
+      const message = countdownMessages.get(key) || await findMarkedMessage(channel, marker);
+      if (message) await message.delete();
+      countdownMessages.delete(key);
+      countdownSignatures.delete(key);
+    } catch (error) {
+      logger.warn(`OpenLigaDB-Countdown für ${feedKey} konnte nicht entfernt werden: ${error.message}`);
+    }
+  }
+
+  async function sendMatchEvents(profile, feedConfig, currentFeed, favoriteTeamIds, leagueName) {
     const channelId = String(feedConfig.notificationChannelId || '').trim();
     if (!channelId || !favoriteTeamIds.length) return;
     const channel = await getChannel(channelId);
@@ -482,7 +671,20 @@ function createOpenLigaDbWatcher({ http, client, ServerProfile, logger, requestI
 
       if (!previous.finished && match.matchIsFinished) {
         const [home, away] = getMatchScore(match);
-        await channel.send(`🏁 **Abpfiff:** ${match.team1?.shortName || match.team1?.teamName} **${home}:${away}** ${match.team2?.shortName || match.team2?.teamName}`);
+        if (feedConfig.finishedMatchImage?.enabled === true) {
+          const attachment = await buildFinishedMatchAttachment({
+            leagueName,
+            group: currentFeed.group,
+            match,
+            settings: feedConfig.finishedMatchImage,
+          });
+          await channel.send({
+            content: `🏁 **Endergebnis:** ${match.team1?.shortName || match.team1?.teamName} **${home}:${away}** ${match.team2?.shortName || match.team2?.teamName}`,
+            files: [attachment],
+          });
+        } else {
+          await channel.send(`🏁 **Abpfiff:** ${match.team1?.shortName || match.team1?.teamName} **${home}:${away}** ${match.team2?.shortName || match.team2?.teamName}`);
+        }
       }
       eventStates.set(stateKey, { goalIds, finished: Boolean(match.matchIsFinished) });
     }
@@ -506,7 +708,35 @@ function createOpenLigaDbWatcher({ http, client, ServerProfile, logger, requestI
         messages: boardMessages,
         signatures: boardSignatures,
       });
-      await sendMatchEvents(profile, feedConfig, currentFeed, favoriteTeamIds);
+      await sendMatchEvents(profile, feedConfig, currentFeed, favoriteTeamIds, leagueName);
+    }
+
+    const countdownTeamId = Number(feedConfig.countdownTeamId);
+    const countdownKey = `${leagueShortcut}:${season}`;
+    if (Number.isInteger(countdownTeamId) && favoriteTeamIds.includes(countdownTeamId) && feedConfig.notificationChannelId) {
+      const nextMatch = await loadNextMatch(metadata?.leagueId, countdownTeamId);
+      const teamInfo = currentFeed.table.find(team => Number(team.teamId) === countdownTeamId);
+      const payload = buildNextMatchCountdownPayload({
+        leagueName,
+        match: nextMatch,
+        teamId: countdownTeamId,
+        teamInfo,
+        now: nowProvider(),
+      });
+      const marker = `OpenLigaDB-Countdown:${profile.guildId}:${countdownKey}`;
+      const messageKey = `${profile.guildId}:countdown:${countdownKey}:${feedConfig.notificationChannelId}`;
+      checkedDisabledCountdowns.delete(messageKey);
+      await upsertEmbedMessage({
+        profile,
+        channelId: feedConfig.notificationChannelId,
+        key: `countdown:${countdownKey}`,
+        marker,
+        payload,
+        messages: countdownMessages,
+        signatures: countdownSignatures,
+      });
+    } else if (feedConfig.notificationChannelId) {
+      await clearCountdownMessage(profile, feedConfig.notificationChannelId, countdownKey);
     }
 
     const tableChannelIds = Array.isArray(feedConfig.tableChannelIds) ? [...new Set(feedConfig.tableChannelIds.map(id => String(id).trim()).filter(Boolean))] : [];
@@ -587,6 +817,7 @@ function createOpenLigaDbWatcher({ http, client, ServerProfile, logger, requestI
 
 module.exports = {
   buildScoreboardPayload,
+  buildNextMatchCountdownPayload,
   buildLiveTablePayload,
   createOpenLigaDbWatcher,
   fetchAvailableLeagues,

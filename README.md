@@ -444,7 +444,7 @@ bash ~/bockis-bot/start-bot.sh
 | `WEB_HOST` | ❌ | Bind-Adresse des Dashboards (Standard: `127.0.0.1`; `0.0.0.0` nur hinter vertrauenswürdigem Proxy/Netzwerk) |
 | `DASHBOARD_PASSWORD` | ✅ | Passwort für Dashboard und geschützte APIs; ohne Passwort bleibt das Dashboard deaktiviert. Login-Benutzername: `admin`. |
 | `UPDATE_INTERVAL` | ❌ | Update-Intervall in ms (Standard: `300000` = 5 Min) |
-| `DB_STORAGE` | ❌ | Pfad zur SQLite-Datei (Standard: `./data/status.db`) |
+| `DB_STORAGE` | ❌ | Pfad zur SQLite-Datei (Standard: `./data/status.db`; relative Pfade gelten ab Bot-Verzeichnis) |
 
 Das Dashboard verwendet ein Login-Formular mit Benutzername `admin` und `DASHBOARD_PASSWORD`. Nach erfolgreicher Anmeldung wird eine HttpOnly-, SameSite-Strict-Sitzung für bis zu 8 Stunden gesetzt; sie endet außerdem bei einem Bot-Neustart. Wiederholte fehlgeschlagene Anmeldungen werden begrenzt. Ohne gesetztes Passwort bleibt das Dashboard deaktiviert und protokolliert beim Start eine Warnung. Nicht über unverschlüsseltes HTTP in einem nicht vertrauenswürdigen Netzwerk erreichbar machen: Für externen Zugriff einen korrekt eingerichteten HTTPS-Reverse-Proxy oder Cloudflare Tunnel verwenden. Docker Compose veröffentlicht den Dashboard-Port standardmäßig nur auf `127.0.0.1`.
 
