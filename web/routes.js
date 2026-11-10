@@ -122,6 +122,7 @@ module.exports = function startWebServer({
   const dashboardAuth = createDashboardAuth(process.env.DASHBOARD_PASSWORD, logger);
   app.set('views', path.join(rootDir, 'views'));  // absoluter Pfad, CWD-unabhängig
   app.use(express.json());
+  app.use(express.urlencoded({ extended: false, limit: '10kb' }));
   app.use(express.static(path.join(rootDir, 'public')));
 
   app.get('/api/discord/channels/:id', dashboardAuth, async (req, res) => {
@@ -686,6 +687,20 @@ module.exports = function startWebServer({
   // ── Statische Routen ────────────────────────────────────────────────────────
 
   app.get('/', (req, res) => res.redirect('/dashboard'));
+
+  app.get('/login', (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    if (!dashboardAuth.enabled) {
+      return res.status(503).render('login', {
+        error: 'Dashboard deaktiviert: DASHBOARD_PASSWORD konfigurieren.',
+      });
+    }
+    if (dashboardAuth.isAuthenticated(req)) return res.redirect('/dashboard');
+    return res.render('login', { error: '' });
+  });
+
+  app.post('/login', dashboardAuth.login);
+  app.post('/logout', dashboardAuth.logout);
 
   app.get('/dashboard', dashboardAuth, (req, res) => {
     res.set('Content-Type', 'text/html; charset=utf-8');
