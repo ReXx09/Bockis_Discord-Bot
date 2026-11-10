@@ -175,7 +175,32 @@ describe('OpenLigaDB data formatting', () => {
     expect(payload.embeds[0].toJSON().description).toContain('<t:1795203000:R>');
   });
 
-  test('provides ten distinct countdown embed variants', () => {
+  test('shows a live days-hours-minutes timer that decreases over time', () => {
+    const match = {
+      matchDateTimeUTC: '2026-11-20T19:30:00Z',
+      team1: { teamId: 40, shortName: 'Bayern' },
+      team2: { teamId: 65, shortName: 'Köln' },
+    };
+    const initial = buildNextMatchCountdownPayload({
+      leagueName: '1. Bundesliga',
+      teamId: 40,
+      countdownStyle: 'live_timer',
+      match,
+      now: Date.parse('2026-11-10T12:00:00Z'),
+    });
+    const afterMinute = buildNextMatchCountdownPayload({
+      leagueName: '1. Bundesliga',
+      teamId: 40,
+      countdownStyle: 'live_timer',
+      match,
+      now: Date.parse('2026-11-10T12:01:00Z'),
+    });
+
+    expect(initial.embeds[0].toJSON().description).toContain('Noch 10 Tage · 7 Std. · 30 Min.');
+    expect(afterMinute.embeds[0].toJSON().description).toContain('Noch 10 Tage · 7 Std. · 29 Min.');
+  });
+
+  test('provides eleven distinct countdown embed variants', () => {
     const payloads = OPENLIGADB_COUNTDOWN_STYLES.map(countdownStyle => buildNextMatchCountdownPayload({
       leagueName: '1. Bundesliga',
       teamId: 40,
@@ -189,8 +214,8 @@ describe('OpenLigaDB data formatting', () => {
       now: Date.parse('2026-11-10T12:00:00Z'),
     }));
 
-    expect(OPENLIGADB_COUNTDOWN_STYLES).toHaveLength(10);
-    expect(new Set(payloads.map(payload => JSON.stringify(payload.embeds[0].toJSON()))).size).toBe(10);
+    expect(OPENLIGADB_COUNTDOWN_STYLES).toHaveLength(11);
+    expect(new Set(payloads.map(payload => JSON.stringify(payload.embeds[0].toJSON()))).size).toBe(11);
   });
 
   test('adds in-progress scores to the official table as provisional standings', () => {
@@ -471,6 +496,65 @@ describe('OpenLigaDB data formatting', () => {
     await watcher.checkOnce();
     expect(countdownMessage.edit).toHaveBeenCalledTimes(2);
     expect(countdownChannel.send).not.toHaveBeenCalled();
+  });
+
+  test('refreshes the live countdown every minute without polling the league again', async () => {
+    let now = Date.parse('2026-11-10T12:00:00Z');
+    const http = { get: jest.fn(async url => {
+      if (url.endsWith('/getavailableleagues')) return { data: [{
+        leagueId: 4937,
+        leagueShortcut: 'bl1',
+        leagueSeason: '2026',
+        leagueName: '1. Bundesliga',
+        sport: { sportId: 1 },
+      }] };
+      if (url.endsWith('/getcurrentgroup/bl1')) return { data: { groupName: '10. Spieltag', groupOrderID: 10 } };
+      if (url.includes('/getlastchangedate/')) return { data: '2026-11-10T11:00:00Z' };
+      if (url.includes('/getmatchdata/')) return { data: [] };
+      if (url.includes('/getbltable/')) return { data: [{ teamId: 40, teamName: 'Bayern', shortName: 'Bayern' }] };
+      if (url.endsWith('/getnextmatchbyleagueteam/4937/40')) return { data: {
+        matchDateTimeUTC: '2026-11-20T19:30:00Z',
+        group: { groupName: '10. Spieltag' },
+        team1: { teamId: 40, teamName: 'Bayern', shortName: 'Bayern' },
+        team2: { teamId: 65, teamName: 'Köln', shortName: 'Köln' },
+      } };
+      throw new Error(`Unexpected URL: ${url}`);
+    }) };
+    const countdownMessage = { edit: jest.fn(async () => countdownMessage) };
+    const channel = {
+      isTextBased: () => true,
+      messages: { fetch: jest.fn(async () => []) },
+      send: jest.fn(async () => countdownMessage),
+    };
+    const watcher = createOpenLigaDbWatcher({
+      http,
+      client: { user: { id: 'bot' }, channels: { cache: new Map([['countdown-channel', channel]]) } },
+      ServerProfile: { findAll: async () => [{ guildId: 'guild', settingsJson: JSON.stringify({
+        DISCORD_OPENLIGADB_ENABLED: true,
+        DISCORD_OPENLIGADB_FEEDS: JSON.stringify([{
+          leagueShortcut: 'bl1',
+          season: 2026,
+          updateIntervalMinutes: 5,
+          favoriteTeamIds: [40],
+          countdownTeamId: 40,
+          countdownStyle: 'live_timer',
+          countdownChannelId: 'countdown-channel',
+        }]),
+      }) }] },
+      logger: { warn: jest.fn(), info: jest.fn() },
+      requestIntervalMs: 0,
+      nowProvider: () => now,
+    });
+
+    await watcher.checkOnce();
+    const initialDescription = channel.send.mock.calls[0][0].embeds[0].toJSON().description;
+    now += 60_000;
+    await watcher.checkOnce();
+    const updatedDescription = countdownMessage.edit.mock.calls[0][0].embeds[0].toJSON().description;
+
+    expect(initialDescription).toContain('Noch 10 Tage · 7 Std. · 30 Min.');
+    expect(updatedDescription).toContain('Noch 10 Tage · 7 Std. · 29 Min.');
+    expect(http.get.mock.calls.filter(([url]) => url.endsWith('/getnextmatchbyleagueteam/4937/40'))).toHaveLength(1);
   });
 
   test('announces each newly observed favorite goal only once', async () => {

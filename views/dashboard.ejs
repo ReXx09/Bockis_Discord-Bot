@@ -6712,6 +6712,7 @@
           <option value="minimal">8 · Minimal</option>
           <option value="competition">9 · Wettbewerbs-Embed</option>
           <option value="spotlight">10 · Spotlight</option>
+          <option value="live_timer">11 · Live-Timer – Tage, Stunden, Minuten</option>
         </select>
       </label>
       <button class="btn" type="button" data-openliga-role="countdown-preview-button" disabled>Countdown-Vorschau anzeigen</button>
@@ -6723,7 +6724,7 @@
         <div data-openliga-role="countdown-preview-fields" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:12px"></div>
         <div data-openliga-role="countdown-preview-footer" style="margin-top:12px;color:#b9bbbe;font-size:12px"></div>
       </div>
-      <div class="cfg-hint">Die Varianten sind Discord-Embeds. Discord aktualisiert die relative Anstoßzeit automatisch.</div>
+      <div class="cfg-hint">Alle Varianten sind Discord-Embeds. Der Live-Timer wird vom Bot minütlich aktualisiert; die übrigen Varianten nutzen Discords automatische relative Zeit.</div>
       <label class="cfg-label">Kanal für den Countdown (optional)
         <input class="cfg-input" data-openliga-role="countdown-channel" type="text" autocomplete="off" placeholder="Discord-Kanal-ID · leer = Meldungskanal">
       </label>
@@ -6774,7 +6775,7 @@
       : String(feed.countdownTeamId);
     const countdownStyle = [
       'classic', 'compact', 'detailed', 'focus', 'calendar',
-      'matchday', 'homeaway', 'minimal', 'competition', 'spotlight',
+      'matchday', 'homeaway', 'minimal', 'competition', 'spotlight', 'live_timer',
     ].includes(feed.countdownStyle) ? feed.countdownStyle : 'classic';
     row.querySelector('[data-openliga-role="countdown-style"]').value = countdownStyle;
     const savedUpdateInterval = Number(feed.updateIntervalMinutes);

@@ -20,6 +20,7 @@ const OPENLIGADB_COUNTDOWN_STYLES = Object.freeze([
   'minimal',
   'competition',
   'spotlight',
+  'live_timer',
 ]);
 
 let lastApiRequestAt = 0;
@@ -361,7 +362,9 @@ function buildNextMatchCountdownPayload({ leagueName, match, teamId, teamInfo, c
     return { embeds: [embed] };
   }
   if (matchTime <= now) {
-    embed.setDescription('Das nächste Spiel hat bereits begonnen; ein Countdown ist nicht mehr verfügbar.');
+    embed.setDescription(countdownStyle === 'live_timer'
+      ? '⚽ Das Spiel hat begonnen.'
+      : 'Das nächste Spiel hat bereits begonnen; ein Countdown ist nicht mehr verfügbar.');
     return { embeds: [embed] };
   }
 
@@ -436,6 +439,17 @@ function buildNextMatchCountdownPayload({ leagueName, match, teamId, teamInfo, c
         .setDescription(`**Gegen ${opponentName}**\n${relativeTime}\n${fullTime}`);
       if (competition) embed.addFields({ name: 'Wettbewerb', value: competition, inline: false });
       break;
+    case 'live_timer': {
+      const remainingMinutes = Math.max(0, Math.ceil((matchTime - now) / 60_000));
+      const days = Math.floor(remainingMinutes / 1440);
+      const hours = Math.floor((remainingMinutes % 1440) / 60);
+      const minutes = remainingMinutes % 60;
+      embed.setColor(0xE74C3C)
+        .setTitle(`⏱️ Live-Countdown: ${teamName}`)
+        .setDescription(`${matchLabel}\n**Noch ${days} Tage · ${hours} Std. · ${minutes} Min.**\n${fullTime}`);
+      if (competition) embed.addFields({ name: 'Wettbewerb', value: competition, inline: false });
+      break;
+    }
     default:
       embed.setDescription(`${matchLabel}\n${fullTime}\nAnpfiff ${relativeTime}`);
       if (competition) embed.addFields({ name: 'Wettbewerb', value: competition, inline: false });
@@ -684,6 +698,7 @@ function createOpenLigaDbWatcher({ http, client, ServerProfile, logger, requestI
   const countdownSignatures = new Map();
   const checkedDisabledCountdowns = new Set();
   const countdownChannelsByFeed = new Map();
+  const liveCountdowns = new Map();
   const lastPollAtByFeed = new Map();
 
   async function getLeagueMetadata() {
@@ -911,7 +926,21 @@ function createOpenLigaDbWatcher({ http, client, ServerProfile, logger, requestI
         messages: countdownMessages,
         signatures: countdownSignatures,
       });
+      if (feedConfig.countdownStyle === 'live_timer') {
+        liveCountdowns.set(countdownStateKey, {
+          profile,
+          channelId: countdownChannelId,
+          countdownKey,
+          leagueName,
+          match: nextMatch,
+          teamId: countdownTeamId,
+          teamInfo,
+        });
+      } else {
+        liveCountdowns.delete(countdownStateKey);
+      }
     } else {
+      liveCountdowns.delete(countdownStateKey);
       const previousChannelId = countdownChannelsByFeed.get(countdownStateKey);
       const candidateChannelIds = new Set([
         previousChannelId,
@@ -947,6 +976,32 @@ function createOpenLigaDbWatcher({ http, client, ServerProfile, logger, requestI
     }
   }
 
+  async function refreshLiveCountdowns() {
+    for (const countdown of liveCountdowns.values()) {
+      try {
+        const payload = buildNextMatchCountdownPayload({
+          leagueName: countdown.leagueName,
+          match: countdown.match,
+          teamId: countdown.teamId,
+          teamInfo: countdown.teamInfo,
+          countdownStyle: 'live_timer',
+          now: nowProvider(),
+        });
+        await upsertEmbedMessage({
+          profile: countdown.profile,
+          channelId: countdown.channelId,
+          key: `countdown:${countdown.countdownKey}`,
+          marker: `OpenLigaDB-Countdown:${countdown.countdownKey}`,
+          payload,
+          messages: countdownMessages,
+          signatures: countdownSignatures,
+        });
+      } catch (error) {
+        logger.warn(`OpenLigaDB-Live-Countdown für ${countdown.countdownKey} konnte nicht aktualisiert werden: ${error.message}`);
+      }
+    }
+  }
+
   async function checkOnce() {
     if (inFlight) return;
     inFlight = true;
@@ -956,6 +1011,7 @@ function createOpenLigaDbWatcher({ http, client, ServerProfile, logger, requestI
         .map(({ profile, settings }) => ({ profile, feeds: parseLeagueFeeds(settings) }));
       if (!enabledProfiles.some(({ feeds: configuredFeeds }) => configuredFeeds.length)) {
         lastPollAtByFeed.clear();
+        liveCountdowns.clear();
         return;
       }
       const metadataList = await getLeagueMetadata();
@@ -983,6 +1039,10 @@ function createOpenLigaDbWatcher({ http, client, ServerProfile, logger, requestI
       for (const feedKey of lastPollAtByFeed.keys()) {
         if (!activeFeedKeys.has(feedKey)) lastPollAtByFeed.delete(feedKey);
       }
+      for (const feedKey of liveCountdowns.keys()) {
+        if (!activeFeedKeys.has(feedKey)) liveCountdowns.delete(feedKey);
+      }
+      await refreshLiveCountdowns();
     } catch (error) {
       logger.warn(`OpenLigaDB-Abruf fehlgeschlagen: ${error.message}`);
     } finally {
