@@ -152,11 +152,11 @@ Das Menü bietet:
 | 🍓 System vorbereiten | apt-Update, Node.js LTS, Docker, Firewall, Swap, Zeitzone |
 | 📊 Uptime Kuma | Docker-Installation, Start/Stop, Update, Logs |
 | 🤖 Bot-Verwaltung | Installieren, Update, Start/Stop, Logs, Health-Check |
-| ⚙ Einstellungen | Dashboard-Passwort neu generieren; Bot- und Dashboard-Ports konfigurieren |
+| ⚙ Einstellungen | Eigenes Dashboard-Passwort festlegen/ändern; Bot- und Dashboard-Ports konfigurieren |
 | 🔍 Status & Prüfungen | Services, Container, CPU/RAM/Temp, Ports, Netzwerk |
 | 🔄 Schnell-Update | Bot + Docker in einem Schritt aktualisieren |
 
-Im Menü unter **Einstellungen → Dashboard-Passwort generieren / ändern** wird ein zufälliges 64-stelliges Passwort erstellt, in `.env` gespeichert und der laufende Bot neu gestartet. Das neue Passwort wird einmalig angezeigt; Benutzername ist `admin`.
+Im Menü unter **Einstellungen → Dashboard-Passwort festlegen / ändern** gibst du ein eigenes Passwort zweimal verdeckt ein (mindestens 16 Zeichen). Es wird in `.env` gespeichert, einmalig angezeigt und der laufende Bot neu gestartet. Benutzername ist `admin`.
 
 > Alternativ ohne Menü: `bash start-bot.sh` führt direkt die Installation durch.
 

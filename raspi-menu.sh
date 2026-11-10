@@ -2502,23 +2502,23 @@ _dc_write_dashboard_password() {
     rm -f "$SECRET_TMP" "$ENV_TMP"
     return 1
   }
-  printf '%s\n' "$PASSWORD" > "$SECRET_TMP" || {
+  printf "DASHBOARD_PASSWORD='%s'\n" "$PASSWORD" > "$SECRET_TMP" || {
     rm -f "$SECRET_TMP" "$ENV_TMP"
     return 1
   }
   if ! awk -v secret_file="$SECRET_TMP" '
     BEGIN {
-      if ((getline secret < secret_file) != 1) exit 2
+      if ((getline assignment < secret_file) != 1) exit 2
       close(secret_file)
     }
     /^DASHBOARD_PASSWORD=/ {
-      print "DASHBOARD_PASSWORD=" secret
+      print assignment
       found = 1
       next
     }
     { print }
     END {
-      if (!found) print "DASHBOARD_PASSWORD=" secret
+      if (!found) print assignment
     }
   ' "$BOT_DIR/.env" > "$ENV_TMP"; then
     rm -f "$SECRET_TMP" "$ENV_TMP"
@@ -2560,7 +2560,7 @@ menu_settings() {
       "2" "Bot-Port ändern             (aktuell: $BOT_PORT)" \
       "3" "Uptime-Kuma-Port ändern    (aktuell: $KUMA_LABEL)" \
       "4" "Web-Dashboard-Port ändern  (aktuell: $WEB_PORT  →  $WEB_LABEL)" \
-      "5" "Dashboard-Passwort generieren / ändern" \
+      "5" "Dashboard-Passwort festlegen / ändern" \
       "6" "🔑  Discord-Token / Channel-IDs ändern" \
       "←" "Zurück" \
       3>&1 1>&2 2>&3) || return
@@ -2624,16 +2624,46 @@ menu_settings() {
             ".env wurde nicht gefunden:\n$BOT_DIR/.env\n\nBitte zuerst den Bot installieren." 9 $W
           continue
         fi
-        NEW_PASSWORD=$(node -e "process.stdout.write(require('crypto').randomBytes(32).toString('hex'))" 2>/dev/null) || {
-          whiptail --title "Fehler" --msgbox "Das Passwort konnte nicht sicher generiert werden. Prüfe, ob Node.js installiert ist." 8 $W
+        while true; do
+          NEW_PASSWORD=$(whiptail --title "Dashboard-Passwort festlegen" --passwordbox \
+            "Eigenes Passwort eingeben (mindestens 16 Zeichen).\nDie Eingabe bleibt verdeckt. Keine einfachen Anführungszeichen oder Steuerzeichen." \
+            10 $W 3>&1 1>&2 2>&3) || { NEW_PASSWORD=""; break; }
+          if [[ ${#NEW_PASSWORD} -lt 16 ]]; then
+            whiptail --title "Passwort zu kurz" --msgbox "Bitte ein Passwort mit mindestens 16 Zeichen eingeben." 8 $W
+            continue
+          fi
+          if [[ "$NEW_PASSWORD" == *"'"* || "$NEW_PASSWORD" =~ [[:cntrl:]] || "$NEW_PASSWORD" =~ ^[[:space:]] || "$NEW_PASSWORD" =~ [[:space:]]$ ]]; then
+            whiptail --title "Ungültiges Passwort" --msgbox \
+              "Bitte keine einfachen Anführungszeichen oder Steuerzeichen verwenden und keine Leerzeichen am Anfang oder Ende eingeben." 9 $W
+            continue
+          fi
+          CONFIRM_PASSWORD=$(whiptail --title "Dashboard-Passwort bestätigen" --passwordbox \
+            "Passwort zur Kontrolle erneut eingeben:" 9 $W 3>&1 1>&2 2>&3) || { NEW_PASSWORD=""; break; }
+          if [[ "$NEW_PASSWORD" == "$CONFIRM_PASSWORD" ]]; then break; fi
+          whiptail --title "Passwörter stimmen nicht überein" --msgbox "Bitte beide Eingaben erneut vornehmen." 8 $W
+        done
+        if [[ -z "$NEW_PASSWORD" ]]; then
+          unset CONFIRM_PASSWORD
+          continue
+        fi
+        DISPLAY_TMP=$(mktemp) || {
+          whiptail --title "Fehler" --msgbox "Die einmalige Passwortanzeige konnte nicht vorbereitet werden. Es wurde nichts geändert." 9 $W
+          unset NEW_PASSWORD CONFIRM_PASSWORD
           continue
         }
-        if [[ ! "$NEW_PASSWORD" =~ ^[a-f0-9]{64}$ ]]; then
-          whiptail --title "Fehler" --msgbox "Die Passwortgenerierung lieferte kein gültiges Ergebnis." 8 $W
+        if ! chmod 600 "$DISPLAY_TMP" || ! {
+          printf 'Neues Passwort (wird nur jetzt angezeigt):\n\n%s\n\n' "$NEW_PASSWORD"
+          printf 'Benutzername: admin\n\nBitte sicher notieren.\n'
+        } > "$DISPLAY_TMP"; then
+          rm -f "$DISPLAY_TMP"
+          whiptail --title "Fehler" --msgbox "Die Passwortanzeige konnte nicht vorbereitet werden. Es wurde nichts geändert." 9 $W
+          unset NEW_PASSWORD CONFIRM_PASSWORD
           continue
         fi
         if ! _dc_write_dashboard_password "$NEW_PASSWORD"; then
+          rm -f "$DISPLAY_TMP"
           whiptail --title "Fehler" --msgbox "DASHBOARD_PASSWORD konnte nicht in .env gespeichert werden." 8 $W
+          unset NEW_PASSWORD CONFIRM_PASSWORD
           continue
         fi
         if systemctl is-active --quiet bockis-bot 2>/dev/null; then
@@ -2643,18 +2673,9 @@ menu_settings() {
             err "Passwort gespeichert; Bot-Neustart fehlgeschlagen. Bitte Service manuell neu starten."
           fi
         fi
-        DISPLAY_TMP=$(mktemp) || {
-          whiptail --title "Fehler" --msgbox "Passwort ist gespeichert, aber die Anzeige konnte nicht vorbereitet werden. Erzeuge im Menü ein neues Passwort." 9 $W
-          continue
-        }
-        chmod 600 "$DISPLAY_TMP"
-        {
-          printf 'Neues Passwort (64 Zeichen; wird nur jetzt angezeigt):\n\n%s\n\n' "$NEW_PASSWORD"
-          printf 'Benutzername: admin\n\nBitte sicher notieren. Für eine Änderung diesen Menüpunkt erneut wählen.\n'
-        } > "$DISPLAY_TMP"
-        whiptail --title "Dashboard-Passwort erstellt" --textbox "$DISPLAY_TMP" 12 $W
+        whiptail --title "Dashboard-Passwort gespeichert" --textbox "$DISPLAY_TMP" 12 $W
         rm -f "$DISPLAY_TMP"
-        unset NEW_PASSWORD
+        unset NEW_PASSWORD CONFIRM_PASSWORD
         ;;
       "6") menu_discord_config ;;
       "←") return ;;
