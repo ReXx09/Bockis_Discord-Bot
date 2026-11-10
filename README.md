@@ -290,7 +290,7 @@ bash update.sh --mode native
 bash update.sh --yes
 ```
 
-Das Skript erledigt automatisch: git pull → npm ci → Service-Neustart. Eine `.env`-Sicherungskopie wird vor jedem Update angelegt (`.env.backup.*`, per `.gitignore` ausgeschlossen).
+Das Skript erledigt automatisch: git pull → npm ci → Service-Neustart. Eine `.env`-Sicherungskopie wird vor jedem Update angelegt (`.env.backup.*`, per `.gitignore` ausgeschlossen). Lokale Änderungen an `package-lock.json` werden als Patch unter `data/update-backups/` gesichert; beim Update wird die Repository-Version verwendet. Scheitert der Pull, versucht das Skript die lokale Änderung wieder anzuwenden.
 
 ---
 
@@ -435,9 +435,12 @@ bash ~/bockis-bot/start-bot.sh
 | `SERVICE_CHANNEL_AUTO_CREATE` | ❌ | Fehlende Service-Kanäle automatisch erstellen (`true`/`false`) |
 | `MONITORED_SERVICES` | ❌ | Komma-Liste der Dienste, die eigene Service-Kanäle erhalten |
 | `WEB_PORT` | ❌ | Port für das Dashboard (Standard: `3000`) |
-| `DASHBOARD_PASSWORD` | ❌ | Passwort für `/dashboard` (leer = kein Schutz) |
+| `WEB_HOST` | ❌ | Bind-Adresse des Dashboards (Standard: `127.0.0.1`; `0.0.0.0` nur hinter vertrauenswürdigem Proxy/Netzwerk) |
+| `DASHBOARD_PASSWORD` | ✅ | Starkes Passwort für Dashboard und geschützte APIs; ohne Passwort bleibt das Dashboard deaktiviert. Basic-Auth-Benutzername: `admin`. |
 | `UPDATE_INTERVAL` | ❌ | Update-Intervall in ms (Standard: `300000` = 5 Min) |
 | `DB_STORAGE` | ❌ | Pfad zur SQLite-Datei (Standard: `./data/status.db`) |
+
+Das Dashboard verwendet HTTP Basic Auth. Ohne gesetztes Passwort bleibt es deaktiviert und protokolliert beim Start eine Warnung. Nicht über unverschlüsseltes HTTP in einem nicht vertrauenswürdigen Netzwerk erreichbar machen: Für externen Zugriff einen korrekt eingerichteten HTTPS-Reverse-Proxy oder Cloudflare Tunnel verwenden. Docker Compose veröffentlicht den Dashboard-Port standardmäßig nur auf `127.0.0.1`.
 
 ### Uptime Kuma
 
@@ -595,9 +598,12 @@ Bei `auto` wird OpenAI verwendet, wenn ein Schlüssel vorhanden ist; bei Fehlern
 
 | Endpoint | Zugriff | Beschreibung |
 |----------|---------|-------------|
-| `/dashboard` | Öffentlich (optionaler Passwortschutz) | Konfigurations-Dashboard und Statusübersicht |
+| `/dashboard` | Basic Auth (`admin` + `DASHBOARD_PASSWORD`) | Konfigurations-Dashboard und Statusübersicht |
+| `/status` | `X-API-Key` (`WIGIDASH_API_KEY`) | WigiDash-Status; bei deaktivierter API nicht verfügbar |
 | `/health` | Nur lokal (127.0.0.1) | Systemstatus: DB + Discord-Verbindung |
 | `/metrics` | Nur lokal (127.0.0.1) | Prometheus-Metriken |
+| `/api/status-unfurl` | Öffentlich | Statusseiten-Linkvorschau für Discord |
+| `/api/badge/summary` | Öffentlich | Aggregierte Status-Badge-Daten für Linkvorschauen |
 
 ---
 

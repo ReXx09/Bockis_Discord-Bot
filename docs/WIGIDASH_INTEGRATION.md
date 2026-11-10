@@ -44,8 +44,8 @@ WIGIDASH_MESSAGE_ENABLED=false
 # Optionaler Kanalfilter für Nachrichten
 WIGIDASH_TARGET_CHANNEL_ID=
 
-# API-Schlüssel für Netzwerk-Zugriff (nur falls WIGIDASH_API_HOST=0.0.0.0)
-WIGIDASH_API_KEY=
+# Pflichtschlüssel für jeden Zugriff auf die WigiDash-API
+WIGIDASH_API_KEY=ein_langes_zufaelliges_passwort
 ```
 
 Wenn `WIGIDASH_TARGET_GUILD_ID` gesetzt ist, enthält die API zusätzlich `Users` mit
@@ -82,6 +82,7 @@ Beim Start sollte dies in den Logs erscheinen:
 ### Hauptanwendungs-Endpunkt
 ```
 GET http://localhost:3000/status
+X-API-Key: dein_api_schluessel
 ```
 JSON-Response (optional, nur wenn auf Hauptserver aktiviert):
 ```json
@@ -97,6 +98,7 @@ JSON-Response (optional, nur wenn auf Hauptserver aktiviert):
 ### Separater WigiDash-Server (empfohlen)
 ```
 GET http://127.0.0.1:47900/status
+X-API-Key: dein_api_schluessel
 ```
 
 Wenn `WIGIDASH_API_HOST=0.0.0.0`:
@@ -111,23 +113,24 @@ X-API-Key: dein_api_schluessel
 
 ## Netzwerk-Konfiguration
 
-### Lokal (Standard: nur localhost)
+### Lokal (Standard: nur localhost, immer mit API-Key)
 ```env
 WIGIDASH_API_HOST=127.0.0.1
 WIGIDASH_API_PORT=47900
-WIGIDASH_API_KEY=     # Nicht nötig
+WIGIDASH_API_KEY=ein_langes_zufaelliges_passwort
 ```
 - Nur auf dem Bot-Computer erreichbar
-- Keine Authentifizierung nötig
+- API-Key ist auch lokal erforderlich
 
-### Im Netzwerk (mit API-Key Sicherheit)
+### Im Netzwerk (mit API-Key)
 ```env
 WIGIDASH_API_HOST=0.0.0.0
 WIGIDASH_API_PORT=47900
-WIGIDASH_API_KEY=geheim123
+WIGIDASH_API_KEY=ein_langes_zufaelliges_passwort
 ```
 - Von anderen Computern im Netzwerk erreichbar
-- Requires: `X-API-Key: geheim123` Header oder `?apiKey=geheim123` Query-Parameter
+- Der Server startet ohne gesetzten API-Key nicht.
+- `X-API-Key` Header verwenden; Query-Parameter nur wenn das Widget keine Header unterstützt.
 
 ## Intents und Discord-Privilegien
 
@@ -175,7 +178,7 @@ Dies ist kein Fehler, sondern normales Verhalten wenn der Bot noch keine Daten h
 
 ### API-Key wird nicht akzeptiert
 Stelle sicher, dass:
-1. `WIGIDASH_API_HOST=0.0.0.0` ist (nicht `127.0.0.1`)
+1. `WIGIDASH_API_ENABLED=true` gesetzt ist
 2. Der API-Key in `WIGIDASH_API_KEY` gespeichert ist
 3. Du den Key im Request mitsendet (Header oder Query-Parameter)
 
@@ -184,7 +187,8 @@ Stelle sicher, dass:
 ### Mit PowerShell
 ```powershell
 # Lokal testen
-Invoke-RestMethod http://127.0.0.1:47900/status | ConvertTo-Json
+Invoke-RestMethod http://127.0.0.1:47900/status `
+  -Headers @{"X-API-Key" = "ein_langes_zufaelliges_passwort"} | ConvertTo-Json
 
 # Mit API-Key (Netzwerk)
 Invoke-RestMethod "http://<IP>:47900/status" `
@@ -194,7 +198,7 @@ Invoke-RestMethod "http://<IP>:47900/status" `
 ### Mit curl
 ```bash
 # Lokal
-curl http://127.0.0.1:47900/status
+curl -H "X-API-Key: ein_langes_zufaelliges_passwort" http://127.0.0.1:47900/status
 
 # Mit API-Key
 curl -H "X-API-Key: geheim123" http://<IP>:47900/status
@@ -205,7 +209,9 @@ curl -H "X-API-Key: geheim123" http://<IP>:47900/status
 const fetch = require('node-fetch');
 
 async function getDiscordStatus() {
-  const response = await fetch('http://127.0.0.1:47900/status');
+  const response = await fetch('http://127.0.0.1:47900/status', {
+    headers: { 'X-API-Key': 'ein_langes_zufaelliges_passwort' }
+  });
   const data = await response.json();
   console.log(data);
 }

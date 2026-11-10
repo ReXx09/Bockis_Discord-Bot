@@ -21,6 +21,7 @@ const express     = require('express');
 const axios       = require('axios');
 const { ChannelType } = require('discord.js');
 const { execFile, execFileSync, execSync, spawn } = require('child_process');
+const { createDashboardAuth, timingSafeStringEqual } = require('./dashboard-auth');
 const { SERVER_PROFILE_ENV_PATHS, createServerProfileDefaults, setServerProfileSettings } = require('../server-profiles');
 const { fetchAvailableLeagues, fetchLatestLeagueTeams } = require('../services/openligadb');
 
@@ -118,6 +119,7 @@ module.exports = function startWebServer({
   // ── Express-App erstellen ───────────────────────────────────────────────────
   const app = express();
   app.set('view engine', 'ejs');
+  const dashboardAuth = createDashboardAuth(process.env.DASHBOARD_PASSWORD, logger);
   app.set('views', path.join(rootDir, 'views'));  // absoluter Pfad, CWD-unabhängig
   app.use(express.json());
   app.use(express.static(path.join(rootDir, 'public')));
@@ -442,17 +444,6 @@ module.exports = function startWebServer({
     return res.status(403).json({ error: 'Forbidden' });
   }
 
-  /** Optionaler HTTP-Basic-Auth-Schutz für das Dashboard */
-  function dashboardAuth(req, res, next) {
-    const password = process.env.DASHBOARD_PASSWORD;
-    if (!password) return next();
-    const b64auth = (req.headers.authorization || '').split(' ')[1] || '';
-    const [, pwd] = Buffer.from(b64auth, 'base64').toString().split(':');
-    if (pwd && pwd === password) return next();
-    res.set('WWW-Authenticate', 'Basic realm="Service Dashboard"');
-    return res.status(401).send('Authentifizierung erforderlich');
-  }
-
   function readCpuTempC() {
     try {
       const tempFile = '/sys/class/thermal/thermal_zone0/temp';
@@ -761,26 +752,15 @@ module.exports = function startWebServer({
         });
       }
 
-      // Prüfe Host-Restriktionen (nur localhost vs. Netzwerk)
       const requesterIp = req.ip || req.connection.remoteAddress || '';
-      const isLocalhost = ['127.0.0.1', '::1', '::ffff:127.0.0.1', 'localhost'].includes(requesterIp);
-      const configHost = wigiConfig.host?.trim() || '127.0.0.1';
-      const isLocalHostConfig = ['127.0.0.1', 'localhost'].includes(configHost);
-
-      // Wenn konfiguriert nur für localhost, aber externe IP zugegriffen → nur mit API-Key
-      if (isLocalHostConfig && !isLocalhost) {
-        const providedKey = req.headers['x-api-key'] || req.query.apiKey || '';
-        const configuredKey = wigiConfig.apiKey?.trim() || '';
-
-        if (!configuredKey) {
-          logger.warn(`WigiDash Zugriff verweigert: Externes Netzwerk ohne API-Key (IP: ${requesterIp})`);
-          return res.status(403).json({ error: 'Access denied from external network. Configure WIGIDASH_API_HOST=0.0.0.0 or provide API key.' });
-        }
-
-        if (providedKey !== configuredKey) {
-          logger.warn(`WigiDash Zugriff verweigert: Ungültiger API-Key (IP: ${requesterIp})`);
-          return res.status(401).json({ error: 'Invalid API key' });
-        }
+      const providedKey = req.headers['x-api-key'] || req.query.apiKey || '';
+      const configuredKey = wigiConfig.apiKey?.trim() || '';
+      if (!configuredKey) {
+        return res.status(503).json({ error: 'WIGIDASH_API_KEY must be configured.' });
+      }
+      if (!timingSafeStringEqual(providedKey, configuredKey)) {
+        logger.warn(`WigiDash Zugriff verweigert: Ungültiger API-Key (IP: ${requesterIp})`);
+        return res.status(401).json({ error: 'Invalid API key' });
       }
 
       // Hole aktuellen Discord-Status vom Cache
@@ -3134,18 +3114,14 @@ module.exports = function startWebServer({
     }
   });
 
-  const port   = config.get('webPort');
-  const ifaces = os.networkInterfaces();
-  let localIp  = 'localhost';
-  for (const name of Object.keys(ifaces)) {
-    for (const iface of ifaces[name]) {
-      if (iface.family === 'IPv4' && !iface.internal) { localIp = iface.address; break; }
-    }
-    if (localIp !== 'localhost') break;
-  }
-  const server = app.listen(port, '0.0.0.0', () => {
-    logger.info(`Dashboard verfügbar unter http://${localIp}:${port}/dashboard`);
-    logger.info(`(Auch erreichbar als http://localhost:${port}/dashboard)`);
+  const port = config.get('webPort');
+  const host = config.get('webHost') || '127.0.0.1';
+  const server = app.listen(port, host, () => {
+    const displayHost = ['0.0.0.0', '::'].includes(host) ? 'localhost' : host;
+    logger.info(`Dashboard verfügbar unter http://${displayHost}:${port}/dashboard`);
+    const isLoopbackHost = host === 'localhost' || host === '::1'
+      || /^127(?:\.\d{1,3}){3}$/.test(host);
+    if (!isLoopbackHost) logger.warn(`Dashboard an ${host} gebunden; externen Zugriff nur mit HTTPS-Proxy freigeben.`);
   });
 
   // ── WigiDash Status-API Server (optionaler separater Server) ─────────────────
@@ -3155,53 +3131,53 @@ module.exports = function startWebServer({
   if (wigiConfig?.enabled) {
     const wigiHost = wigiConfig.host?.trim() || '127.0.0.1';
     const wigiPort = wigiConfig.port ?? 47900;
-    const wigiApp = express();
+    const wigiApiKey = wigiConfig.apiKey?.trim() || '';
+    if (!wigiApiKey) {
+      logger.warn('WigiDash API nicht gestartet: WIGIDASH_API_KEY ist erforderlich.');
+    } else {
+      const wigiApp = express();
 
-    // WigiDash: Nur Status-Endpunkt, minimal
-    wigiApp.get(wigiConfig.path?.trim() || '/status', (req, res) => {
-      try {
-        // Prüfe API-Key falls nicht localhost
-        const requesterIp = req.ip || req.connection.remoteAddress || '';
-        const isLocalhost = ['127.0.0.1', '::1', '::ffff:127.0.0.1', 'localhost'].includes(requesterIp);
-        
-        if (!isLocalhost && wigiConfig.apiKey?.trim()) {
+      // WigiDash: Nur Status-Endpunkt, minimal
+      wigiApp.get(wigiConfig.path?.trim() || '/status', (req, res) => {
+        try {
+          const requesterIp = req.ip || req.connection.remoteAddress || '';
           const providedKey = req.headers['x-api-key'] || req.query.apiKey || '';
-          if (providedKey !== wigiConfig.apiKey?.trim()) {
+          if (!timingSafeStringEqual(providedKey, wigiApiKey)) {
             logger.warn(`WigiDash (Separate-Server): Zugriff verweigert - Ungültiger API-Key (IP: ${requesterIp})`);
             return res.status(401).json({ error: 'Invalid API key' });
           }
+
+          const status = getWigiDashStatus();
+          res.set('Content-Type', 'application/json; charset=utf-8');
+          res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+          res.json(status);
+
+          logger.debug(`WigiDash Separate-Server: Status abgerufen von ${requesterIp}`);
+        } catch (err) {
+          logger.error(`WigiDash Separate-Server Fehler: ${err.message}`);
+          res.status(500).json({
+            error: err.message,
+            Username: '',
+            Status: 'offline',
+            Activity: '',
+            VoiceChannel: '',
+            Guild: ''
+          });
         }
+      });
 
-        const status = getWigiDashStatus();
-        res.set('Content-Type', 'application/json; charset=utf-8');
-        res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
-        res.json(status);
-        
-        logger.debug(`WigiDash Separate-Server: Status abgerufen von ${requesterIp}`);
-      } catch (err) {
-        logger.error(`WigiDash Separate-Server Fehler: ${err.message}`);
-        res.status(500).json({
-          error: err.message,
-          Username: '',
-          Status: 'offline',
-          Activity: '',
-          VoiceChannel: '',
-          Guild: ''
-        });
-      }
-    });
+      wigiServer = wigiApp.listen(wigiPort, wigiHost, () => {
+        logger.info(`WigiDash Status-API verfügbar unter http://${wigiHost}:${wigiPort}${wigiConfig.path?.trim() || '/status'}`);
+      });
 
-    wigiServer = wigiApp.listen(wigiPort, wigiHost, () => {
-      logger.info(`WigiDash Status-API verfügbar unter http://${wigiHost}:${wigiPort}${wigiConfig.path?.trim() || '/status'}`);
-    });
-
-    wigiServer.on('error', (err) => {
-      if (err.code === 'EADDRINUSE') {
-        logger.error(`WigiDash Port ${wigiPort} ist bereits in Verwendung. Bitte freigeben oder Port in WIGIDASH_API_PORT ändern.`);
-      } else {
-        logger.error(`WigiDash Server Fehler: ${err.message}`);
-      }
-    });
+      wigiServer.on('error', (err) => {
+        if (err.code === 'EADDRINUSE') {
+          logger.error(`WigiDash Port ${wigiPort} ist bereits in Verwendung. Bitte freigeben oder Port in WIGIDASH_API_PORT ändern.`);
+        } else {
+          logger.error(`WigiDash Server Fehler: ${err.message}`);
+        }
+      });
+    }
   }
 
   return server;

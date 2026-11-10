@@ -140,6 +140,35 @@ initialize_auto_replies() {
   fi
 }
 
+PACKAGE_LOCK_PATCH=""
+backup_local_package_lock() {
+  local lock_file="$BOT_DIR/package-lock.json"
+  local changes
+  changes="$(git -C "$BOT_DIR" status --porcelain -- package-lock.json 2>/dev/null || true)"
+  [[ -n "$changes" ]] || return 0
+
+  local backup_dir="$BOT_DIR/data/update-backups"
+  PACKAGE_LOCK_PATCH="$backup_dir/package-lock-$(date +%Y%m%d_%H%M%S)-$$.patch"
+  mkdir -p "$backup_dir" || die "Backup-Verzeichnis für package-lock.json konnte nicht erstellt werden"
+  git -C "$BOT_DIR" diff --binary HEAD -- package-lock.json > "$PACKAGE_LOCK_PATCH" \
+    || die "Lokale package-lock.json-Änderungen konnten nicht gesichert werden"
+  [[ -s "$PACKAGE_LOCK_PATCH" ]] || die "package-lock.json ist geändert, aber der Backup-Patch ist leer"
+  git -C "$BOT_DIR" restore --source=HEAD --staged --worktree -- package-lock.json \
+    || die "package-lock.json wurde gesichert, konnte aber nicht für das Update zurückgesetzt werden"
+  print_warn "Lokale package-lock.json-Änderungen gesichert: ${PACKAGE_LOCK_PATCH#$BOT_DIR/}"
+  print_status "Für das Update wird die package-lock.json aus dem Repository verwendet"
+}
+
+restore_local_package_lock() {
+  [[ -n "$PACKAGE_LOCK_PATCH" && -f "$PACKAGE_LOCK_PATCH" ]] || return 0
+  if git -C "$BOT_DIR" apply "$PACKAGE_LOCK_PATCH"; then
+    print_warn "Lokale package-lock.json-Änderungen nach fehlgeschlagenem Update wiederhergestellt"
+    PACKAGE_LOCK_PATCH=""
+  else
+    print_warn "package-lock.json konnte nicht automatisch wiederhergestellt werden; Patch bleibt erhalten: ${PACKAGE_LOCK_PATCH#$BOT_DIR/}"
+  fi
+}
+
 # ── .env Backup ──────────────────────────────────────────────────────────────
 print_header "Backup"
 BACKUP_FILE="$BOT_DIR/.env.backup.$(date +%Y%m%d_%H%M%S)"
@@ -233,6 +262,7 @@ update_native() {
       fi
 
       if [[ "$PULL_NEEDED" == "true" ]]; then
+        backup_local_package_lock
         if git -C "$BOT_DIR" merge --ff-only "$REMOTE_COMMIT" 2>&1 | while IFS= read -r line; do
           print_status "$line"
         done; then
@@ -247,6 +277,7 @@ update_native() {
               print_warn "Update-Stash konnte nicht automatisch wiederhergestellt werden. Backup: $BACKUP_FILE"
             fi
           fi
+          restore_local_package_lock
           die "Fast-Forward fehlgeschlagen (Exit-Code $MERGE_STATUS)"
         fi
       else
@@ -372,6 +403,7 @@ update_docker() {
   if git -C "$BOT_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     print_status "Lade neueste Version von GitHub..."
     migrate_legacy_auto_replies
+    backup_local_package_lock
     LEGACY_STASH_DONE=false
     if [[ -n "$(git -C "$BOT_DIR" status --porcelain -- auto-replies.json 2>/dev/null || true)" ]]; then
       git -C "$BOT_DIR" stash push -u -m "docker-update-legacy-auto-replies" -- auto-replies.json \
@@ -388,6 +420,7 @@ update_docker() {
       if [[ "$LEGACY_STASH_DONE" == "true" ]]; then
         git -C "$BOT_DIR" stash pop || print_warn "Legacy-Auto-Reply-Stash blieb zur Wiederherstellung erhalten"
       fi
+      restore_local_package_lock
       die "Git-Update fehlgeschlagen (Exit-Code $PULL_STATUS)"
     fi
     if [[ "$LEGACY_STASH_DONE" == "true" ]]; then

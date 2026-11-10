@@ -157,7 +157,7 @@ Wenn du maximale Kontrolle willst (dein aktueller Use-Case), nutze den manuellen
 # Pflicht
 DISCORD_TOKEN=DEIN_BOT_TOKEN
 STATUS_CHANNEL_ID=123456789012345678
-UPTIME_KUMA_URL=http://192.168.8.121:3001
+UPTIME_KUMA_URL=http://192.168.0.x:3001
 GUILD_ID=123456789012345678
 
 # Statuskanal-Anzeige

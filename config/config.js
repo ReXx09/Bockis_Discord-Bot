@@ -13,6 +13,12 @@ const config = convict({
     default: 3000,
     env: 'WEB_PORT'
   },
+  webHost: {
+    doc: 'Host-Adresse des Webservers (localhost-only by default)',
+    format: String,
+    default: '127.0.0.1',
+    env: 'WEB_HOST'
+  },
   checkIntervalMs: {
     doc: 'Intervall in ms zwischen Status-Updates',
     format: 'int',
@@ -533,7 +539,7 @@ const config = convict({
       host: {
         doc: 'Host für WigiDash API (127.0.0.1 = nur lokal, 0.0.0.0 = netzweit)',
         format: String,
-        default: '0.0.0.0',
+        default: '127.0.0.1',
         env: 'WIGIDASH_API_HOST'
       },
       port: {
@@ -573,7 +579,7 @@ const config = convict({
         env: 'WIGIDASH_MESSAGE_ENABLED'
       },
       apiKey: {
-        doc: 'Optionaler API-Schlüssel für Netzwerk-Zugriff (leer = kein Auth nötig für 127.0.0.1)',
+        doc: 'Pflichtschlüssel für jeden Zugriff auf die WigiDash-Status-API',
         format: String,
         default: '',
         env: 'WIGIDASH_API_KEY',
