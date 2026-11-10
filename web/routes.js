@@ -406,7 +406,7 @@ module.exports = function startWebServer({
       if (!guild) return res.status(404).json({ ok: false, error: 'Der ausgewählte Discord-Server ist nicht erreichbar.' });
       const profile = await ServerProfile.findOne({ where: { guildId } });
       if (!profile) return res.status(403).json({ ok: false, error: 'Für diesen Server ist kein Dashboard-Profil vorhanden.' });
-      const channel = guild.channels.cache.get(channelId) || await guild.channels.fetch(channelId);
+      const channel = client.channels.cache.get(channelId) || await client.channels.fetch(channelId);
       if (!channel?.isTextBased?.() || typeof channel.send !== 'function') {
         return res.status(400).json({ ok: false, error: 'Der ausgewählte Kanal kann keine Nachrichten empfangen.' });
       }
@@ -416,7 +416,7 @@ module.exports = function startWebServer({
         content: '🧪 **Testgrafik** · Beispieldaten, kein echtes Spielergebnis.',
         files: [new AttachmentBuilder(png, { name: 'openligadb-testgrafik.png' })],
       });
-      return res.json({ ok: true, message: `Testgrafik wurde an #${channel.name} gesendet.` });
+      return res.json({ ok: true, message: `Testgrafik wurde an #${channel.name}${channel.guild?.name ? ` auf ${channel.guild.name}` : ''} gesendet.` });
     } catch (err) {
       logger.error(`OpenLigaDB-Testgrafik konnte nicht gesendet werden: ${err.message}`);
       return res.status(500).json({ ok: false, error: err.message });
