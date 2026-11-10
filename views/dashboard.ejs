@@ -2367,10 +2367,11 @@
               <div id="cfgOpenLigaDbFeeds" style="display:grid;gap:10px;margin:12px 0"></div>
               <input class="cfg-input" id="cfgOpenLigaDbFeedsValue" type="hidden" value="[]">
               <div id="cfgOpenLigaDbActions" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-                <button class="btn" type="button" onclick="addOpenLigaDbFeed()">＋ Liga hinzufügen</button>
-                <button class="btn" type="button" onclick="addOpenLigaDbPreset('bl2')">＋ 2. Bundesliga</button>
-                <button class="btn" type="button" onclick="addOpenLigaDbPreset('ucl')">＋ Champions League</button>
-                <button class="btn" type="button" onclick="addOpenLigaDbPreset('dfb')">＋ DFB-Pokal</button>
+                <label class="cfg-label" for="cfgOpenLigaDbNewLeague">Liga auswählen</label>
+                <select class="cfg-input" id="cfgOpenLigaDbNewLeague" aria-label="Liga und Saison hinzufügen">
+                  <option value="">Ligenliste wird geladen …</option>
+                </select>
+                <button class="btn" type="button" onclick="addSelectedOpenLigaDbFeed()">＋ Liga hinzufügen</button>
                 <span class="cfg-hint" id="cfgOpenLigaDbStatus" style="margin:0" aria-live="polite">Ligenliste wird geladen …</span>
               </div>
               <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:12px">
@@ -5252,7 +5253,7 @@
     general?.classList.toggle('openliga-feed-hidden', !!selectedFeedId);
     actions?.classList.toggle('openliga-feed-hidden', !!selectedFeedId);
     document.querySelectorAll('#cfgOpenLigaDbFeeds [data-openliga-feed]').forEach((row) => {
-      row.classList.toggle('openliga-feed-hidden', !!selectedFeedId && row.dataset.openligaFeedId !== selectedFeedId);
+      row.classList.toggle('openliga-feed-hidden', !selectedFeedId || row.dataset.openligaFeedId !== selectedFeedId);
     });
   }
 
@@ -6375,20 +6376,49 @@
     status.className = 'cfg-hint';
   }
 
-  async function addOpenLigaDbPreset(leagueShortcut) {
+  function populateOpenLigaDbAddLeagueOptions(leagues) {
+    const select = document.getElementById('cfgOpenLigaDbNewLeague');
+    if (!select) return;
+    const previousValue = select.value;
+    select.replaceChildren();
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = 'Liga und Saison auswählen …';
+    select.appendChild(placeholder);
+    for (const league of leagues) {
+      const option = document.createElement('option');
+      option.value = `${league.leagueShortcut}|${league.leagueSeason}`;
+      option.textContent = `${league.leagueName} · ${league.leagueSeason}/${Number(league.leagueSeason) + 1}`;
+      select.appendChild(option);
+    }
+    if (Array.from(select.options).some(option => option.value === previousValue)) {
+      select.value = previousValue;
+    }
+  }
+
+  async function addSelectedOpenLigaDbFeed() {
     const status = document.getElementById('cfgOpenLigaDbStatus');
     try {
+      const select = document.getElementById('cfgOpenLigaDbNewLeague');
+      const [leagueShortcut, seasonValue] = String(select.value || '').split('|');
+      const season = Number(seasonValue);
+      if (!leagueShortcut || !Number.isInteger(season)) {
+        throw new Error('Bitte zuerst eine Liga und Saison auswählen.');
+      }
       const leagues = await ensureOpenLigaDbLeagues();
-      const league = leagues.find(item => item.leagueShortcut === leagueShortcut);
+      const league = leagues.find(item => item.leagueShortcut === leagueShortcut && item.leagueSeason === season);
       if (!league) throw new Error('Diese Liga ist aktuell nicht verfügbar.');
       const alreadyAdded = serializeOpenLigaDbFeeds().some(feed =>
         feed.leagueShortcut === league.leagueShortcut && feed.season === league.leagueSeason);
       if (alreadyAdded) {
         status.textContent = `${league.leagueName} ist bereits hinzugefügt.`;
-        status.className = 'cfg-hint';
+        status.className = 'cfg-hint warn';
         return;
       }
-      await addOpenLigaDbFeed({ leagueShortcut: league.leagueShortcut, season: league.leagueSeason });
+      await addOpenLigaDbFeed({ leagueShortcut: league.leagueShortcut, season: league.leagueSeason }, { selectAfterAdd: true });
+      select.value = '';
+      status.textContent = '';
+      status.className = 'cfg-hint';
     } catch (error) {
       status.textContent = error.message;
       status.className = 'cfg-hint err';
@@ -6449,7 +6479,7 @@
     }
   }
 
-  async function addOpenLigaDbFeed(feed = {}) {
+  async function addOpenLigaDbFeed(feed = {}, { selectAfterAdd = false } = {}) {
     const container = document.getElementById('cfgOpenLigaDbFeeds');
     const row = document.createElement('div');
     row.dataset.openligaFeed = 'true';
@@ -6551,6 +6581,7 @@
     refreshOpenLigaDbNavigation();
     updateOpenLigaDbFeedVisibility();
     syncOpenLigaDbFeedsDirtyState();
+    if (selectAfterAdd) selectOpenLigaDbFeed(row.dataset.openligaFeedId);
   }
 
   function serializeOpenLigaDbFeeds() {
@@ -6623,6 +6654,7 @@
     }
     try {
       const leagues = await ensureOpenLigaDbLeagues();
+      populateOpenLigaDbAddLeagueOptions(leagues);
       const currentShortcuts = new Set(leagues.map(league => league.leagueShortcut));
       const configuredFeedCount = feeds.length;
       feeds = feeds.filter(feed => currentShortcuts.has(feed.leagueShortcut));
@@ -6630,6 +6662,7 @@
       status.textContent = `${leagues.length} aktuelle Fußballligen verfügbar${outdatedFeedCount ? ` · ${outdatedFeedCount} veraltete Feeds ausgeblendet` : ''}`;
       status.className = 'cfg-hint';
     } catch (error) {
+      populateOpenLigaDbAddLeagueOptions([]);
       status.textContent = error.message;
       status.className = 'cfg-hint err';
     }
