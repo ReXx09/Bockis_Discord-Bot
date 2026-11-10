@@ -1,5 +1,6 @@
 const {
   buildScoreboardPayload,
+  buildFinishedMatchPng,
   buildNextMatchCountdownPayload,
   buildLiveTablePayload,
   createOpenLigaDbWatcher,
@@ -139,6 +140,22 @@ describe('OpenLigaDB data formatting', () => {
     expect(embed.footer.text).toContain('ODbL 1.0');
   });
 
+  test('renders a finished-match graphic as a PNG', async () => {
+    const png = await buildFinishedMatchPng({
+      leagueName: '1. Bundesliga',
+      group: { groupName: '9. Spieltag' },
+      match: {
+        matchDateTimeUTC: '2026-11-10T18:30:00Z',
+        team1: { shortName: 'FC Beispiel' },
+        team2: { shortName: 'SV Muster' },
+        goals: [{ goalGetterName: 'Max Beispiel', matchMinute: 88, scoreTeam1: 3, scoreTeam2: 2 }],
+      },
+      settings: { showScorers: true, showCompetition: true, showDate: true, template: 'classic' },
+    });
+
+    expect(png.subarray(0, 8)).toEqual(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+  });
+
   test('builds a dynamic Discord countdown for the selected favorite team', () => {
     const payload = buildNextMatchCountdownPayload({
       leagueName: '1. Bundesliga',
@@ -177,6 +194,116 @@ describe('OpenLigaDB data formatting', () => {
 
     expect(description).toContain('Bayern · 13 P · 11:5');
     expect(description).toContain('Dortmund · 9 P · 8:6');
+  });
+
+  test('shows only teams still in the DFB Pokal instead of league standings', () => {
+    const payload = buildLiveTablePayload({
+      leagueShortcut: 'dfb',
+      leagueName: 'DFB Pokal 2026/2027',
+      group: { groupName: '2. Runde' },
+      table: [
+        { teamId: 1, teamName: 'Eintracht Frankfurt' },
+        { teamId: 2, teamName: 'SC St. Tönis' },
+        { teamId: 3, teamName: 'Bayern München' },
+        { teamId: 4, teamName: 'Dynamo Dresden' },
+        { teamId: 5, teamName: 'Borussia Dortmund' },
+        { teamId: 6, teamName: 'Bayer Leverkusen' },
+      ],
+      matches: [
+        {
+          matchIsFinished: true,
+          team1: { teamId: 1, teamName: 'Eintracht Frankfurt' },
+          team2: { teamId: 2, teamName: 'SC St. Tönis' },
+          matchResults: [{ resultTypeKind: 'After90Minutes', pointsTeam1: 2, pointsTeam2: 0 }],
+        },
+        {
+          matchIsFinished: false,
+          team1: { teamId: 3, teamName: 'Bayern München' },
+          team2: { teamId: 4, teamName: 'Dynamo Dresden' },
+        },
+        {
+          matchIsFinished: true,
+          team1: { teamId: 5, teamName: 'Borussia Dortmund' },
+          team2: { teamId: 6, teamName: 'Bayer Leverkusen' },
+          matchResults: [
+            { resultTypeKind: 'After90Minutes', pointsTeam1: 1, pointsTeam2: 1 },
+            { resultTypeKind: 'AfterPenalties', pointsTeam1: 4, pointsTeam2: 5 },
+          ],
+          goals: [{ matchMinute: 90, scoreTeam1: 1, scoreTeam2: 1 }],
+        },
+      ],
+    });
+    const embed = payload.embeds[0].toJSON();
+
+    expect(embed.title).toContain('Noch vertreten');
+    expect(embed.description).toContain('4 Mannschaften noch im Wettbewerb');
+    expect(embed.description).toContain('Eintracht Frankfurt');
+    expect(embed.description).toContain('Bayern München');
+    expect(embed.description).toContain('Dynamo Dresden');
+    expect(embed.description).toContain('Bayer Leverkusen');
+    expect(embed.description).not.toContain('SC St. Tönis');
+    expect(embed.description).not.toContain('Borussia Dortmund');
+    expect(embed.description).not.toContain(' P · ');
+  });
+
+  test('loads all DFB Pokal matches for its remaining-teams table', async () => {
+    const allMatches = [{
+      matchIsFinished: true,
+      team1: { teamId: 1, teamName: 'Sieger FC' },
+      team2: { teamId: 2, teamName: 'Ausgeschieden 04' },
+      matchResults: [{ resultTypeKind: 'After90Minutes', pointsTeam1: 2, pointsTeam2: 0 }],
+    }];
+    const http = { get: jest.fn(async url => {
+      if (url.endsWith('/getavailableleagues')) return { data: [{
+        leagueId: 4945,
+        leagueShortcut: 'dfb',
+        leagueSeason: '2026',
+        leagueName: 'DFB Pokal 2026/2027',
+        sport: { sportId: 1 },
+      }] };
+      if (url.endsWith('/getcurrentgroup/dfb')) return { data: { groupName: '2. Runde', groupOrderID: 2 } };
+      if (url.includes('/getlastchangedate/')) return { data: '2026-11-10T12:00:00Z' };
+      if (url.endsWith('/getmatchdata/dfb/2026/2')) return { data: [] };
+      if (url.endsWith('/getmatchdata/dfb/2026')) return { data: allMatches };
+      if (url.endsWith('/getbltable/dfb/2026')) return { data: [
+        { teamId: 1, teamName: 'Sieger FC' },
+        { teamId: 2, teamName: 'Ausgeschieden 04' },
+        { teamId: 3, teamName: 'Noch Dabei SV' },
+      ] };
+      throw new Error(`Unexpected URL: ${url}`);
+    }) };
+    const channel = {
+      isTextBased: () => true,
+      messages: { fetch: jest.fn(async () => []) },
+      send: jest.fn(async payload => payload),
+    };
+    const watcher = createOpenLigaDbWatcher({
+      http,
+      client: { user: { id: 'bot' }, channels: { cache: new Map([['table-channel', channel]]) } },
+      ServerProfile: { findAll: async () => [{ guildId: 'guild', settingsJson: JSON.stringify({
+        DISCORD_OPENLIGADB_ENABLED: true,
+        DISCORD_OPENLIGADB_FEEDS: JSON.stringify([{
+          leagueShortcut: 'dfb',
+          season: 2026,
+          favoriteTeamIds: [],
+          tableChannelIds: ['table-channel'],
+        }]),
+      }) }] },
+      logger: { warn: jest.fn(), info: jest.fn() },
+      requestIntervalMs: 0,
+    });
+
+    await watcher.checkOnce();
+    const tablePayload = channel.send.mock.calls[0][0];
+    const description = tablePayload.embeds[0].toJSON().description;
+
+    expect(http.get).toHaveBeenCalledWith(
+      'https://api.openligadb.de/getmatchdata/dfb/2026',
+      expect.any(Object),
+    );
+    expect(description).toContain('Sieger FC');
+    expect(description).toContain('Noch Dabei SV');
+    expect(description).not.toContain('Ausgeschieden 04');
   });
 
   test('loads the latest league season and normalizes its teams', async () => {
@@ -242,7 +369,7 @@ describe('OpenLigaDB data formatting', () => {
     expect(http.get.mock.calls.filter(([url]) => url.endsWith('/getcurrentgroup/bl1'))).toHaveLength(2);
   });
 
-  test('maintains one countdown message for the selected favorite team', async () => {
+  test('updates one countdown message and removes duplicate marked posts', async () => {
     let now = Date.parse('2026-11-10T12:00:00Z');
     let nextMatch = {
       matchDateTimeUTC: '2026-11-20T19:30:00Z',
@@ -265,15 +392,30 @@ describe('OpenLigaDB data formatting', () => {
       if (url.endsWith('/getnextmatchbyleagueteam/4937/40')) return { data: nextMatch };
       throw new Error(`Unexpected URL: ${url}`);
     }) };
-    const countdownMessage = { edit: jest.fn(async () => countdownMessage) };
+    const countdownMessage = {
+      author: { id: 'bot' },
+      embeds: [{ footer: { text: 'OpenLigaDB · OpenLigaDB-Countdown:old-guild:bl1:2026' } }],
+      edit: jest.fn(async () => countdownMessage),
+      delete: jest.fn(),
+    };
+    const duplicateCountdownMessage = {
+      author: { id: 'bot' },
+      embeds: [{ footer: { text: 'OpenLigaDB · OpenLigaDB-Countdown:another-guild:bl1:2026' } }],
+      delete: jest.fn(),
+    };
     const channel = {
       isTextBased: () => true,
       messages: { fetch: jest.fn(async () => []) },
       send: jest.fn(async () => countdownMessage),
     };
+    const countdownChannel = {
+      isTextBased: () => true,
+      messages: { fetch: jest.fn(async () => [countdownMessage, duplicateCountdownMessage]) },
+      send: jest.fn(async () => countdownMessage),
+    };
     const watcher = createOpenLigaDbWatcher({
       http,
-      client: { user: { id: 'bot' }, channels: { cache: new Map([['channel', channel]]) } },
+      client: { user: { id: 'bot' }, channels: { cache: new Map([['channel', channel], ['countdown-channel', countdownChannel]]) } },
       ServerProfile: { findAll: async () => [{ guildId: 'guild', settingsJson: JSON.stringify({
         DISCORD_OPENLIGADB_ENABLED: true,
         DISCORD_OPENLIGADB_FEEDS: JSON.stringify([{
@@ -282,6 +424,7 @@ describe('OpenLigaDB data formatting', () => {
           favoriteTeamIds: [40],
           countdownTeamId: 40,
           notificationChannelId: 'channel',
+          countdownChannelId: 'countdown-channel',
           tableChannelIds: [],
         }]),
       }) }] },
@@ -291,14 +434,15 @@ describe('OpenLigaDB data formatting', () => {
     });
 
     await watcher.checkOnce();
-    const countdownPayload = channel.send.mock.calls
-      .map(([payload]) => payload)
-      .find(payload => payload?.embeds?.[0]?.data?.title?.startsWith('⏳ Nächstes Spiel'));
+    const countdownPayload = countdownMessage.edit.mock.calls[0][0];
     expect(countdownPayload.embeds[0].toJSON().description).toContain('<t:1795203000:R>');
+    expect(channel.send.mock.calls.some(([payload]) => payload?.embeds?.[0]?.data?.title?.startsWith('⏳ Nächstes Spiel'))).toBe(false);
+    expect(countdownChannel.send).not.toHaveBeenCalled();
+    expect(duplicateCountdownMessage.delete).toHaveBeenCalledTimes(1);
     expect(http.get.mock.calls.some(([url]) => url.endsWith('/getnextmatchbyleagueteam/4937/40'))).toBe(true);
 
     await watcher.checkOnce();
-    expect(channel.send).toHaveBeenCalledTimes(2);
+    expect(countdownChannel.send).not.toHaveBeenCalled();
     nextMatch = {
       ...nextMatch,
       matchDateTimeUTC: '2026-11-27T19:30:00Z',
@@ -306,8 +450,8 @@ describe('OpenLigaDB data formatting', () => {
     };
     now += 60_000;
     await watcher.checkOnce();
-    expect(countdownMessage.edit).toHaveBeenCalledTimes(1);
-    expect(channel.send).toHaveBeenCalledTimes(2);
+    expect(countdownMessage.edit).toHaveBeenCalledTimes(2);
+    expect(countdownChannel.send).not.toHaveBeenCalled();
   });
 
   test('announces each newly observed favorite goal only once', async () => {

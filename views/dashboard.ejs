@@ -6501,8 +6501,15 @@
         label.append(checkbox, name);
         teamSelect.appendChild(label);
       }
-      row.dataset.openligaTeamCount = String(openLigaDbTeamsCache.get(cacheKey).length);
+      const availableTeams = openLigaDbTeamsCache.get(cacheKey);
+      row.dataset.openligaTeamCount = String(availableTeams.length);
       updateOpenLigaDbFavoriteSelection(row, true);
+      if (!availableTeams.length) {
+        status.textContent = leagueShortcut === 'unl'
+          ? `OpenLigaDB liefert für die Nations League ${season} derzeit keine Teilnehmer. Für Deutschlands Nations-League-Spiele bitte „DFB Nationalspiele“ auswählen.`
+          : `OpenLigaDB liefert für ${leagueShortcut} ${season} derzeit keine Teilnehmer.`;
+        status.className = 'cfg-hint warn';
+      }
     } catch (error) {
       status.textContent = error.message;
       status.className = 'cfg-hint err';
@@ -6554,6 +6561,13 @@
             <option value="minimal">Minimal · hell</option>
           </select>
         </label>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px">
+          <button class="btn" type="button" data-openliga-role="finished-image-preview">Vorschau anzeigen</button>
+          <button class="btn" type="button" data-openliga-role="finished-image-test">Test an Discord senden</button>
+        </div>
+        <div data-openliga-role="finished-image-status" class="cfg-hint" aria-live="polite"></div>
+        <div class="cfg-hint">Der Test nutzt die aktuellen Grafikoptionen und sendet Beispieldaten an den Meldungskanal.</div>
+        <img data-openliga-role="finished-image-preview-image" alt="Vorschau der Ergebnis- und Torschützengrafik" hidden style="max-width:100%;height:auto;margin-top:10px;border:1px solid var(--border);border-radius:6px">
       </div>
       <label class="cfg-label">Maximale Favoriten
         <input class="cfg-input" data-openliga-role="max-favorites" type="number" min="1" max="40" step="1" style="max-width:120px">
@@ -6567,7 +6581,10 @@
           <option value="">Countdown deaktiviert</option>
         </select>
       </label>
-      <div class="cfg-hint">Ein einzelner Beitrag im Meldungskanal wird beim nächsten Spiel aktualisiert. Discord zeigt die verbleibende Zeit automatisch an.</div>
+      <div class="cfg-hint">Ein einzelner Beitrag wird beim nächsten Spiel aktualisiert. Discord zeigt die verbleibende Zeit automatisch an.</div>
+      <label class="cfg-label">Kanal für den Countdown (optional)
+        <input class="cfg-input" data-openliga-role="countdown-channel" type="text" autocomplete="off" placeholder="Discord-Kanal-ID · leer = Meldungskanal">
+      </label>
       <div data-openliga-role="status" class="cfg-hint">Teams werden geladen …</div>
       <label class="cfg-label">Kanal für Tor- und Spielmeldungen
         <input class="cfg-input" data-openliga-role="notification" type="text" autocomplete="off" placeholder="Discord-Kanal-ID">
@@ -6608,6 +6625,7 @@
       leagueSelect.value = option.value;
     }
     row.querySelector('[data-openliga-role="notification"]').value = feed.notificationChannelId || '';
+    row.querySelector('[data-openliga-role="countdown-channel"]').value = feed.countdownChannelId || '';
     row.querySelector('[data-openliga-role="tables"]').value = (feed.tableChannelIds || []).join(',');
     row.querySelector('[data-openliga-role="countdown-team"]').dataset.savedValue = feed.countdownTeamId == null
       ? ''
@@ -6641,6 +6659,8 @@
       await loadOpenLigaDbTeams(row);
     });
     row.querySelector('[data-openliga-role="remove"]').addEventListener('click', () => {
+      const previewImage = row.querySelector('[data-openliga-role="finished-image-preview-image"]');
+      if (previewImage.dataset.objectUrl) URL.revokeObjectURL(previewImage.dataset.objectUrl);
       row.remove();
       refreshOpenLigaDbNavigation();
       updateOpenLigaDbFeedVisibility();
@@ -6652,11 +6672,93 @@
       input.value = String(getOpenLigaDbFavoriteLimit(row));
       updateOpenLigaDbFavoriteSelection(row, true);
     });
+    row.querySelector('[data-openliga-role="finished-image-preview"]').addEventListener('click', () => {
+      void previewOpenLigaDbFinishedImage(row);
+    });
+    row.querySelector('[data-openliga-role="finished-image-test"]').addEventListener('click', () => {
+      void sendOpenLigaDbFinishedImageTest(row);
+    });
+    for (const role of ['finished-image-scorers', 'finished-image-competition', 'finished-image-date', 'finished-image-template']) {
+      row.querySelector(`[data-openliga-role="${role}"]`).addEventListener('change', () => {
+        if (!row.querySelector('[data-openliga-role="finished-image-preview-image"]').hidden) {
+          void previewOpenLigaDbFinishedImage(row);
+        }
+      });
+    }
     await loadOpenLigaDbTeams(row, favoriteTeamIds);
     refreshOpenLigaDbNavigation();
     updateOpenLigaDbFeedVisibility();
     syncOpenLigaDbFeedsDirtyState();
     if (selectAfterAdd) selectOpenLigaDbFeed(row.dataset.openligaFeedId);
+  }
+
+  function getOpenLigaDbFinishedImageSettings(row) {
+    return {
+      showScorers: row.querySelector('[data-openliga-role="finished-image-scorers"]').checked,
+      showCompetition: row.querySelector('[data-openliga-role="finished-image-competition"]').checked,
+      showDate: row.querySelector('[data-openliga-role="finished-image-date"]').checked,
+      template: row.querySelector('[data-openliga-role="finished-image-template"]').value,
+    };
+  }
+
+  async function previewOpenLigaDbFinishedImage(row) {
+    const status = row.querySelector('[data-openliga-role="finished-image-status"]');
+    const image = row.querySelector('[data-openliga-role="finished-image-preview-image"]');
+    status.textContent = 'Vorschau wird erstellt …';
+    status.className = 'cfg-hint';
+    try {
+      const response = await fetch('/api/openligadb/finished-match-preview.png', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ settings: getOpenLigaDbFinishedImageSettings(row) }),
+      });
+      if (!response.ok) {
+        const result = await response.json();
+        throw new Error(result.error || 'Vorschau konnte nicht erstellt werden.');
+      }
+      if (image.dataset.objectUrl) URL.revokeObjectURL(image.dataset.objectUrl);
+      image.dataset.objectUrl = URL.createObjectURL(await response.blob());
+      image.src = image.dataset.objectUrl;
+      image.hidden = false;
+      status.textContent = 'Vorschau mit Beispieldaten. Änderungen an den Grafikoptionen aktualisieren sie.';
+    } catch (error) {
+      status.textContent = error.message;
+      status.className = 'cfg-hint err';
+    }
+  }
+
+  async function sendOpenLigaDbFinishedImageTest(row) {
+    const status = row.querySelector('[data-openliga-role="finished-image-status"]');
+    const button = row.querySelector('[data-openliga-role="finished-image-test"]');
+    const channelId = row.querySelector('[data-openliga-role="notification"]').value.trim();
+    if (!activeServerProfileGuildId || !channelId) {
+      status.textContent = 'Bitte zuerst einen Server und den Kanal für Tor- und Spielmeldungen auswählen.';
+      status.className = 'cfg-hint err';
+      return;
+    }
+    button.disabled = true;
+    status.textContent = 'Testgrafik wird an Discord gesendet …';
+    status.className = 'cfg-hint';
+    try {
+      const response = await fetch('/api/openligadb/finished-match-test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          guildId: activeServerProfileGuildId,
+          channelId,
+          settings: getOpenLigaDbFinishedImageSettings(row),
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.ok) throw new Error(result.error || 'Testgrafik konnte nicht gesendet werden.');
+      status.textContent = result.message || 'Testgrafik wurde gesendet.';
+      status.className = 'cfg-hint ok';
+    } catch (error) {
+      status.textContent = error.message;
+      status.className = 'cfg-hint err';
+    } finally {
+      button.disabled = false;
+    }
   }
 
   function serializeOpenLigaDbFeeds() {
@@ -6676,6 +6778,7 @@
         maxFavorites: getOpenLigaDbFavoriteLimit(row),
         favoriteTeamIds: Array.from(row.querySelectorAll('[data-openliga-role="favorites"] input[type="checkbox"]:checked'), checkbox => Number(checkbox.value)).filter(Number.isInteger),
         countdownTeamId: row.querySelector('[data-openliga-role="countdown-team"]').value || null,
+        countdownChannelId: row.querySelector('[data-openliga-role="countdown-channel"]').value.trim(),
         notificationChannelId: row.querySelector('[data-openliga-role="notification"]').value.trim(),
         tableChannelIds: [...new Set(row.querySelector('[data-openliga-role="tables"]').value.split(/[;,]/).map(id => id.trim()).filter(Boolean))],
       };

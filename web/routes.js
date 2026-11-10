@@ -19,11 +19,11 @@ const fs          = require('fs');
 const os          = require('os');
 const express     = require('express');
 const axios       = require('axios');
-const { ChannelType } = require('discord.js');
+const { AttachmentBuilder, ChannelType } = require('discord.js');
 const { execFile, execFileSync, execSync, spawn } = require('child_process');
 const { createDashboardAuth, timingSafeStringEqual } = require('./dashboard-auth');
 const { SERVER_PROFILE_ENV_PATHS, createServerProfileDefaults, setServerProfileSettings } = require('../server-profiles');
-const { fetchAvailableLeagues, fetchLatestLeagueTeams } = require('../services/openligadb');
+const { buildFinishedMatchPng, fetchAvailableLeagues, fetchLatestLeagueTeams } = require('../services/openligadb');
 
 // Erlaubte Werte für Service-Control (Whitelist gegen Command-Injection)
 const ALLOWED_SERVICES = ['bockis-bot', 'uptime-kuma', 'cloudflared'];
@@ -99,6 +99,10 @@ function normalizeOpenLigaDbFeeds(value) {
     if (notificationChannelId && !/^\d{1,24}$/.test(notificationChannelId)) {
       throw new Error(`Ungültiger Meldungskanal für ${leagueShortcut}.`);
     }
+    const countdownChannelId = String(feed.countdownChannelId || '').trim();
+    if (countdownChannelId && !/^\d{1,24}$/.test(countdownChannelId)) {
+      throw new Error(`Ungültiger Countdown-Kanal für ${leagueShortcut}.`);
+    }
     return {
       leagueShortcut,
       ...(season === undefined ? {} : { season }),
@@ -114,9 +118,50 @@ function normalizeOpenLigaDbFeeds(value) {
         template: imageTemplate,
       },
       notificationChannelId,
+      countdownChannelId,
       tableChannelIds: [...new Set(tableChannelIds.map(String))],
     };
   });
+}
+
+function normalizeFinishedMatchImageSettings(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('Ungültige Ergebnisgrafik-Einstellungen.');
+  }
+  const normalizeFlag = (key, defaultValue) => {
+    if (value[key] == null) return defaultValue;
+    if (typeof value[key] !== 'boolean') throw new Error(`Ungültige Ergebnisgrafik-Einstellung "${key}".`);
+    return value[key];
+  };
+  const template = value.template == null ? 'stadium' : value.template;
+  if (!['stadium', 'classic', 'minimal'].includes(template)) {
+    throw new Error('Ungültige Grafikvorlage.');
+  }
+  return {
+    showScorers: normalizeFlag('showScorers', true),
+    showCompetition: normalizeFlag('showCompetition', true),
+    showDate: normalizeFlag('showDate', false),
+    template,
+  };
+}
+
+function createFinishedMatchPreview() {
+  return {
+    leagueName: '1. Bundesliga · Vorschau',
+    group: { groupName: '9. Spieltag' },
+    match: {
+      matchDateTimeUTC: new Date().toISOString(),
+      team1: { shortName: 'FC Beispiel', teamName: 'FC Beispiel' },
+      team2: { shortName: 'SV Muster', teamName: 'SV Muster' },
+      goals: [
+        { goalGetterName: 'Max Beispiel', matchMinute: 12, scoreTeam1: 1, scoreTeam2: 0 },
+        { goalGetterName: 'Alex Muster', matchMinute: 35, scoreTeam1: 1, scoreTeam2: 1 },
+        { goalGetterName: 'Chris Beispiel', matchMinute: 61, scoreTeam1: 2, scoreTeam2: 1 },
+        { goalGetterName: 'Sam Muster', matchMinute: 74, scoreTeam1: 2, scoreTeam2: 2 },
+        { goalGetterName: 'Robin Beispiel', matchMinute: 88, scoreTeam1: 3, scoreTeam2: 2 },
+      ],
+    },
+  };
 }
 
 function execFilePromise(cmd, args, opts = {}) {
@@ -324,6 +369,57 @@ module.exports = function startWebServer({
     } catch (err) {
       logger.warn(`OpenLigaDB-Teamliste konnte nicht geladen werden: ${err.message}`);
       return res.status(502).json({ ok: false, error: 'Teams sind momentan nicht verfügbar.' });
+    }
+  });
+
+  app.post('/api/openligadb/finished-match-preview.png', dashboardAuth, async (req, res) => {
+    let settings;
+    try {
+      settings = normalizeFinishedMatchImageSettings(req.body?.settings);
+    } catch (err) {
+      return res.status(400).json({ ok: false, error: err.message });
+    }
+    try {
+      const preview = createFinishedMatchPreview();
+      const png = await buildFinishedMatchPng({ ...preview, settings });
+      return res.set('Cache-Control', 'no-store').type('png').send(png);
+    } catch (err) {
+      logger.error(`OpenLigaDB-Grafikvorschau fehlgeschlagen: ${err.message}`);
+      return res.status(500).json({ ok: false, error: 'Grafikvorschau konnte nicht erstellt werden.' });
+    }
+  });
+
+  app.post('/api/openligadb/finished-match-test', dashboardAuth, async (req, res) => {
+    let settings;
+    try {
+      settings = normalizeFinishedMatchImageSettings(req.body?.settings);
+    } catch (err) {
+      return res.status(400).json({ ok: false, error: err.message });
+    }
+    try {
+      const guildId = String(req.body?.guildId || '').trim();
+      const channelId = String(req.body?.channelId || '').trim();
+      if (!/^\d{1,24}$/.test(guildId) || !/^\d{5,24}$/.test(channelId)) {
+        return res.status(400).json({ ok: false, error: 'Bitte einen gültigen Server und Meldungskanal auswählen.' });
+      }
+      const guild = client.guilds.cache.get(guildId);
+      if (!guild) return res.status(404).json({ ok: false, error: 'Der ausgewählte Discord-Server ist nicht erreichbar.' });
+      const profile = await ServerProfile.findOne({ where: { guildId } });
+      if (!profile) return res.status(403).json({ ok: false, error: 'Für diesen Server ist kein Dashboard-Profil vorhanden.' });
+      const channel = guild.channels.cache.get(channelId) || await guild.channels.fetch(channelId);
+      if (!channel?.isTextBased?.() || typeof channel.send !== 'function') {
+        return res.status(400).json({ ok: false, error: 'Der ausgewählte Kanal kann keine Nachrichten empfangen.' });
+      }
+      const preview = createFinishedMatchPreview();
+      const png = await buildFinishedMatchPng({ ...preview, settings });
+      await channel.send({
+        content: '🧪 **Testgrafik** · Beispieldaten, kein echtes Spielergebnis.',
+        files: [new AttachmentBuilder(png, { name: 'openligadb-testgrafik.png' })],
+      });
+      return res.json({ ok: true, message: `Testgrafik wurde an #${channel.name} gesendet.` });
+    } catch (err) {
+      logger.error(`OpenLigaDB-Testgrafik konnte nicht gesendet werden: ${err.message}`);
+      return res.status(500).json({ ok: false, error: err.message });
     }
   });
 

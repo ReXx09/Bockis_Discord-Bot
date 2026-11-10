@@ -361,7 +361,63 @@ function buildNextMatchCountdownPayload({ leagueName, match, teamId, teamInfo, n
   return { embeds: [embed] };
 }
 
-function buildLiveTablePayload({ leagueName, table, matches, now = Date.now() }) {
+function getKnockoutLoserId(match) {
+  if (match.matchIsFinished !== true) return null;
+  const result = ['AfterPenalties', 'AfterExtraTime', 'After90Minutes']
+    .map(kind => (match.matchResults || []).find(item => item.resultTypeKind === kind))
+    .find(Boolean);
+  const [team1Score, team2Score] = result
+    && Number.isInteger(result.pointsTeam1)
+    && Number.isInteger(result.pointsTeam2)
+    ? [result.pointsTeam1, result.pointsTeam2]
+    : getMatchScore(match);
+  if (team1Score === team2Score) return null;
+  return Number(team1Score < team2Score ? match.team1?.teamId : match.team2?.teamId) || null;
+}
+
+function buildDfbPokalPayload({ leagueName, group, table, matches }) {
+  const teams = new Map();
+  for (const team of table || []) {
+    const teamId = Number(team.teamId);
+    if (Number.isInteger(teamId) && teamId > 0) teams.set(teamId, { ...team });
+  }
+  const eliminatedTeamIds = new Set();
+  for (const match of matches || []) {
+    for (const team of [match.team1, match.team2]) {
+      const teamId = Number(team?.teamId);
+      if (Number.isInteger(teamId) && teamId > 0) {
+        teams.set(teamId, { ...teams.get(teamId), ...team });
+      }
+    }
+    const loserId = getKnockoutLoserId(match);
+    if (loserId) eliminatedTeamIds.add(loserId);
+  }
+
+  const remainingTeams = [...teams.entries()]
+    .filter(([teamId]) => !eliminatedTeamIds.has(teamId))
+    .map(([, team]) => team.shortName || team.teamName || 'Unbekanntes Team')
+    .sort((a, b) => a.localeCompare(b, 'de'));
+  const teamList = remainingTeams.map((teamName, index) =>
+    `**${String(index + 1).padStart(2, '0')}.** ${teamName}`);
+  const round = group?.groupName ? `**Aktuelle Runde:** ${group.groupName}\n\n` : '';
+  const description = remainingTeams.length
+    ? `${round}**${remainingTeams.length} Mannschaften noch im Wettbewerb**\n\n${teamList.join('\n')}`
+    : `${round}Noch keine vertretenen Mannschaften verfügbar.`;
+
+  return {
+    embeds: [new EmbedBuilder()
+      .setColor(0xD6B32A)
+      .setTitle(`🏆 ${leagueName || 'DFB-Pokal'} · Noch vertreten`)
+      .setDescription(description.slice(0, 4000))
+      .setFooter({ text: 'OpenLigaDB · K.-o.-Übersicht · ODbL 1.0' })],
+  };
+}
+
+function buildLiveTablePayload({ leagueShortcut, leagueName, group, table, matches, now = Date.now() }) {
+  if (leagueShortcut === 'dfb') {
+    return buildDfbPokalPayload({ leagueName, group, table, matches });
+  }
+
   const standings = new Map((table || []).map(row => [Number(row.teamId), {
     ...row,
     matches: Number(row.matches) || 0,
@@ -520,10 +576,14 @@ function buildFinishedMatchSvg({ leagueName, group, match, settings = {} }) {
   </svg>`;
 }
 
-async function buildFinishedMatchAttachment({ leagueName, group, match, settings }) {
-  const image = await sharp(Buffer.from(buildFinishedMatchSvg({ leagueName, group, match, settings })))
+async function buildFinishedMatchPng({ leagueName, group, match, settings }) {
+  return sharp(Buffer.from(buildFinishedMatchSvg({ leagueName, group, match, settings })))
     .png()
     .toBuffer();
+}
+
+async function buildFinishedMatchAttachment({ leagueName, group, match, settings }) {
+  const image = await buildFinishedMatchPng({ leagueName, group, match, settings });
   return new AttachmentBuilder(image, { name: 'openligadb-endergebnis.png' });
 }
 
@@ -540,6 +600,7 @@ function createOpenLigaDbWatcher({ http, client, ServerProfile, logger, requestI
   const countdownMessages = new Map();
   const countdownSignatures = new Map();
   const checkedDisabledCountdowns = new Set();
+  const countdownChannelsByFeed = new Map();
   const lastPollAtByFeed = new Map();
 
   async function getLeagueMetadata() {
@@ -558,14 +619,18 @@ function createOpenLigaDbWatcher({ http, client, ServerProfile, logger, requestI
     const changedAt = String(changedResponse.data || '');
     const feedKey = `${leagueShortcut}:${season}:${group.groupOrderID}`;
     let feed = feeds.get(feedKey);
-    if (!feed || feed.changedAt !== changedAt) {
+    if (!feed || feed.changedAt !== changedAt || leagueShortcut === 'dfb') {
       const matchesResponse = await apiGet(http, `${API_BASE}/getmatchdata/${encodeURIComponent(leagueShortcut)}/${season}/${group.groupOrderID}`, requestIntervalMs);
       const tableResponse = await apiGet(http, `${API_BASE}/getbltable/${encodeURIComponent(leagueShortcut)}/${season}`, requestIntervalMs);
+      const allMatchesResponse = leagueShortcut === 'dfb'
+        ? await apiGet(http, `${API_BASE}/getmatchdata/${encodeURIComponent(leagueShortcut)}/${season}`, requestIntervalMs)
+        : matchesResponse;
       feed = {
         key: feedKey,
         changedAt,
         group,
         matches: Array.isArray(matchesResponse.data) ? matchesResponse.data : [],
+        allMatches: Array.isArray(allMatchesResponse.data) ? allMatchesResponse.data : [],
         table: Array.isArray(tableResponse.data) ? tableResponse.data : [],
       };
       feeds.set(feedKey, feed);
@@ -597,10 +662,16 @@ function createOpenLigaDbWatcher({ http, client, ServerProfile, logger, requestI
     return channel;
   }
 
-  async function findMarkedMessage(channel, marker) {
+  async function findMarkedMessages(channel, marker) {
+    const [markerType, ...markerParts] = marker.split(':');
+    const feedKey = markerParts.slice(-2).join(':');
     const messages = await channel.messages.fetch({ limit: 50 });
-    return messages.find(message => message.author.id === client.user.id
-      && message.embeds.some(embed => embed.footer?.text?.includes(marker))) || null;
+    return messages.filter(message => message.author.id === client.user.id
+      && message.embeds.some(embed => {
+        const footer = embed.footer?.text || '';
+        return footer.includes(marker)
+          || (footer.includes(`${markerType}:`) && footer.endsWith(`:${feedKey}`));
+      }));
   }
 
   async function upsertEmbedMessage({ profile, channelId, key, marker, payload, messages, signatures }) {
@@ -612,14 +683,24 @@ function createOpenLigaDbWatcher({ http, client, ServerProfile, logger, requestI
     const footerText = payload.embeds[0].toJSON().footer?.text || 'OpenLigaDB · ODbL 1.0';
     payload.embeds[0].setFooter({ text: `${footerText} · ${marker}` });
     const signature = JSON.stringify(payload.embeds[0].toJSON());
-    if (signatures.get(boardKey) === signature) return;
+    if (signatures.get(boardKey) === signature && messages.has(boardKey)) return;
 
     let message = messages.get(boardKey);
-    if (!message) try { message = await findMarkedMessage(channel, marker); } catch {}
+    let duplicateMessages = [];
+    if (!message) {
+      const existingMessages = await findMarkedMessages(channel, marker);
+      [message, ...duplicateMessages] = existingMessages;
+    }
     if (message) message = await message.edit(payload);
     else message = await channel.send(payload);
     messages.set(boardKey, message);
     signatures.set(boardKey, signature);
+    const deleteResults = await Promise.allSettled(duplicateMessages.map(duplicate => duplicate.delete()));
+    for (const result of deleteResults) {
+      if (result.status === 'rejected') {
+        logger.warn(`OpenLigaDB-Duplikat ${marker} konnte in Kanal ${channelId} nicht entfernt werden: ${result.reason.message}`);
+      }
+    }
   }
 
   async function clearCountdownMessage(profile, channelId, feedKey) {
@@ -631,9 +712,12 @@ function createOpenLigaDbWatcher({ http, client, ServerProfile, logger, requestI
     try {
       const channel = await getChannel(channelId);
       if (!channel) return;
-      const marker = `OpenLigaDB-Countdown:${profile.guildId}:${feedKey}`;
-      const message = countdownMessages.get(key) || await findMarkedMessage(channel, marker);
-      if (message) await message.delete();
+      const marker = `OpenLigaDB-Countdown:${feedKey}`;
+      const markedMessages = await findMarkedMessages(channel, marker);
+      const messagesToDelete = new Set(markedMessages);
+      const cachedMessage = countdownMessages.get(key);
+      if (cachedMessage) messagesToDelete.add(cachedMessage);
+      await Promise.all(Array.from(messagesToDelete, message => message.delete()));
       countdownMessages.delete(key);
       countdownSignatures.delete(key);
     } catch (error) {
@@ -703,7 +787,7 @@ function createOpenLigaDbWatcher({ http, client, ServerProfile, logger, requestI
         profile,
         channelId: feedConfig.notificationChannelId,
         key: `scoreboard:${feedKey}`,
-        marker: `OpenLigaDB-Scoreboard:${profile.guildId}:${feedKey}`,
+        marker: `OpenLigaDB-Scoreboard:${feedKey}`,
         payload,
         messages: boardMessages,
         signatures: boardSignatures,
@@ -713,7 +797,15 @@ function createOpenLigaDbWatcher({ http, client, ServerProfile, logger, requestI
 
     const countdownTeamId = Number(feedConfig.countdownTeamId);
     const countdownKey = `${leagueShortcut}:${season}`;
-    if (Number.isInteger(countdownTeamId) && favoriteTeamIds.includes(countdownTeamId) && feedConfig.notificationChannelId) {
+    const countdownStateKey = `${profile.guildId}:${countdownKey}`;
+    const countdownChannelId = String(feedConfig.countdownChannelId || feedConfig.notificationChannelId || '').trim();
+    if (Number.isInteger(countdownTeamId) && favoriteTeamIds.includes(countdownTeamId) && countdownChannelId) {
+      const previousChannelId = countdownChannelsByFeed.get(countdownStateKey);
+      const legacyChannelId = String(feedConfig.notificationChannelId || '').trim();
+      for (const obsoleteChannelId of new Set([previousChannelId, legacyChannelId].filter(channelId => channelId && channelId !== countdownChannelId))) {
+        await clearCountdownMessage(profile, obsoleteChannelId, countdownKey);
+      }
+      countdownChannelsByFeed.set(countdownStateKey, countdownChannelId);
       const nextMatch = await loadNextMatch(metadata?.leagueId, countdownTeamId);
       const teamInfo = currentFeed.table.find(team => Number(team.teamId) === countdownTeamId);
       const payload = buildNextMatchCountdownPayload({
@@ -723,31 +815,46 @@ function createOpenLigaDbWatcher({ http, client, ServerProfile, logger, requestI
         teamInfo,
         now: nowProvider(),
       });
-      const marker = `OpenLigaDB-Countdown:${profile.guildId}:${countdownKey}`;
-      const messageKey = `${profile.guildId}:countdown:${countdownKey}:${feedConfig.notificationChannelId}`;
+      const marker = `OpenLigaDB-Countdown:${countdownKey}`;
+      const messageKey = `${profile.guildId}:countdown:${countdownKey}:${countdownChannelId}`;
       checkedDisabledCountdowns.delete(messageKey);
       await upsertEmbedMessage({
         profile,
-        channelId: feedConfig.notificationChannelId,
+        channelId: countdownChannelId,
         key: `countdown:${countdownKey}`,
         marker,
         payload,
         messages: countdownMessages,
         signatures: countdownSignatures,
       });
-    } else if (feedConfig.notificationChannelId) {
-      await clearCountdownMessage(profile, feedConfig.notificationChannelId, countdownKey);
+    } else {
+      const previousChannelId = countdownChannelsByFeed.get(countdownStateKey);
+      const candidateChannelIds = new Set([
+        previousChannelId,
+        feedConfig.countdownChannelId,
+        feedConfig.notificationChannelId,
+      ].map(channelId => String(channelId || '').trim()).filter(Boolean));
+      for (const channelId of candidateChannelIds) {
+        await clearCountdownMessage(profile, channelId, countdownKey);
+      }
+      countdownChannelsByFeed.delete(countdownStateKey);
     }
 
     const tableChannelIds = Array.isArray(feedConfig.tableChannelIds) ? [...new Set(feedConfig.tableChannelIds.map(id => String(id).trim()).filter(Boolean))] : [];
     if (tableChannelIds.length) {
-      const payload = buildLiveTablePayload({ leagueName, table: currentFeed.table, matches: currentFeed.matches });
+      const payload = buildLiveTablePayload({
+        leagueShortcut,
+        leagueName,
+        group: currentFeed.group,
+        table: currentFeed.table,
+        matches: leagueShortcut === 'dfb' ? currentFeed.allMatches : currentFeed.matches,
+      });
       for (const channelId of tableChannelIds) {
         await upsertEmbedMessage({
           profile,
           channelId,
           key: `table:${feedKey}`,
-          marker: `OpenLigaDB-Tabelle:${profile.guildId}:${feedKey}`,
+          marker: `OpenLigaDB-Tabelle:${feedKey}`,
           payload,
           messages: tableMessages,
           signatures: tableSignatures,
@@ -817,6 +924,7 @@ function createOpenLigaDbWatcher({ http, client, ServerProfile, logger, requestI
 
 module.exports = {
   buildScoreboardPayload,
+  buildFinishedMatchPng,
   buildNextMatchCountdownPayload,
   buildLiveTablePayload,
   createOpenLigaDbWatcher,
