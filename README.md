@@ -2,7 +2,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D18-green.svg)](https://nodejs.org)
-[![Version](https://img.shields.io/badge/version-1.1.0-informational.svg)](https://github.com/ReXx09/Bockis_Discord-Bot/releases)
+[![Version](https://img.shields.io/badge/version-1.2.0-informational.svg)](https://github.com/ReXx09/Bockis_Discord-Bot/releases)
 [![Platform](https://img.shields.io/badge/platform-Raspberry%20Pi%20%7C%20Linux-lightgrey.svg)](https://www.raspberrypi.org)
 [![Uptime Kuma](https://img.shields.io/badge/powered%20by-Uptime%20Kuma-blueviolet.svg)](https://github.com/louislam/uptime-kuma)
 
@@ -56,9 +56,14 @@ Optimiert für den Betrieb auf dem **Raspberry Pi** — mit interaktivem Install
 ├── docker-compose.yml      # Docker-Deployment
 ├── Dockerfile              # Container-Build für Docker-Deployment
 ├── config/
-│   └── config.js           # Konfigurationsschema (convict)
+│   ├── config.js           # Konfigurationsschema (convict)
+│   └── auto-replies.example.json # Vorlage für Auto-Reply-Regeln
+├── docs/
+│   ├── DISCORD_KANAL_SETUP_CHECK.md
+│   └── WIGIDASH_INTEGRATION.md
+├── scripts/
+│   └── test-wigidash.js
 ├── data/
-│   ├── auto-replies.json   # Auto-Reply-Regeln (Dashboard-Editor)
 │   └── scheduled-messages.json  # Geplante Nachrichten
 ├── models/
 │   └── MonitorStatus.js    # SQLite-Datenbankmodell
@@ -69,8 +74,16 @@ Optimiert für den Betrieb auf dem **Raspberry Pi** — mit interaktivem Install
 ├── tests/
 │   └── integration.test.js
 ├── .env.example            # Vorlage für die Konfiguration
+├── CHANGELOG.md
 └── README.md
 ```
+
+## Dokumentation
+
+- [WigiDash-Integration](docs/WIGIDASH_INTEGRATION.md)
+- [Discord-Kanal-Setup](docs/DISCORD_KANAL_SETUP_CHECK.md)
+- [Änderungsprotokoll](CHANGELOG.md)
+- [GitHub-Releases](https://github.com/ReXx09/Bockis_Discord-Bot/releases)
 
 ---
 
@@ -443,6 +456,15 @@ bash ~/bockis-bot/start-bot.sh
 | `DISCORD_AUTO_REPLY_RULES_FILE` | ❌ | Pfad zur Regeldatei (Standard: `./data/auto-replies.json`) |
 
 > Regeln werden über das **Web-Dashboard** verwaltet und in `data/auto-replies.json` gespeichert. Vorgefertigte Templates (Begrüßung, Gute Nacht, Wochenende, etc.) lassen sich per Klick aktivieren.
+
+Für eine manuelle Ersteinrichtung kann die Vorlage kopiert werden:
+
+```bash
+mkdir -p data
+cp config/auto-replies.example.json data/auto-replies.json
+```
+
+Der Updater legt die Datei automatisch aus der Vorlage an, falls sie noch fehlt. Bestehende Regeln unter `data/` werden dabei nicht überschrieben.
 
 ### KI-Chat (OpenAI)
 

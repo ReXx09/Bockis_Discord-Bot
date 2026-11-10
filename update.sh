@@ -116,6 +116,30 @@ if [[ "$SKIP_CONFIRM" == "false" ]]; then
   [[ "${CONFIRM,,}" =~ ^(j|ja|y|yes)$ ]] || { echo "Abgebrochen."; exit 0; }
 fi
 
+migrate_legacy_auto_replies() {
+  local legacy_file="$BOT_DIR/auto-replies.json"
+  local data_file="$BOT_DIR/data/auto-replies.json"
+  if [[ -f "$legacy_file" ]]; then
+    mkdir -p "$BOT_DIR/data"
+    if [[ ! -e "$data_file" ]]; then
+      cp -p "$legacy_file" "$data_file"
+      print_status "Legacy-auto-replies.json nach data/ kopiert"
+    elif ! cmp -s "$legacy_file" "$data_file"; then
+      print_warn "Root- und data/auto-replies.json unterscheiden sich; beide bleiben erhalten, data/ wird verwendet"
+    fi
+  fi
+}
+
+initialize_auto_replies() {
+  local data_file="$BOT_DIR/data/auto-replies.json"
+  local example_file="$BOT_DIR/config/auto-replies.example.json"
+  if [[ ! -e "$data_file" && -f "$example_file" ]]; then
+    mkdir -p "$BOT_DIR/data"
+    cp -p "$example_file" "$data_file"
+    print_status "Auto-Reply-Beispiel nach data/ kopiert"
+  fi
+}
+
 # ── .env Backup ──────────────────────────────────────────────────────────────
 print_header "Backup"
 BACKUP_FILE="$BOT_DIR/.env.backup.$(date +%Y%m%d_%H%M%S)"
@@ -190,18 +214,12 @@ update_native() {
         die "Fast-Forward nicht möglich. Keine Laufzeitdateien wurden gestasht oder überschrieben; lokale Commits müssen geprüft werden."
       fi
 
-      # Legacy-Regeln kopieren, aber die getrackte Quelldatei nicht vor git pull löschen.
-      if [[ -f "$BOT_DIR/auto-replies.json" && ! -e "$BOT_DIR/data/auto-replies.json" ]]; then
-        mkdir -p "$BOT_DIR/data"
-        cp -p "$BOT_DIR/auto-replies.json" "$BOT_DIR/data/auto-replies.json"
-        print_status "Legacy-auto-replies.json nach data/ kopiert"
-      elif [[ -f "$BOT_DIR/auto-replies.json" && -f "$BOT_DIR/data/auto-replies.json" ]] && ! cmp -s "$BOT_DIR/auto-replies.json" "$BOT_DIR/data/auto-replies.json"; then
-        print_warn "Root- und data/auto-replies.json unterscheiden sich; beide bleiben erhalten, data/ wird verwendet"
-      fi
+      # Alte Root-Regeln vor dem Entfernen der Legacy-Datei erhalten.
+      migrate_legacy_auto_replies
 
       # Lokale Laufzeit-Dateien sichern (z. B. .env + Auto-Reply-Regeln)
       LOCAL_OVERRIDE_FILES=()
-      for rel in .env auto-replies.json; do
+      for rel in .env auto-replies.json data/auto-replies.json; do
         if [[ -e "$BOT_DIR/$rel" ]]; then
           LOCAL_OVERRIDE_FILES+=("$rel")
         fi
@@ -242,6 +260,8 @@ update_native() {
       print_warn "Kein Git-Repository — Code-Update wird übersprungen (nur npm-Pakete werden aktualisiert)"
     fi
   fi
+
+  initialize_auto_replies
 
   # 2. npm-Pakete aktualisieren
   if [[ "$SKIP_NPM" == "true" ]]; then
@@ -351,13 +371,33 @@ update_docker() {
   # 1. Code per git aktualisieren (falls verfügbar)
   if git -C "$BOT_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     print_status "Lade neueste Version von GitHub..."
-    git -C "$BOT_DIR" pull --ff-only origin main 2>&1 | while IFS= read -r line; do
+    migrate_legacy_auto_replies
+    LEGACY_STASH_DONE=false
+    if [[ -n "$(git -C "$BOT_DIR" status --porcelain -- auto-replies.json 2>/dev/null || true)" ]]; then
+      git -C "$BOT_DIR" stash push -u -m "docker-update-legacy-auto-replies" -- auto-replies.json \
+        || die "Legacy-Auto-Reply-Datei konnte nicht gesichert werden"
+      LEGACY_STASH_DONE=true
+    fi
+
+    if git -C "$BOT_DIR" pull --ff-only origin main 2>&1 | while IFS= read -r line; do
       print_status "$line"
-    done
-    print_success "Code aktualisiert"
+    done; then
+      print_success "Code aktualisiert"
+    else
+      PULL_STATUS=$?
+      if [[ "$LEGACY_STASH_DONE" == "true" ]]; then
+        git -C "$BOT_DIR" stash pop || print_warn "Legacy-Auto-Reply-Stash blieb zur Wiederherstellung erhalten"
+      fi
+      die "Git-Update fehlgeschlagen (Exit-Code $PULL_STATUS)"
+    fi
+    if [[ "$LEGACY_STASH_DONE" == "true" ]]; then
+      git -C "$BOT_DIR" stash pop || print_warn "Legacy-Auto-Reply-Stash blieb zur Wiederherstellung erhalten"
+    fi
   else
     print_warn "Kein Git-Repository — Code-Update wird übersprungen"
   fi
+
+  initialize_auto_replies
 
   # 2. Basis-Images aktualisieren (node, etc.)
   print_status "Lade neue Docker-Images..."

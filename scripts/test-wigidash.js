@@ -6,9 +6,9 @@
  * Dieses Script testet die WigiDash Status-API
  * 
  * Verwendung:
- *   node test-wigidash.js                          # Standard-Test (localhost:47900)
- *   node test-wigidash.js http://localhost:3000    # Dashboard-Endpunkt testen
- *   node test-wigidash.js http://192.168.x.x:47900 --api-key=geheim123
+ *   node scripts/test-wigidash.js                          # Standard-Test (localhost:47900)
+ *   node scripts/test-wigidash.js http://localhost:3000    # Dashboard-Endpunkt testen
+ *   node scripts/test-wigidash.js http://192.168.x.x:47900 --api-key=geheim123
  */
 
 const http = require('http');

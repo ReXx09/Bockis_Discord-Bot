@@ -714,7 +714,7 @@ bot_git_recovery() {
     _git_recovery_cleanup || return 1
 
     local -a LOCAL_OVERRIDE_FILES=()
-    for rel in .env auto-replies.json; do
+    for rel in .env auto-replies.json data/auto-replies.json; do
       [[ -e "$BOT_DIR/$rel" ]] && LOCAL_OVERRIDE_FILES+=("$rel")
     done
 

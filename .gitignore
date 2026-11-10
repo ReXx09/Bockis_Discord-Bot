@@ -9,6 +9,7 @@ node_modules/
 data/
 
 # Logs
+logs/
 *.log
 
 # IDE
@@ -16,5 +17,4 @@ data/
 .idea/
 
 # Lokale Scripts (Pi-spezifisch)
-cleanup-and-sync.sh
 auto-sync.sh

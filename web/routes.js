@@ -1759,7 +1759,7 @@ module.exports = function startWebServer({
     const baseScript = [
       'set -euo pipefail',
       'REC_FILES=()',
-      'for rel in .env auto-replies.json; do',
+      'for rel in .env auto-replies.json data/auto-replies.json; do',
       '  [[ -e "$rel" ]] && REC_FILES+=("$rel")',
       'done',
       'cleanup_step() {',
@@ -3206,4 +3206,3 @@ module.exports = function startWebServer({
 
   return server;
 };
-

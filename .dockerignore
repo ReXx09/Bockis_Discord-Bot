@@ -8,4 +8,8 @@ npm-debug.log*
 logs/*
 data/*
 coverage
+*.md
+tests/
+*.sh
+.github/
 .DS_Store
