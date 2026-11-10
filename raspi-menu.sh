@@ -2491,6 +2491,45 @@ _dc_write() {
   fi
 }
 
+_dc_write_dashboard_password() {
+  local PASSWORD="$1" SECRET_TMP ENV_TMP
+  SECRET_TMP=$(mktemp) || return 1
+  ENV_TMP=$(mktemp "$BOT_DIR/.env.tmp.XXXXXX") || {
+    rm -f "$SECRET_TMP"
+    return 1
+  }
+  chmod 600 "$SECRET_TMP" "$ENV_TMP" || {
+    rm -f "$SECRET_TMP" "$ENV_TMP"
+    return 1
+  }
+  printf '%s\n' "$PASSWORD" > "$SECRET_TMP" || {
+    rm -f "$SECRET_TMP" "$ENV_TMP"
+    return 1
+  }
+  if ! awk -v secret_file="$SECRET_TMP" '
+    BEGIN {
+      if ((getline secret < secret_file) != 1) exit 2
+      close(secret_file)
+    }
+    /^DASHBOARD_PASSWORD=/ {
+      print "DASHBOARD_PASSWORD=" secret
+      found = 1
+      next
+    }
+    { print }
+    END {
+      if (!found) print "DASHBOARD_PASSWORD=" secret
+    }
+  ' "$BOT_DIR/.env" > "$ENV_TMP"; then
+    rm -f "$SECRET_TMP" "$ENV_TMP"
+    return 1
+  fi
+  chmod 600 "$ENV_TMP" && mv -f "$ENV_TMP" "$BOT_DIR/.env"
+  local RESULT=$?
+  rm -f "$SECRET_TMP" "$ENV_TMP"
+  return "$RESULT"
+}
+
 # Hilfsfunktion: Bot neu starten wenn er läuft
 _dc_restart_bot() {
   if systemctl is-active --quiet bockis-bot 2>/dev/null; then
@@ -2512,17 +2551,17 @@ menu_settings() {
       ENV_KUMA_URL=$(grep -E '^UPTIME_KUMA_URL=' "$BOT_DIR/.env" 2>/dev/null | cut -d'=' -f2- | tr -d '"' | tr -d "'")
     fi
 
-    local IP; IP=$(hostname -I | awk '{print $1}' 2>/dev/null || echo "<IP>")
-    local WEB_LABEL="http://${IP}:${WEB_PORT}/dashboard"
+    local WEB_LABEL="nur lokal: 127.0.0.1:${WEB_PORT}"
     local KUMA_LABEL="Port ${KUMA_PORT}"
     [[ -n "${ENV_KUMA_URL:-}" ]] && KUMA_LABEL="extern: $ENV_KUMA_URL"
 
-    CHOICE=$(whiptail --title "⚙ Einstellungen" --menu "Konfiguration anpassen:" 17 $W 6 \
+    CHOICE=$(whiptail --title "⚙ Einstellungen" --menu "Konfiguration anpassen:" $H $W 7 \
       "1" "Bot-Verzeichnis ändern      (aktuell: $BOT_DIR)" \
       "2" "Bot-Port ändern             (aktuell: $BOT_PORT)" \
       "3" "Uptime-Kuma-Port ändern    (aktuell: $KUMA_LABEL)" \
       "4" "Web-Dashboard-Port ändern  (aktuell: $WEB_PORT  →  $WEB_LABEL)" \
-      "5" "🔑  Discord-Token / Channel-IDs ändern" \
+      "5" "Dashboard-Passwort generieren / ändern" \
+      "6" "🔑  Discord-Token / Channel-IDs ändern" \
       "←" "Zurück" \
       3>&1 1>&2 2>&3) || return
 
@@ -2542,7 +2581,7 @@ menu_settings() {
         ;;
       "4")
         NEW=$(whiptail --title "Web-Dashboard-Port" --inputbox \
-          "Port des Bot-Webinterface / Dashboards:\n(Standard: 3000  →  erreichbar unter http://<IP>:PORT/dashboard)" \
+          "Port des Bot-Webinterface / Dashboards:\n(Standard: 3000  →  lokal unter http://127.0.0.1:PORT/dashboard)" \
           9 $W "$WEB_PORT" 3>&1 1>&2 2>&3) || continue
         # Nur Zahlen akzeptieren
         if ! echo "$NEW" | grep -qE '^[0-9]+$' || [[ "$NEW" -lt 1024 || "$NEW" -gt 65535 ]]; then
@@ -2571,16 +2610,53 @@ menu_settings() {
             info "Bot-Service neu starten (neuer Port wird aktiv)..."
             sudo systemctl restart bockis-bot 2>/dev/null && ok "Bot neu gestartet" || err "Neustart fehlgeschlagen"
           fi
-          local IP2; IP2=$(hostname -I | awk '{print $1}' 2>/dev/null || echo "<IP>")
           whiptail --title "✔ Dashboard-Port geändert" --msgbox \
-            "Web-Dashboard erreichbar unter:\n\n  http://${IP2}:${WEB_PORT}/dashboard" \
-            9 $W
+            "Dashboard lokal auf dem Pi:\n\n  http://127.0.0.1:${WEB_PORT}/dashboard\n\nVon einem anderen Gerät per SSH-Tunnel erreichbar." \
+            10 $W
         else
           info ".env noch nicht vorhanden — Port-Änderung wird bei nächstem Start aktiv"
           pause
         fi
         ;;
-      "5") menu_discord_config ;;
+      "5")
+        if [[ ! -f "$BOT_DIR/.env" ]]; then
+          whiptail --title "Dashboard-Passwort" --msgbox \
+            ".env wurde nicht gefunden:\n$BOT_DIR/.env\n\nBitte zuerst den Bot installieren." 9 $W
+          continue
+        fi
+        NEW_PASSWORD=$(node -e "process.stdout.write(require('crypto').randomBytes(32).toString('hex'))" 2>/dev/null) || {
+          whiptail --title "Fehler" --msgbox "Das Passwort konnte nicht sicher generiert werden. Prüfe, ob Node.js installiert ist." 8 $W
+          continue
+        }
+        if [[ ! "$NEW_PASSWORD" =~ ^[a-f0-9]{64}$ ]]; then
+          whiptail --title "Fehler" --msgbox "Die Passwortgenerierung lieferte kein gültiges Ergebnis." 8 $W
+          continue
+        fi
+        if ! _dc_write_dashboard_password "$NEW_PASSWORD"; then
+          whiptail --title "Fehler" --msgbox "DASHBOARD_PASSWORD konnte nicht in .env gespeichert werden." 8 $W
+          continue
+        fi
+        if systemctl is-active --quiet bockis-bot 2>/dev/null; then
+          if sudo systemctl restart bockis-bot 2>/dev/null; then
+            ok "Bot-Service mit neuem Dashboard-Passwort neu gestartet"
+          else
+            err "Passwort gespeichert; Bot-Neustart fehlgeschlagen. Bitte Service manuell neu starten."
+          fi
+        fi
+        DISPLAY_TMP=$(mktemp) || {
+          whiptail --title "Fehler" --msgbox "Passwort ist gespeichert, aber die Anzeige konnte nicht vorbereitet werden. Erzeuge im Menü ein neues Passwort." 9 $W
+          continue
+        }
+        chmod 600 "$DISPLAY_TMP"
+        {
+          printf 'Neues Passwort (64 Zeichen; wird nur jetzt angezeigt):\n\n%s\n\n' "$NEW_PASSWORD"
+          printf 'Benutzername: admin\n\nBitte sicher notieren. Für eine Änderung diesen Menüpunkt erneut wählen.\n'
+        } > "$DISPLAY_TMP"
+        whiptail --title "Dashboard-Passwort erstellt" --textbox "$DISPLAY_TMP" 12 $W
+        rm -f "$DISPLAY_TMP"
+        unset NEW_PASSWORD
+        ;;
+      "6") menu_discord_config ;;
       "←") return ;;
     esac
   done

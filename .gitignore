@@ -4,6 +4,7 @@ node_modules/
 # Umgebungsvariablen – niemals committen!
 .env
 .env.backup.*
+.env.tmp.*
 
 # Datenbank
 data/

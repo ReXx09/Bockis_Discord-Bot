@@ -131,6 +131,44 @@ async function ask(rl, question, defaultVal = '', {
   });
 }
 
+async function askSecret(rl, question, { hint = '', validate = null } = {}) {
+  const hintStr = hint
+    ? `\n     ${C.dim}${hint.replace(/\n/g, '\n     ')}${C.r}`
+    : '';
+
+  while (true) {
+    process.stdout.write(`\n  ${SYM.arr} ${C.b}${question}${C.r}${hintStr}\n  ${C.cyn}›${C.r} `);
+    const output = rl.output;
+    const hiddenOutput = Object.create(output);
+    hiddenOutput.write = () => true;
+    rl.output = hiddenOutput;
+
+    let raw;
+    try {
+      raw = await new Promise(resolve => rl.question('', resolve));
+    } finally {
+      rl.output = output;
+      process.stdout.write('\n');
+    }
+
+    const value = raw.trim();
+    if (!value) {
+      print(`${SYM.fail}  Dieser Wert ist erforderlich.`);
+      continue;
+    }
+
+    if (validate) {
+      const error = validate(value);
+      if (error) {
+        print(`${SYM.fail}  ${error}`);
+        continue;
+      }
+    }
+
+    return value;
+  }
+}
+
 async function confirm(rl, question, defaultYes = true) {
   const yesStr = defaultYes ? `${C.bgrn}J${C.r}` : `${C.dim}j${C.r}`;
   const noStr  = defaultYes ? `${C.dim}n${C.r}`  : `${C.bred}N${C.r}`;
@@ -425,11 +463,20 @@ async function configOptional(rl) {
     },
   });
 
-  const dashPassword = await ask(rl, 'Dashboard-Passwort  (optional – Enter zum Überspringen)', '', {
-    hint: 'Schützt /dashboard mit HTTP Basic Auth.\n'
-        + 'Leer lassen = kein Passwortschutz (nur für interne Netze empfohlen).',
-    required: false,
-  });
+  let dashPassword;
+  while (true) {
+    dashPassword = await askSecret(rl, 'Dashboard-Passwort festlegen', {
+      hint: 'Mindestens 16 Zeichen; Sonderzeichen und Leerzeichen sind möglich. Eingabe bleibt verborgen.',
+      validate: value => {
+        if (value.length < 16) return 'Das Passwort muss mindestens 16 Zeichen lang sein.';
+        if (/['\u0000-\u001f\u007f]/.test(value)) return "Bitte keine einfachen Anführungszeichen (') oder Steuerzeichen verwenden.";
+        return null;
+      },
+    });
+    const passwordConfirmation = await askSecret(rl, 'Dashboard-Passwort wiederholen');
+    if (dashPassword === passwordConfirmation) break;
+    print(`${SYM.fail}  Die Passwörter stimmen nicht überein. Bitte erneut eingeben.`);
+  }
 
   const dbPath = await ask(rl, 'Datenbankpfad', './data/status.db', {
     hint: 'Pfad zur SQLite-Datenbankdatei – Standard ist empfohlen.',
@@ -498,7 +545,7 @@ async function finalize(rl, discord, kuma, optional) {
     '',
     '# ── Webserver ────────────────────────────────────────────────────────────────',
     `WEB_PORT=${optional.port}`,
-    `DASHBOARD_PASSWORD=${optional.dashPassword}`,
+    `DASHBOARD_PASSWORD='${optional.dashPassword}'`,
     '',
     '# ── Optionale WigiDash Status-API ───────────────────────────────────────────',
     '# Nur für ein vorhandenes WigiDash/HWiNFO-Widget aktivieren.',
@@ -526,10 +573,11 @@ async function finalize(rl, discord, kuma, optional) {
   const envFilePath = path.join(INSTALL_ROOT, '.env');
 
   try {
-    fs.writeFileSync(envFilePath, envContent, 'utf8');
+    fs.writeFileSync(envFilePath, envContent, { encoding: 'utf8', mode: 0o600 });
+    if (process.platform !== 'win32') fs.chmodSync(envFilePath, 0o600);
     print(`${SYM.ok}  .env-Datei erstellt: ${envFilePath}`);
   } catch (e) {
-    print(`${SYM.fail}  .env konnte nicht geschrieben werden: ${e.message}`);
+    throw new Error(`.env konnte nicht sicher geschrieben werden: ${e.message}`);
   }
 
   // Verzeichnisse anlegen
@@ -565,7 +613,7 @@ async function finalize(rl, discord, kuma, optional) {
   print(`  ${C.dim}Status-Page Slug:${C.r}    ${kuma.slug}`);
   print(`  ${C.dim}Update-Intervall:${C.r}    ${Math.round(parseInt(optional.interval) / 1000)}s`);
   print(`  ${C.dim}Dashboard-Port:${C.r}      ${optional.port}`);
-  print(`  ${C.dim}Dashboard-Passwort:${C.r}  ${optional.dashPassword ? `${SYM.ok} gesetzt` : `${SYM.warn} nicht gesetzt`}`);
+  print(`  ${C.dim}Dashboard-Passwort:${C.r}  ${SYM.ok} gesetzt`);
   print(`  ${C.dim}Cloudflare URL:${C.r}      ${optional.cloudflareUrl || `${SYM.warn} nicht konfiguriert (kein Link-Preview)`}`);
   nl();
   console.log(`  ${hr('─', 58)}`);
@@ -585,6 +633,10 @@ async function finalize(rl, discord, kuma, optional) {
   nl();
   print(`  ${SYM.arr}  ${C.b}Web-Dashboard aufrufen:${C.r}`);
   print(`     ${C.cyn}http://localhost:${optional.port}/dashboard${C.r}`);
+  nl();
+  print(`${SYM.warn}  Dashboard-Passwort (einmalig angezeigt; bitte sicher notieren):`);
+  print(`     ${C.b}${optional.dashPassword}${C.r}`);
+  print(`     Benutzername: admin`);
   nl();
   console.log(`  ${hr('─', 58)}`);
   nl();
