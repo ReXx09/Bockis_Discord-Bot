@@ -718,109 +718,6 @@ function calculateUptime(heartbeats) {
 }
 // #endregion
 
-// #region 15. EMBED-GENERIERUNG
-function createServiceField(monitor) {
-  const theme = monitor.status === 1 ? STATUS_THEME.online
-              : monitor.status === 0 ? STATUS_THEME.offline
-              : monitor.status === 2 ? STATUS_THEME.pending
-              : STATUS_THEME.deactivated;
-  const ping   = monitor.ping   != null ? `${monitor.ping}ms` : '–';
-  const uptime = monitor.uptime != null ? `${monitor.uptime}%` : '–';
-  return {
-    name:   `${theme.icon} ${monitor.name}`,
-    value:  `\`${theme.title}\`\n⏱ ${ping} · 📈 ${uptime}`,
-    inline: true
-  };
-}
-// #endregion
-
-// #region 15b. ANSI-STATUS-NACHRICHT (Uptime-Kuma-Style)
-function buildAnsiStatusMessage(monitors, statusPageUrl = null) {
-  const now     = new Date();
-  const dateStr = now.toLocaleDateString('de-DE');
-  const timeStr = now.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-
-  const active  = monitors.filter(m => m.active !== false);
-
-  // Monitore nach Gruppe sortieren
-  const groups = {};
-  for (const m of active) {
-    const g = m.group || 'General';
-    if (!groups[g]) groups[g] = [];
-    groups[g].push(m);
-  }
-
-  // ANSI-Farben
-  const G = '\u001b[1;32m'; // grün
-  const R = '\u001b[1;31m'; // rot
-  const Y = '\u001b[1;33m'; // gelb (pending)
-  const W = '\u001b[1;37m'; // weiß/hell
-  const C = '\u001b[1;36m'; // cyan
-  const X = '\u001b[0m';    // reset
-
-  const lines = [];
-
-  // Header-Zeile (wie Uptime Kuma)
-  lines.push(`${C}⊞ DIENSTE STATUS-ÜBERSICHT${X}    Stand: ${dateStr}, ${timeStr}`);
-  lines.push('');
-
-  for (const [groupName, groupMonitors] of Object.entries(groups)) {
-    lines.push(`${W}${groupName} [${groupMonitors.length}]${X}`);
-
-    for (const m of groupMonitors) {
-      const isUp      = m.status === 1;
-      const isPending = m.status === 2;
-      const col       = isUp ? G : isPending ? Y : R;
-
-      // Fortschrittsbalken (16 Zeichen, wie Uptime Kuma)
-      const barWidth = 16;
-      const pct      = parseFloat(m.uptime) || 0;
-      const filled   = Math.round((pct / 100) * barWidth);
-      const bar      = '█'.repeat(filled) + '░'.repeat(barWidth - filled);
-
-      // Status-Label (einheitliche Breite)
-      const statusLabel = (isUp ? 'OPERATIONAL' : isPending ? 'PENDING    ' : 'OUTAGE     ');
-
-      // Zeitstempel des letzten Heartbeats
-      const lastTime = m.time
-        ? new Date(m.time).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-        : '--:--:--';
-
-      // Name auf 22 Zeichen begrenzen/auffüllen
-      const name   = m.name.slice(0, 22).padEnd(22);
-      const uptime = `${pct.toFixed(1)}%`.padStart(6);
-
-      lines.push(`${col}●${X} ${name}  ${col}${statusLabel}${X}  ${col}${bar}${X}  ${uptime}  ${lastTime}`);
-    }
-    lines.push('');
-  }
-
-  // Letzte Leerzeile entfernen
-  if (lines[lines.length - 1] === '') lines.pop();
-
-  const ansiBlock = '```ansi\n' + lines.join('\n') + '\n```';
-
-  // Kopfzeile mit optionalem Statusseiten-Link
-  const header = statusPageUrl
-    ? `🌐 **LIVE SERVICE STATUS** | [Statusseite öffnen](${statusPageUrl})`
-    : '🌐 **LIVE SERVICE STATUS**';
-
-  const footer = '*Uptime Kuma Status · Automatisch generiert*';
-
-  const fullMessage = `${header}\n${ansiBlock}\n${footer}`;
-
-  // Discord-Limit: 2000 Zeichen
-  if (fullMessage.length > 1990) {
-    logger.warn(`ANSI-Nachricht zu lang (${fullMessage.length} Zeichen) – wird gekürzt`);
-    return `${header}\n` +
-      '```ansi\n\u001b[1;31m⚠ Zu viele Dienste für eine Nachricht\u001b[0m\n```\n' +
-      footer;
-  }
-
-  return fullMessage;
-}
-// #endregion
-
 // #region 15c. CLOUDFLARE-URL FÜR STATUS-SEITE
 function getPublicStatusUrl() {
   const cloudflareUrl = config.get('cloudflare.publicUrl');
@@ -2665,9 +2562,29 @@ function buildCommandTileEmbed() {
   const funLines = makeLines(COMMAND_TILE_CATEGORIES.fun);
   const adminLines = makeLines(COMMAND_TILE_CATEGORIES.admin);
   const fields = [];
-  if (infoLines.length) fields.push({ name: '📌 Info & Verwaltung', value: infoLines.join('\n'), inline: false });
-  if (funLines.length) fields.push({ name: '🎲 Fun & Gadgets', value: funLines.join('\n'), inline: false });
-  if (adminLines.length) fields.push({ name: '🛠️ Admin & Debug', value: adminLines.join('\n'), inline: false });
+  const addCategoryFields = (name, lines) => {
+    const chunks = [];
+    let chunk = [];
+    let length = 0;
+    for (const line of lines) {
+      const nextLength = length + (chunk.length ? 1 : 0) + line.length;
+      if (chunk.length && nextLength > 1000) {
+        chunks.push(chunk.join('\n'));
+        chunk = [];
+        length = 0;
+      }
+      chunk.push(line);
+      length += (chunk.length > 1 ? 1 : 0) + line.length;
+    }
+    if (chunk.length) chunks.push(chunk.join('\n'));
+    chunks.forEach((value, index) => {
+      const suffix = chunks.length > 1 ? ` (${index + 1})` : '';
+      fields.push({ name: `${name}${suffix}`, value, inline: false });
+    });
+  };
+  addCategoryFields('📌 Info & Verwaltung', infoLines);
+  addCategoryFields('🎲 Fun & Gadgets', funLines);
+  addCategoryFields('🛠️ Admin & Debug', adminLines);
 
   return new EmbedBuilder()
     .setColor(0x5865F2)
@@ -2861,11 +2778,42 @@ function buildCommandTileSvg() {
 }
 
 async function buildCommandTileAttachmentPayload() {
-  return {
-    content: renderCommandTileText(),
-    embeds: [],
-    allowedMentions: { parse: [] }
-  };
+  const allowedMentions = { parse: [] };
+  if (config.get('discord.commandTileMode') !== 'image') {
+    return {
+      content: renderCommandTileText(),
+      embeds: [],
+      allowedMentions
+    };
+  }
+
+  let embed;
+  try {
+    embed = buildCommandTileEmbed();
+  } catch (err) {
+    logger.warn(`Befehls-Kachel konnte nicht als Embed erstellt werden: ${err.message}`);
+    return {
+      content: renderCommandTileText(),
+      embeds: [],
+      allowedMentions
+    };
+  }
+
+  try {
+    const pngBuffer = await convertSvgToPngBuffer(buildCommandTileSvg());
+    embed.setImage('attachment://command-tile.png');
+    return {
+      embeds: [embed],
+      files: [new AttachmentBuilder(pngBuffer, { name: 'command-tile.png' })],
+      allowedMentions
+    };
+  } catch (err) {
+    logger.warn(`Befehls-Kachel konnte nicht als Bild gerendert werden; nutze Embed-Fallback: ${err.message}`);
+    return {
+      embeds: [embed],
+      allowedMentions
+    };
+  }
 }
 
 function _releasePlainText(value) {

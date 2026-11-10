@@ -147,26 +147,6 @@ async function confirm(rl, question, defaultYes = true) {
   });
 }
 
-// ── SPINNER ───────────────────────────────────────────────────────────────────
-
-function spinner(msg) {
-  const frames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
-  let i = 0;
-  const iv = setInterval(() => {
-    process.stdout.write(`\r  ${C.cyn}${frames[i++ % frames.length]}${C.r}  ${msg}   `);
-  }, 80);
-  return {
-    succeed(text) {
-      clearInterval(iv);
-      process.stdout.write(`\r  ${SYM.ok}  ${text}\n`);
-    },
-    fail(text) {
-      clearInterval(iv);
-      process.stdout.write(`\r  ${SYM.fail}  ${text}\n`);
-    },
-  };
-}
-
 // ── SCHRITT 1: VORAUSSETZUNGEN ────────────────────────────────────────────────
 
 function checkPrereqs() {

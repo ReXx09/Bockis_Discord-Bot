@@ -428,6 +428,8 @@ bash ~/bockis-bot/start-bot.sh
 | `DISCORD_ENABLED_COMMANDS` | ❌ | Komma-Liste aktiver Slash-Commands (leer = Standard-Set) |
 | `STATUS_CHANNEL_ID` | ✅ | Channel-ID für die Live-Status-Nachricht |
 | `DISCORD_COMMANDS_CHANNEL_ID` | ❌ | Eigener Kanal für die öffentliche, gepinnte Befehls-Kachel; leer = deaktiviert |
+| `DISCORD_COMMAND_TILE_MODE` | ❌ | Kachel als Text (`text`, Standard) oder Grafik (`image`) veröffentlichen |
+| `DISCORD_COMMAND_TILE_SCALE` | ❌ | Grafikgröße (`compact`, `normal`, `large`); gilt für `image` |
 | `DISCORD_NOTIFICATION_CHANNEL` | ✅ | Channel-ID für Statusänderungs-Alerts |
 | `SERVICE_CHANNEL_MAP` | ❌ | Individuelle Zuordnung `Monitorname=Channel-ID;...` für Statusänderungs-Alerts |
 | `SERVICE_CHANNEL_AUTO_CREATE` | ❌ | Fehlende Service-Kanäle automatisch erstellen (`true`/`false`) |
@@ -507,10 +509,16 @@ Der Updater legt die Datei automatisch aus der Vorlage an, falls sie noch fehlt.
 | `DISCORD_TRANSLATE_ENABLED` | ❌ | Übersetzer-Command `/translate` aktivieren |
 | `DISCORD_TRANSLATE_DEFAULT_TARGET` | ❌ | Standard-Zielsprache (z. B. `de`) |
 | `DISCORD_TRANSLATE_DEFAULT_SOURCE` | ❌ | Standard-Quellsprache (`auto` oder z. B. `en`) |
+| `DISCORD_TRANSLATE_PROVIDER` | ❌ | Provider: `auto`, `openai`, `deepl` oder `libretranslate` (Standard: `auto`) |
 | `DISCORD_TRANSLATE_API_URL` | ❌ | Übersetzungs-API-Endpoint (LibreTranslate-kompatibel) |
 | `DISCORD_TRANSLATE_API_KEY` | ❌ | Optionaler API-Key für die Übersetzungs-API |
+| `DISCORD_USE_DEEPL` | ❌ | Legacy-Option: DeepL in `auto` bevorzugen |
+| `DISCORD_DEEPL_API_KEY` | ❌ | DeepL API-Key |
+| `DISCORD_DEEPL_API_URL` | ❌ | DeepL-API-Basis-URL |
 | `DISCORD_TRANSLATE_ALLOWED_GUILD_IDS` | ❌ | Optionale Guild-Whitelist für `/translate` (leer = alle) |
 | `DISCORD_TRANSLATE_MAX_TEXT_LENGTH` | ❌ | Maximal erlaubte Zeichenlänge pro Übersetzung |
+
+Bei `auto` wird OpenAI verwendet, wenn ein Schlüssel vorhanden ist; bei Fehlern oder fehlendem Schlüssel dient LibreTranslate als Fallback. Die Legacy-Option `DISCORD_USE_DEEPL=true` bevorzugt DeepL im `auto`-Modus.
 
 ### Nachrichten-Cleanup
 
