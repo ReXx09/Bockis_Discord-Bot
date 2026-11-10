@@ -38,6 +38,49 @@ describe('OpenLigaDB data formatting', () => {
     expect(leagues.find(league => league.leagueShortcut === 'dfb').leagueSeason).toBe(2026);
   });
 
+  test('includes latest and upcoming international tournaments and DFB national teams', () => {
+    const leagues = getAvailableFootballLeagues([
+      { leagueShortcut: 'em2020', leagueSeason: '2020', leagueName: 'Europameisterschaft 2020', sport: { sportId: 1 } },
+      { leagueShortcut: 'em', leagueSeason: '2024', leagueName: 'UEFA EURO 2024', sport: { sportId: 1 } },
+      { leagueShortcut: 'em2024', leagueSeason: '2024', leagueName: 'Europameisterschaft 2024', sport: { sportId: 1 } },
+      { leagueShortcut: 'em2024mitKarten', leagueSeason: '2024', leagueName: 'UEFA Euro 2024 mit Karten', sport: { sportId: 1 } },
+      { leagueShortcut: 'em2028', leagueSeason: '2028', leagueName: 'Europameisterschaft 2028', sport: { sportId: 1 } },
+      { leagueShortcut: 'wm2022', leagueSeason: '2022', leagueName: 'WM 2022', sport: { sportId: 1 } },
+      { leagueShortcut: 'wm26', leagueSeason: '2026', leagueName: 'WM 2026', sport: { sportId: 1 } },
+      { leagueShortcut: 'wm2026', leagueSeason: '2026', leagueName: 'WM 2026 USA', sport: { sportId: 1 } },
+      { leagueShortcut: 'wm30', leagueSeason: '2030', leagueName: 'WM 2030', sport: { sportId: 1 } },
+      { leagueShortcut: 'DFBNAT2526', leagueSeason: '2025', leagueName: 'Deutsche Fußballnationalmannschaft-Spiele 25/26', sport: { sportId: 1 } },
+      { leagueShortcut: 'DFBN', leagueSeason: '2026', leagueName: 'DFB Nationalspiele', sport: { sportId: 1 } },
+      { leagueShortcut: 'fna', leagueSeason: '2026', leagueName: 'Frauen-Nationalmannschaft', sport: { sportId: 1 } },
+      { leagueShortcut: 'u21dfb', leagueSeason: '2026', leagueName: 'DFB U21', sport: { sportId: 1 } },
+    ], new Date('2026-11-09T12:00:00Z'));
+    const shortcuts = leagues.map(league => league.leagueShortcut);
+
+    expect(shortcuts).toEqual(expect.arrayContaining(['em2024', 'em2028', 'wm26', 'wm30', 'DFBN', 'fna', 'u21dfb']));
+    for (const excludedShortcut of ['em', 'em2020', 'em2024mitKarten', 'wm2022', 'wm2026', 'DFBNAT2526']) {
+      expect(shortcuts).not.toContain(excludedShortcut);
+    }
+  });
+
+  test('includes current Europa League, Conference League, and Nations League entries', () => {
+    const leagues = getAvailableFootballLeagues([
+      { leagueShortcut: 'uel2024', leagueSeason: '2024', leagueName: 'Europa League 2024/25', sport: { sportId: 1 } },
+      { leagueShortcut: 'uel2026', leagueSeason: '2026', leagueName: 'Europa League 2026/27', sport: { sportId: 1 } },
+      { leagueShortcut: 'uel-test', leagueSeason: '2026', leagueName: 'Europa League unused', sport: { sportId: 1 } },
+      { leagueShortcut: 'uecl2023', leagueSeason: '2023', leagueName: 'UEFA Europa Conference League 2023', sport: { sportId: 1 } },
+      { leagueShortcut: 'uecl2026', leagueSeason: '2026', leagueName: 'Conference League 2026/27', sport: { sportId: 1 } },
+      { leagueShortcut: 'unl2024', leagueSeason: '2024', leagueName: 'Nations League 2024/25 (DE)', sport: { sportId: 1 } },
+      { leagueShortcut: 'unl', leagueSeason: '2026', leagueName: 'Nations League 2026/27', sport: { sportId: 1 } },
+      { leagueShortcut: 'nla', leagueSeason: '2026', leagueName: 'Nations League A 2026', sport: { sportId: 1 } },
+    ], new Date('2026-11-09T12:00:00Z'));
+    const shortcuts = leagues.map(league => league.leagueShortcut);
+
+    expect(shortcuts).toEqual(expect.arrayContaining(['uel2026', 'uecl2026', 'unl']));
+    for (const excludedShortcut of ['uel2024', 'uel-test', 'uecl2023', 'unl2024', 'nla']) {
+      expect(shortcuts).not.toContain(excludedShortcut);
+    }
+  });
+
   test('limits favorite teams to the configured maximum', () => {
     expect(getFavoriteTeamIds({ favoriteTeamIds: [40, 7, 40], maxFavorites: 1 })).toEqual([40]);
   });

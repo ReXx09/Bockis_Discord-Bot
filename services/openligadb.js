@@ -53,17 +53,135 @@ function getOpenLigaDbUpdateIntervalMs(feedConfig) {
   return minutes * 60_000;
 }
 
+function getDfbNationalTeamCategory(league) {
+  const shortcut = String(league?.leagueShortcut || '').toLowerCase();
+  const name = String(league?.leagueName || '');
+  if (/\bu21\b/i.test(name) || shortcut.includes('u21')) return 'dfb-u21';
+  if (shortcut === 'fna' || (/\b(frauen|women)\b/i.test(name) && /\bnational/i.test(name))) return 'dfb-women';
+  if (/\bnational/i.test(name) && /\b(dfb|deutsch)/i.test(name)) return 'dfb-men';
+  return null;
+}
+
+function isExcludedCompetitionName(name) {
+  return /\b(test|dummy|platzhalter|unused)\b/i.test(String(name || ''));
+}
+
+function getInternationalTournamentCategory(league) {
+  const name = String(league?.leagueName || '');
+  if (isExcludedCompetitionName(name) || /\b(u(?:1[0-9]|2[0-3])|junior|jugend|karten|klub|club)\b/i.test(name)) return null;
+  const gender = /\b(frauen|women)\b/i.test(name) ? 'women' : 'men';
+  if (/(europameisterschaft|uefa\s+euro\b|uefa\s+em)/i.test(name)) return `euro-${gender}`;
+  if (/(weltmeisterschaft|world cup|\bwm\s*\d{2,4}\b)/i.test(name)) return `world-${gender}`;
+  return null;
+}
+
+function getEuropeanCompetitionCategory(league) {
+  const name = String(league?.leagueName || '');
+  if (isExcludedCompetitionName(name)) return null;
+  if (/\bconference league\b/i.test(name)) return 'conference-league';
+  if (/\beuropa league\b/i.test(name)) return 'europa-league';
+  if (/\bnations league\b/i.test(name)) return 'nations-league';
+  return null;
+}
+
+function getTournamentEntryPriority(league, category, season) {
+  const shortcut = String(league.leagueShortcut || '').toLowerCase();
+  const name = String(league.leagueName || '');
+  if (category.startsWith('euro-') && shortcut === `em${season}`) return 0;
+  if (category.startsWith('world-') && shortcut === `wm${String(season).slice(-2)}` && /^wm\s*\d{4}$/i.test(name)) return 0;
+  if (category.startsWith('euro-') && /^europameisterschaft\s+\d{4}$/i.test(name)) return 1;
+  if (category.startsWith('world-') && /^fifa world cup\s+\d{4}$/i.test(name)) return 1;
+  if (category.startsWith('world-') && /^wm\s*\d{4}$/i.test(name)) return 2;
+  return 3;
+}
+
+function getEuropeanCompetitionEntryPriority(league, category, season) {
+  const shortcut = String(league.leagueShortcut || '').toLowerCase();
+  const name = String(league.leagueName || '');
+  if (category === 'conference-league' && shortcut === `uecl${season}`) return 0;
+  if (category === 'europa-league' && shortcut === `uel${season}`) return 0;
+  if (category === 'nations-league' && shortcut === 'unl') return 0;
+  if (category === 'conference-league' && /^conference league \d{4}\/\d{2}$/i.test(name)) return 1;
+  if (category === 'europa-league' && /^europa league \d{4}\/\d{2}$/i.test(name)) return 1;
+  if (category === 'nations-league' && /^nations league \d{4}\/\d{2}$/i.test(name)) return 1;
+  return 2;
+}
+
 function getAvailableFootballLeagues(leagues, now = new Date()) {
   const latest = new Map();
+  const nationalTeams = new Map();
+  const tournaments = new Map();
+  const europeanCompetitions = new Map();
   const currentYear = now.getFullYear();
   const currentSeasonYears = new Set([currentYear]);
   if (now.getMonth() < 6) currentSeasonYears.add(currentYear - 1);
   for (const league of Array.isArray(leagues) ? leagues : []) {
     if (league?.sport?.sportId !== 1 || !league.leagueShortcut || !Number.isFinite(Number(league.leagueSeason))) continue;
+    if (isExcludedCompetitionName(league.leagueName)) continue;
     const season = Number(league.leagueSeason);
+    const nationalTeamCategory = getDfbNationalTeamCategory(league);
+    if (nationalTeamCategory) {
+      const previous = nationalTeams.get(nationalTeamCategory);
+      if (!previous || season > Number(previous.leagueSeason)) nationalTeams.set(nationalTeamCategory, league);
+      continue;
+    }
+    const tournamentCategory = getInternationalTournamentCategory(league);
+    if (tournamentCategory) {
+      if (!tournaments.has(tournamentCategory)) tournaments.set(tournamentCategory, []);
+      tournaments.get(tournamentCategory).push(league);
+      continue;
+    }
+    const europeanCompetitionCategory = getEuropeanCompetitionCategory(league);
+    if (europeanCompetitionCategory) {
+      if (!europeanCompetitions.has(europeanCompetitionCategory)) europeanCompetitions.set(europeanCompetitionCategory, []);
+      europeanCompetitions.get(europeanCompetitionCategory).push(league);
+      continue;
+    }
     if (!currentSeasonYears.has(season)) continue;
     const previous = latest.get(league.leagueShortcut);
     if (!previous || season > previous.season) {
+      latest.set(league.leagueShortcut, {
+        leagueShortcut: league.leagueShortcut,
+        leagueSeason: season,
+        leagueName: league.leagueName || league.leagueShortcut,
+      });
+    }
+  }
+  for (const [category, entries] of europeanCompetitions) {
+    const seasons = [...new Set(entries.map(league => Number(league.leagueSeason)))].sort((a, b) => a - b);
+    for (const season of seasons.filter(year => year >= currentYear)) {
+      const candidates = entries.filter(league => Number(league.leagueSeason) === season
+        && !(category === 'nations-league' && /\bnations league\s+[abcd]\b/i.test(String(league.leagueName || ''))));
+      if (!candidates.length) continue;
+      candidates.sort((a, b) => getEuropeanCompetitionEntryPriority(a, category, season)
+        - getEuropeanCompetitionEntryPriority(b, category, season));
+      const league = candidates[0];
+      latest.set(league.leagueShortcut, {
+        leagueShortcut: league.leagueShortcut,
+        leagueSeason: season,
+        leagueName: league.leagueName || league.leagueShortcut,
+      });
+    }
+  }
+  for (const league of nationalTeams.values()) {
+    latest.set(league.leagueShortcut, {
+      leagueShortcut: league.leagueShortcut,
+      leagueSeason: Number(league.leagueSeason),
+      leagueName: league.leagueName || league.leagueShortcut,
+    });
+  }
+  for (const [category, entries] of tournaments) {
+    const seasons = [...new Set(entries.map(league => Number(league.leagueSeason)))].sort((a, b) => a - b);
+    const includedSeasons = category.startsWith('euro-')
+      ? [...new Set([
+        ...seasons.filter(season => season >= currentYear),
+        ...seasons.filter(season => season < currentYear).slice(-1),
+      ])]
+      : seasons.filter(season => season >= currentYear);
+    for (const season of includedSeasons) {
+      const candidates = entries.filter(league => Number(league.leagueSeason) === season);
+      candidates.sort((a, b) => getTournamentEntryPriority(a, category, season) - getTournamentEntryPriority(b, category, season));
+      const league = candidates[0];
       latest.set(league.leagueShortcut, {
         leagueShortcut: league.leagueShortcut,
         leagueSeason: season,
