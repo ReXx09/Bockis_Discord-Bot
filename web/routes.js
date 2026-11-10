@@ -418,6 +418,60 @@ module.exports = function startWebServer({
     }
   });
 
+  app.post('/api/openligadb/countdown-test', dashboardAuth, async (req, res) => {
+    try {
+      const guildId = String(req.body?.guildId || '').trim();
+      const channelId = String(req.body?.channelId || '').trim();
+      const teamId = Number(req.body?.teamId);
+      const teamName = String(req.body?.teamName || '').trim().slice(0, 100);
+      const leagueName = String(req.body?.leagueName || '').trim().slice(0, 100);
+      const countdownStyle = String(req.body?.countdownStyle || 'classic');
+      if (!/^\d{1,24}$/.test(guildId) || !/^\d{5,24}$/.test(channelId)) {
+        return res.status(400).json({ ok: false, error: 'Bitte einen gültigen Server und Countdown-Kanal auswählen.' });
+      }
+      if (!Number.isSafeInteger(teamId) || teamId <= 0 || !teamName) {
+        return res.status(400).json({ ok: false, error: 'Bitte eine Favoritenmannschaft auswählen.' });
+      }
+      if (!OPENLIGADB_COUNTDOWN_STYLES.includes(countdownStyle)) {
+        return res.status(400).json({ ok: false, error: 'Ungültige Countdown-Variante.' });
+      }
+      const guild = client.guilds.cache.get(guildId);
+      if (!guild) return res.status(404).json({ ok: false, error: 'Der ausgewählte Discord-Server ist nicht erreichbar.' });
+      const profile = await ServerProfile.findOne({ where: { guildId } });
+      if (!profile) return res.status(403).json({ ok: false, error: 'Für diesen Server ist kein Dashboard-Profil vorhanden.' });
+      const channel = client.channels.cache.get(channelId) || await client.channels.fetch(channelId);
+      if (!channel?.isTextBased?.() || typeof channel.send !== 'function') {
+        return res.status(400).json({ ok: false, error: 'Der ausgewählte Kanal kann keine Nachrichten empfangen.' });
+      }
+      if (String(channel.guildId || channel.guild?.id || '') !== guildId) {
+        return res.status(400).json({ ok: false, error: 'Der ausgewählte Kanal gehört nicht zum gewählten Discord-Server.' });
+      }
+
+      const now = Date.now();
+      const match = {
+        matchDateTimeUTC: new Date(now + 7 * 24 * 60 * 60 * 1000).toISOString(),
+        group: { groupName: 'Beispiel-Spieltag' },
+        team1: { teamId, teamName, shortName: teamName },
+        team2: { teamId: teamId + 1, teamName: 'Beispielgegner', shortName: 'Beispielgegner' },
+      };
+      const payload = buildNextMatchCountdownPayload({
+        leagueName,
+        match,
+        teamId,
+        countdownStyle,
+        now,
+      });
+      await channel.send({
+        content: '🧪 **Countdown-Test** · Beispieldaten, kein echtes Spiel.',
+        ...payload,
+      });
+      return res.json({ ok: true, message: `Countdown-Test wurde an #${channel.name}${channel.guild?.name ? ` auf ${channel.guild.name}` : ''} gesendet.` });
+    } catch (err) {
+      logger.error(`OpenLigaDB-Countdown-Test konnte nicht gesendet werden: ${err.message}`);
+      return res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
   app.post('/api/openligadb/finished-match-preview.png', dashboardAuth, async (req, res) => {
     let settings;
     try {

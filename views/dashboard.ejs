@@ -6378,8 +6378,10 @@
     select.dataset.savedValue = select.value;
     select.disabled = favoriteCheckboxes.length === 0;
     const previewButton = row.querySelector('[data-openliga-role="countdown-preview-button"]');
+    const testButton = row.querySelector('[data-openliga-role="countdown-test-button"]');
     const preview = row.querySelector('[data-openliga-role="countdown-preview"]');
     if (previewButton) previewButton.disabled = !select.value;
+    if (testButton) testButton.disabled = !select.value;
     if (!select.value) {
       row.dataset.countdownPreviewRequest = String(Number(row.dataset.countdownPreviewRequest || 0) + 1);
       preview.hidden = true;
@@ -6715,8 +6717,12 @@
           <option value="live_timer">11 · Live-Timer – Tage, Stunden, Minuten</option>
         </select>
       </label>
-      <button class="btn" type="button" data-openliga-role="countdown-preview-button" disabled>Countdown-Vorschau anzeigen</button>
+      <div style="display:flex;flex-wrap:wrap;gap:8px">
+        <button class="btn" type="button" data-openliga-role="countdown-preview-button" disabled>Countdown-Vorschau anzeigen</button>
+        <button class="btn" type="button" data-openliga-role="countdown-test-button" disabled>Countdown-Test an Discord senden</button>
+      </div>
       <div data-openliga-role="countdown-preview-status" class="cfg-hint" aria-live="polite"></div>
+      <div data-openliga-role="countdown-test-status" class="cfg-hint" aria-live="polite"></div>
       <div data-openliga-role="countdown-preview" hidden style="margin-top:4px;padding:12px;border-left:4px solid #d6b32a;border-radius:4px;background:#232428;color:#f2f3f5">
         <div data-openliga-role="countdown-preview-author" hidden style="margin-bottom:6px;color:#b9bbbe;font-size:12px"></div>
         <strong data-openliga-role="countdown-preview-title"></strong>
@@ -6724,7 +6730,7 @@
         <div data-openliga-role="countdown-preview-fields" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:12px"></div>
         <div data-openliga-role="countdown-preview-footer" style="margin-top:12px;color:#b9bbbe;font-size:12px"></div>
       </div>
-      <div class="cfg-hint">Alle Varianten sind Discord-Embeds. Der Live-Timer wird vom Bot minütlich aktualisiert; die übrigen Varianten nutzen Discords automatische relative Zeit.</div>
+      <div class="cfg-hint">Der Test sendet die ausgewählte Embed-Variante mit Beispieldaten an den Countdown-Kanal (oder ersatzweise den Meldungskanal). Alle Varianten sind Discord-Embeds. Der Live-Timer wird vom Bot minütlich aktualisiert; die übrigen Varianten nutzen Discords automatische relative Zeit.</div>
       <label class="cfg-label">Kanal für den Countdown (optional)
         <input class="cfg-input" data-openliga-role="countdown-channel" type="text" autocomplete="off" placeholder="Discord-Kanal-ID · leer = Meldungskanal">
       </label>
@@ -6823,6 +6829,9 @@
     row.querySelector('[data-openliga-role="countdown-preview-button"]').addEventListener('click', () => {
       renderOpenLigaDbCountdownPreview(row);
     });
+    row.querySelector('[data-openliga-role="countdown-test-button"]').addEventListener('click', () => {
+      void sendOpenLigaDbCountdownTest(row);
+    });
     row.querySelector('[data-openliga-role="countdown-team"]').addEventListener('change', () => {
       const preview = row.querySelector('[data-openliga-role="countdown-preview"]');
       if (!row.querySelector('[data-openliga-role="countdown-team"]').value) preview.hidden = true;
@@ -6860,6 +6869,53 @@
       showDate: row.querySelector('[data-openliga-role="finished-image-date"]').checked,
       template: row.querySelector('[data-openliga-role="finished-image-template"]').value,
     };
+  }
+
+  async function sendOpenLigaDbCountdownTest(row) {
+    const status = row.querySelector('[data-openliga-role="countdown-test-status"]');
+    const button = row.querySelector('[data-openliga-role="countdown-test-button"]');
+    const select = row.querySelector('[data-openliga-role="countdown-team"]');
+    const selectedTeam = select.selectedOptions[0];
+    const channelId = row.querySelector('[data-openliga-role="countdown-channel"]').value.trim()
+      || row.querySelector('[data-openliga-role="notification"]').value.trim();
+    if (!activeServerProfileGuildId || !channelId) {
+      status.textContent = 'Bitte zuerst einen Server und den Countdown-Kanal oder Meldungskanal auswählen.';
+      status.className = 'cfg-hint err';
+      return;
+    }
+    if (!select.value || !selectedTeam) {
+      status.textContent = 'Bitte zuerst eine Favoritenmannschaft für den Countdown auswählen.';
+      status.className = 'cfg-hint err';
+      return;
+    }
+
+    const [teamName] = selectedTeam.textContent.split(' · ');
+    button.disabled = true;
+    status.textContent = 'Countdown-Test wird an Discord gesendet …';
+    status.className = 'cfg-hint';
+    try {
+      const response = await fetch('/api/openligadb/countdown-test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          guildId: activeServerProfileGuildId,
+          channelId,
+          teamId: select.value,
+          teamName: teamName.trim(),
+          leagueName: row.querySelector('[data-openliga-role="title"]').textContent.trim(),
+          countdownStyle: row.querySelector('[data-openliga-role="countdown-style"]').value,
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.ok) throw new Error(result.error || 'Countdown-Test konnte nicht gesendet werden.');
+      status.textContent = result.message || 'Countdown-Test wurde gesendet.';
+      status.className = 'cfg-hint ok';
+    } catch (error) {
+      status.textContent = error.message;
+      status.className = 'cfg-hint err';
+    } finally {
+      button.disabled = !select.value;
+    }
   }
 
   async function previewOpenLigaDbFinishedImage(row) {
