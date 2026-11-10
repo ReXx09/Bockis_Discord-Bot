@@ -2890,6 +2890,16 @@ module.exports = function startWebServer({
 
     return Array.from(byId.values());
   }
+
+  function backupAutoReplyRules(filePath) {
+    if (!fs.existsSync(filePath)) return;
+    const backupDir = path.join(rootDir, 'data', 'backups', 'auto-replies');
+    fs.mkdirSync(backupDir, { recursive: true });
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const backupFile = path.join(backupDir, `${path.basename(filePath)}.${timestamp}.bak`);
+    fs.copyFileSync(filePath, backupFile);
+    logger.info(`Auto-Reply Backup erstellt: ${backupFile}`);
+  }
   
   app.get('/api/auto-replies', dashboardAuth, (req, res) => {
     try {
@@ -2938,13 +2948,7 @@ module.exports = function startWebServer({
       
       const autoRepliesFile = path.join(rootDir, config.get('discord.autoReplyRulesFile') || './data/auto-replies.json');
       
-      // 🔄 Backup erstellen, bevor überschrieben wird
-      if (fs.existsSync(autoRepliesFile)) {
-        const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
-        const backupFile = autoRepliesFile + `.backup-${timestamp}`;
-        fs.copyFileSync(autoRepliesFile, backupFile);
-        logger.info(`Auto-Reply Backup erstellt: ${backupFile}`);
-      }
+      backupAutoReplyRules(autoRepliesFile);
       
       const normalizedRules = rules.map((rule) => ({
         ...rule,
@@ -3010,13 +3014,7 @@ module.exports = function startWebServer({
       }
       
       // Schreibe zurück
-      // 🔄 Backup erstellen, bevor überschrieben wird
-      if (fs.existsSync(autoRepliesFile)) {
-        const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
-        const backupFile = autoRepliesFile + `.backup-${timestamp}`;
-        fs.copyFileSync(autoRepliesFile, backupFile);
-        logger.info(`Auto-Reply Backup erstellt: ${backupFile}`);
-      }
+      backupAutoReplyRules(autoRepliesFile);
       
       fs.writeFileSync(autoRepliesFile, JSON.stringify(existingRules, null, 2), 'utf8');
       

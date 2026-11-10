@@ -290,7 +290,9 @@ bash update.sh --mode native
 bash update.sh --yes
 ```
 
-Das Skript erledigt automatisch: git pull → npm ci → Service-Neustart. Eine `.env`-Sicherungskopie wird vor jedem Update angelegt (`.env.backup.*`, per `.gitignore` ausgeschlossen). Lokale Änderungen an `package-lock.json` werden als Patch unter `data/update-backups/` gesichert; beim Update wird die Repository-Version verwendet. Scheitert der Pull, versucht das Skript die lokale Änderung wieder anzuwenden.
+Das Skript erledigt automatisch: git pull → npm ci → Service-Neustart. Dateibasierte Sicherungen liegen künftig kategorisiert unter `data/backups/`: Auto-Reply-Regeln in `auto-replies/`, `.env`-Kopien in `environment/` und `package-lock.json`-Patches in `updates/`. Die `.env`-Kopien erhalten restriktive Dateiberechtigungen. Beim Update wird für `package-lock.json` die Repository-Version verwendet; scheitert der Pull, versucht das Skript die lokale Änderung wieder anzuwenden.
+
+Sicherungen werden derzeit nicht automatisch gelöscht. Bereits vorhandene Dateien an den früheren Ablageorten bleiben bestehen; Git-Stashes und rotierende Logs sind keine dateibasierten Backups und bleiben separat.
 
 ---
 

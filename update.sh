@@ -147,7 +147,7 @@ backup_local_package_lock() {
   changes="$(git -C "$BOT_DIR" status --porcelain -- package-lock.json 2>/dev/null || true)"
   [[ -n "$changes" ]] || return 0
 
-  local backup_dir="$BOT_DIR/data/update-backups"
+  local backup_dir="$BOT_DIR/data/backups/updates"
   PACKAGE_LOCK_PATCH="$backup_dir/package-lock-$(date +%Y%m%d_%H%M%S)-$$.patch"
   mkdir -p "$backup_dir" || die "Backup-Verzeichnis für package-lock.json konnte nicht erstellt werden"
   git -C "$BOT_DIR" diff --binary HEAD -- package-lock.json > "$PACKAGE_LOCK_PATCH" \
@@ -171,8 +171,12 @@ restore_local_package_lock() {
 
 # ── .env Backup ──────────────────────────────────────────────────────────────
 print_header "Backup"
-BACKUP_FILE="$BOT_DIR/.env.backup.$(date +%Y%m%d_%H%M%S)"
-cp "$BOT_DIR/.env" "$BACKUP_FILE"
+ENV_BACKUP_DIR="$BOT_DIR/data/backups/environment"
+mkdir -p "$ENV_BACKUP_DIR" || die ".env-Backup-Verzeichnis konnte nicht erstellt werden"
+chmod 700 "$BOT_DIR/data/backups" "$ENV_BACKUP_DIR" || die ".env-Backup-Verzeichnis konnte nicht geschützt werden"
+BACKUP_FILE="$ENV_BACKUP_DIR/.env.backup.$(date +%Y%m%d_%H%M%S)"
+(umask 077 && cp "$BOT_DIR/.env" "$BACKUP_FILE") || die ".env konnte nicht gesichert werden"
+chmod 600 "$BACKUP_FILE" || die ".env-Backup konnte nicht geschützt werden"
 print_success ".env gesichert als $(basename "$BACKUP_FILE")"
 
 # ── UPDATE: Native (systemd) ─────────────────────────────────────────────────
