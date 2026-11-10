@@ -639,6 +639,7 @@
     }
     .cfg-nav-section-btn:hover, .cfg-nav-section-btn.active { color: var(--text); background: rgba(56,139,253,.14); }
     .cfg-nav-section-btn:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
+    .openliga-feed-hidden { display: none !important; }
     #cfgCard .cfg-search-hidden { display: none !important; }
     .cfg-search-input {
       width: 100%;
@@ -2356,14 +2357,16 @@
           </div>
           <div class="cfg-section-content">
             <div class="cfg-section-body">
-              <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;margin-bottom:12px">
-                <input type="checkbox" id="cfgOpenLigaDbEnabled" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
-                <span>OpenLigaDB-Live-Feeds aktivieren</span>
-              </label>
-              <div class="cfg-hint">Pro Liga kannst du Favoriten, einen Kanal für Tor-/Spielmeldungen und mehrere Kanäle für die Live-Tabelle festlegen.</div>
+              <div id="cfgOpenLigaDbGeneral">
+                <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;margin-bottom:12px">
+                  <input type="checkbox" id="cfgOpenLigaDbEnabled" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
+                  <span>OpenLigaDB-Live-Feeds aktivieren</span>
+                </label>
+                <div class="cfg-hint">Wähle eine Liga im Untermenü, um ihre Favoriten und Discord-Kanäle zu bearbeiten.</div>
+              </div>
               <div id="cfgOpenLigaDbFeeds" style="display:grid;gap:10px;margin:12px 0"></div>
               <input class="cfg-input" id="cfgOpenLigaDbFeedsValue" type="hidden" value="[]">
-              <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+              <div id="cfgOpenLigaDbActions" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
                 <button class="btn" type="button" onclick="addOpenLigaDbFeed()">＋ Liga hinzufügen</button>
                 <button class="btn" type="button" onclick="addOpenLigaDbPreset('bl2')">＋ 2. Bundesliga</button>
                 <button class="btn" type="button" onclick="addOpenLigaDbPreset('ucl')">＋ Champions League</button>
@@ -5110,6 +5113,9 @@
   }
 
   let _activeSettingsSection = '';
+  let openLigaDbNavSectionList = null;
+  let activeOpenLigaDbFeedId = '';
+  let nextOpenLigaDbFeedId = 0;
 
   function initSettingsNavigation() {
     const nav = document.querySelector('#cfgCard .cfg-nav');
@@ -5154,6 +5160,7 @@
       const sectionList = document.createElement('div');
       sectionList.className = 'cfg-nav-sections';
       sectionList.id = `cfg-nav-sections-${pane}`;
+      if (pane === 'openligadb') openLigaDbNavSectionList = sectionList;
       paneButton.type = 'button';
       paneButton.removeAttribute('onclick');
       paneButton.setAttribute('aria-controls', sectionList.id);
@@ -5194,6 +5201,7 @@
 
     nav.replaceChildren(...groups);
     nav.dataset.ready = '1';
+    refreshOpenLigaDbNavigation();
     setActiveSettingsPane('bot');
     const firstSection = document.querySelector('#cfgCard [data-cfg-pane="bot"] > .cfg-section');
     if (firstSection) selectSettingsSection('bot', firstSection.dataset.cfgSectionId);
@@ -5226,6 +5234,62 @@
       button.classList.toggle('active', button.dataset.cfgSectionBtn === sectionId);
     });
     _activeSettingsSection = sectionId;
+    if (pane === 'openligadb') {
+      activeOpenLigaDbFeedId = '';
+      updateOpenLigaDbFeedVisibility();
+      refreshOpenLigaDbNavigation();
+    }
+  }
+
+  function updateOpenLigaDbFeedVisibility() {
+    const general = document.getElementById('cfgOpenLigaDbGeneral');
+    const actions = document.getElementById('cfgOpenLigaDbActions');
+    const selectedFeedId = activeOpenLigaDbFeedId;
+    general?.classList.toggle('openliga-feed-hidden', !!selectedFeedId);
+    actions?.classList.toggle('openliga-feed-hidden', !!selectedFeedId);
+    document.querySelectorAll('#cfgOpenLigaDbFeeds [data-openliga-feed]').forEach((row) => {
+      row.classList.toggle('openliga-feed-hidden', !!selectedFeedId && row.dataset.openligaFeedId !== selectedFeedId);
+    });
+  }
+
+  function refreshOpenLigaDbNavigation() {
+    if (!openLigaDbNavSectionList) return;
+    openLigaDbNavSectionList.querySelectorAll('[data-openliga-nav-feed]').forEach((button) => button.remove());
+    const rows = Array.from(document.querySelectorAll('#cfgOpenLigaDbFeeds [data-openliga-feed]'));
+    if (!rows.some((row) => row.dataset.openligaFeedId === activeOpenLigaDbFeedId)) activeOpenLigaDbFeedId = '';
+    const searchTerm = document.getElementById('cfgSettingsSearch')?.value?.trim().toLowerCase() || '';
+
+    rows.forEach((row) => {
+      const select = row.querySelector('[data-openliga-role="league"]');
+      const title = select?.selectedOptions?.[0]?.textContent?.trim()
+        || row.querySelector('[data-openliga-role="title"]')?.textContent?.trim()
+        || 'Liga';
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'cfg-nav-section-btn';
+      button.dataset.openligaNavFeed = row.dataset.openligaFeedId;
+      button.textContent = title;
+      button.setAttribute('aria-controls', row.id);
+      button.classList.toggle('active', row.dataset.openligaFeedId === activeOpenLigaDbFeedId);
+      button.classList.toggle('cfg-search-hidden', !!searchTerm && !title.toLowerCase().includes(searchTerm));
+      button.addEventListener('click', () => selectOpenLigaDbFeed(row.dataset.openligaFeedId));
+      openLigaDbNavSectionList.appendChild(button);
+    });
+  }
+
+  function selectOpenLigaDbFeed(feedId) {
+    const row = Array.from(document.querySelectorAll('#cfgOpenLigaDbFeeds [data-openliga-feed]'))
+      .find((feedRow) => feedRow.dataset.openligaFeedId === feedId);
+    const section = document.querySelector('#cfgCard [data-cfg-pane="openligadb"] > .cfg-section');
+    if (!row || !section) return;
+
+    selectSettingsSection('openligadb', section.dataset.cfgSectionId);
+    activeOpenLigaDbFeedId = feedId;
+    updateOpenLigaDbFeedVisibility();
+    openLigaDbNavSectionList?.querySelectorAll('[data-cfg-section-btn]').forEach((button) => button.classList.remove('active'));
+    openLigaDbNavSectionList?.querySelectorAll('[data-openliga-nav-feed]').forEach((button) => {
+      button.classList.toggle('active', button.dataset.openligaNavFeed === feedId);
+    });
   }
 
   let _settingsSearchActive = false;
@@ -5237,6 +5301,7 @@
     const cards = Array.from(document.querySelectorAll('#cfgCard .cfg-pane-card'));
     const navButtons = Array.from(document.querySelectorAll('#cfgCard [data-cfg-pane-btn]'));
     const sectionButtons = Array.from(document.querySelectorAll('#cfgCard [data-cfg-section-btn]'));
+    const openLigaDbButtons = Array.from(document.querySelectorAll('#cfgCard [data-openliga-nav-feed]'));
     const status = document.getElementById('cfgSettingsSearchStatus');
 
     if (term && !_settingsSearchActive) {
@@ -5250,7 +5315,8 @@
       const pane = card.dataset.cfgPane;
       const navButton = navButtons.find((button) => button.dataset.cfgPaneBtn === pane);
       const paneText = `${navButton?.textContent || ''} ${card.querySelector('.cfg-pane-title')?.textContent || ''}`.toLowerCase();
-      const paneMatches = !!term && paneText.includes(term);
+      const paneMatches = !!term && (paneText.includes(term)
+        || (pane === 'openligadb' && openLigaDbButtons.some((button) => button.textContent.toLowerCase().includes(term))));
       let fieldMatches = 0;
 
       card.querySelectorAll('.cfg-section').forEach((section) => {
@@ -5286,6 +5352,7 @@
     });
 
     if (!term) {
+      openLigaDbButtons.forEach((button) => button.classList.remove('cfg-search-hidden'));
       _settingsSearchActive = false;
       restoreSectionStates();
       setActiveSettingsPane(_settingsSearchReturnPane);
@@ -5297,6 +5364,9 @@
       return;
     }
 
+    openLigaDbButtons.forEach((button) => {
+      button.classList.toggle('cfg-search-hidden', !button.textContent.toLowerCase().includes(term));
+    });
     if (status) status.textContent = matches.length ? `${matches.length} Bereiche gefunden` : 'Keine passenden Einstellungen gefunden';
     if (matches.length) {
       const currentPane = document.querySelector('#cfgCard .cfg-nav-btn.active')?.dataset.cfgPaneBtn;
@@ -6379,6 +6449,8 @@
     const container = document.getElementById('cfgOpenLigaDbFeeds');
     const row = document.createElement('div');
     row.dataset.openligaFeed = 'true';
+    row.dataset.openligaFeedId = `openliga-feed-${++nextOpenLigaDbFeedId}`;
+    row.id = row.dataset.openligaFeedId;
     row.style.cssText = 'border:1px solid var(--border);border-radius:8px;padding:12px;background:var(--surface2);display:grid;gap:8px';
     row.innerHTML = `
       <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
@@ -6447,10 +6519,13 @@
     leagueSelect.addEventListener('change', async () => {
       const selected = leagues.find(league => `${league.leagueShortcut}|${league.leagueSeason}` === leagueSelect.value);
       row.querySelector('[data-openliga-role="title"]').textContent = selected?.leagueName || leagueSelect.value;
+      refreshOpenLigaDbNavigation();
       await loadOpenLigaDbTeams(row);
     });
     row.querySelector('[data-openliga-role="remove"]').addEventListener('click', () => {
       row.remove();
+      refreshOpenLigaDbNavigation();
+      updateOpenLigaDbFeedVisibility();
       syncOpenLigaDbFeedsDirtyState();
     });
     row.querySelector('[data-openliga-role="favorites"]').addEventListener('change', () => updateOpenLigaDbFavoriteSelection(row));
@@ -6460,6 +6535,8 @@
       updateOpenLigaDbFavoriteSelection(row, true);
     });
     await loadOpenLigaDbTeams(row, favoriteTeamIds);
+    refreshOpenLigaDbNavigation();
+    updateOpenLigaDbFeedVisibility();
     syncOpenLigaDbFeedsDirtyState();
   }
 
@@ -6489,6 +6566,9 @@
     const container = document.getElementById('cfgOpenLigaDbFeeds');
     const status = document.getElementById('cfgOpenLigaDbStatus');
     container.replaceChildren();
+    activeOpenLigaDbFeedId = '';
+    refreshOpenLigaDbNavigation();
+    updateOpenLigaDbFeedVisibility();
     let feeds = [];
     let hasExplicitFeedConfig = false;
     if (configData.DISCORD_OPENLIGADB_FEEDS) {
@@ -6526,6 +6606,8 @@
     field.value = initialValue;
     field.dataset.initialValue = initialValue;
     _setDirtyState(field, false);
+    refreshOpenLigaDbNavigation();
+    updateOpenLigaDbFeedVisibility();
   }
 
   async function loadConfig({ force = false } = {}) {
