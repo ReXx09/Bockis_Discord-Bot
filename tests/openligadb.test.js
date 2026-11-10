@@ -11,6 +11,7 @@ const {
   getMatchScore,
   getMatchStatus,
   getSeasonForLeague,
+  OPENLIGADB_COUNTDOWN_STYLES,
 } = require('../services/openligadb');
 
 describe('OpenLigaDB data formatting', () => {
@@ -172,6 +173,24 @@ describe('OpenLigaDB data formatting', () => {
     expect(payload.embeds[0].toJSON().title).toContain('Bayern');
     expect(payload.embeds[0].toJSON().description).toContain('Bayern · Köln');
     expect(payload.embeds[0].toJSON().description).toContain('<t:1795203000:R>');
+  });
+
+  test('provides ten distinct countdown embed variants', () => {
+    const payloads = OPENLIGADB_COUNTDOWN_STYLES.map(countdownStyle => buildNextMatchCountdownPayload({
+      leagueName: '1. Bundesliga',
+      teamId: 40,
+      countdownStyle,
+      match: {
+        matchDateTimeUTC: '2026-11-20T19:30:00Z',
+        group: { groupName: '10. Spieltag' },
+        team1: { teamId: 40, shortName: 'Bayern' },
+        team2: { teamId: 65, shortName: 'Köln' },
+      },
+      now: Date.parse('2026-11-10T12:00:00Z'),
+    }));
+
+    expect(OPENLIGADB_COUNTDOWN_STYLES).toHaveLength(10);
+    expect(new Set(payloads.map(payload => JSON.stringify(payload.embeds[0].toJSON()))).size).toBe(10);
   });
 
   test('adds in-progress scores to the official table as provisional standings', () => {

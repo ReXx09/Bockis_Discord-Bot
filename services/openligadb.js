@@ -9,6 +9,18 @@ const POLL_INTERVAL_MS = 60_000;
 const MIN_UPDATE_INTERVAL_MINUTES = 1;
 const MAX_UPDATE_INTERVAL_MINUTES = 60;
 const REQUEST_TIMEOUT_MS = 10_000;
+const OPENLIGADB_COUNTDOWN_STYLES = Object.freeze([
+  'classic',
+  'compact',
+  'detailed',
+  'focus',
+  'calendar',
+  'matchday',
+  'homeaway',
+  'minimal',
+  'competition',
+  'spotlight',
+]);
 
 let lastApiRequestAt = 0;
 let apiQueue = Promise.resolve();
@@ -334,7 +346,7 @@ function buildScoreboardPayload({ leagueName, group, matches, favoriteTeamIds, n
   return { embeds: [embed] };
 }
 
-function buildNextMatchCountdownPayload({ leagueName, match, teamId, teamInfo, now = Date.now() }) {
+function buildNextMatchCountdownPayload({ leagueName, match, teamId, teamInfo, countdownStyle = 'classic', now = Date.now() }) {
   const team = [match?.team1, match?.team2].find(candidate => Number(candidate?.teamId) === Number(teamId));
   const opponent = [match?.team1, match?.team2].find(candidate => candidate && candidate !== team);
   const teamName = team?.shortName || team?.teamName || teamInfo?.shortName || teamInfo?.teamName || 'Favorit';
@@ -355,9 +367,80 @@ function buildNextMatchCountdownPayload({ leagueName, match, teamId, teamInfo, n
 
   const opponentName = opponent?.shortName || opponent?.teamName || 'Gegner offen';
   const timestamp = Math.floor(matchTime / 1000);
-  embed.setDescription(`**${teamName} · ${opponentName}**\n<t:${timestamp}:F>\nAnpfiff <t:${timestamp}:R>`);
-  const details = [leagueName, match.group?.groupName].filter(Boolean).join(' · ');
-  if (details) embed.addFields({ name: 'Wettbewerb', value: details.slice(0, 1024), inline: false });
+  const fullTime = `<t:${timestamp}:F>`;
+  const relativeTime = `<t:${timestamp}:R>`;
+  const matchLabel = `**${teamName} · ${opponentName}**`;
+  const round = match.group?.groupName || '';
+  const competition = [leagueName, round].filter(Boolean).join(' · ').slice(0, 1024);
+  const style = OPENLIGADB_COUNTDOWN_STYLES.includes(countdownStyle) ? countdownStyle : 'classic';
+
+  switch (style) {
+    case 'compact':
+      embed.setColor(0x5865F2)
+        .setTitle(`⏳ ${teamName} · ${opponentName}`)
+        .setDescription(`Anpfiff ${relativeTime}`);
+      break;
+    case 'detailed':
+      embed.setTitle('📋 Nächstes Spiel')
+        .setDescription(`${matchLabel}\n${fullTime}`)
+        .addFields({ name: 'Countdown', value: relativeTime, inline: true });
+      if (competition) embed.addFields({ name: 'Wettbewerb', value: competition, inline: true });
+      break;
+    case 'focus':
+      embed.setColor(0xE67E22)
+        .setTitle('⏱️ Anpfiff')
+        .setDescription(`${relativeTime}\n${matchLabel}`)
+        .addFields({ name: 'Termin', value: fullTime, inline: false });
+      break;
+    case 'calendar':
+      embed.setColor(0x2ECC71)
+        .setTitle('📅 Spieltermin')
+        .setDescription(fullTime)
+        .addFields(
+          { name: 'Begegnung', value: `${teamName} · ${opponentName}`, inline: true },
+          { name: 'Countdown', value: relativeTime, inline: true },
+        );
+      if (competition) embed.addFields({ name: 'Wettbewerb', value: competition, inline: false });
+      break;
+    case 'matchday':
+      embed.setColor(0x8E44AD)
+        .setTitle(`🏟️ ${round || 'Nächste Partie'}`)
+        .setDescription(`${matchLabel}\nAnpfiff ${relativeTime}`);
+      if (leagueName) embed.addFields({ name: 'Wettbewerb', value: String(leagueName).slice(0, 1024), inline: false });
+      break;
+    case 'homeaway': {
+      const isHome = team === match.team1;
+      embed.setColor(0x3498DB)
+        .setTitle(isHome ? '🏠 Heimspiel' : '✈️ Auswärtsspiel')
+        .setDescription(`${matchLabel}\nAnpfiff ${relativeTime}`)
+        .addFields({ name: 'Datum und Uhrzeit', value: fullTime, inline: false });
+      if (competition) embed.addFields({ name: 'Wettbewerb', value: competition, inline: false });
+      break;
+    }
+    case 'minimal':
+      embed.setColor(0x95A5A6)
+        .setTitle(`${teamName} · ${opponentName}`)
+        .setDescription(relativeTime);
+      break;
+    case 'competition':
+      embed.setColor(0xF1C40F)
+        .setTitle(`🏆 ${leagueName || 'Nächstes Spiel'}`)
+        .setDescription(`${matchLabel}\nAnpfiff ${relativeTime}`);
+      if (round) embed.addFields({ name: 'Spieltag', value: round, inline: true });
+      embed.addFields({ name: 'Anstoß', value: fullTime, inline: true });
+      break;
+    case 'spotlight':
+      embed.setColor(0x1ABC9C)
+        .setAuthor({ name: `${teamName} · Countdown` })
+        .setTitle('Nächste Partie')
+        .setDescription(`**Gegen ${opponentName}**\n${relativeTime}\n${fullTime}`);
+      if (competition) embed.addFields({ name: 'Wettbewerb', value: competition, inline: false });
+      break;
+    default:
+      embed.setDescription(`${matchLabel}\n${fullTime}\nAnpfiff ${relativeTime}`);
+      if (competition) embed.addFields({ name: 'Wettbewerb', value: competition, inline: false });
+      break;
+  }
   return { embeds: [embed] };
 }
 
@@ -813,6 +896,7 @@ function createOpenLigaDbWatcher({ http, client, ServerProfile, logger, requestI
         match: nextMatch,
         teamId: countdownTeamId,
         teamInfo,
+        countdownStyle: feedConfig.countdownStyle,
         now: nowProvider(),
       });
       const marker = `OpenLigaDB-Countdown:${countdownKey}`;
@@ -936,4 +1020,5 @@ module.exports = {
   getMatchScore,
   getMatchStatus,
   getSeasonForLeague,
+  OPENLIGADB_COUNTDOWN_STYLES,
 };

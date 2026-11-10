@@ -6377,6 +6377,125 @@
     select.value = favoriteCheckboxes.some(checkbox => checkbox.value === savedValue) ? savedValue : '';
     select.dataset.savedValue = select.value;
     select.disabled = favoriteCheckboxes.length === 0;
+    const previewButton = row.querySelector('[data-openliga-role="countdown-preview-button"]');
+    const preview = row.querySelector('[data-openliga-role="countdown-preview"]');
+    if (previewButton) previewButton.disabled = !select.value;
+    if (!select.value) {
+      row.dataset.countdownPreviewRequest = String(Number(row.dataset.countdownPreviewRequest || 0) + 1);
+      preview.hidden = true;
+    }
+    else if (!preview.hidden) {
+      void renderOpenLigaDbCountdownPreview(row);
+    }
+  }
+
+  function formatOpenLigaDbDiscordTimestamp(timestamp, format) {
+    const date = new Date(Number(timestamp) * 1000);
+    if (!Number.isFinite(date.getTime())) return '';
+    if (format === 'R') {
+      const seconds = Math.round((date.getTime() - Date.now()) / 1000);
+      const units = [
+        ['year', 31_536_000],
+        ['month', 2_592_000],
+        ['week', 604_800],
+        ['day', 86_400],
+        ['hour', 3_600],
+        ['minute', 60],
+        ['second', 1],
+      ];
+      const [unit, unitSeconds] = units.find(([, size]) => Math.abs(seconds) >= size) || units[units.length - 1];
+      return new Intl.RelativeTimeFormat('de-DE', { numeric: 'auto' }).format(Math.round(seconds / unitSeconds), unit);
+    }
+    const options = format === 'F'
+      ? { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' }
+      : format === 'f'
+        ? { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' }
+        : format === 'D'
+          ? { day: 'numeric', month: 'long', year: 'numeric' }
+          : format === 'd'
+            ? { day: '2-digit', month: '2-digit', year: 'numeric' }
+            : format === 'T'
+              ? { hour: '2-digit', minute: '2-digit', second: '2-digit' }
+              : { hour: '2-digit', minute: '2-digit' };
+    return new Intl.DateTimeFormat('de-DE', options).format(date);
+  }
+
+  function formatOpenLigaDbEmbedText(value) {
+    return String(value || '')
+      .replace(/[&<>"']/g, character => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;',
+      })[character])
+      .replace(/&lt;t:(\d+):([a-zA-Z])&gt;/g, (_match, timestamp, format) =>
+        formatOpenLigaDbDiscordTimestamp(timestamp, format))
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\n/g, '<br>');
+  }
+
+  async function renderOpenLigaDbCountdownPreview(row) {
+    const select = row.querySelector('[data-openliga-role="countdown-team"]');
+    const preview = row.querySelector('[data-openliga-role="countdown-preview"]');
+    const status = row.querySelector('[data-openliga-role="countdown-preview-status"]');
+    const selectedTeam = select.selectedOptions[0];
+    if (!select.value || !selectedTeam) return;
+
+    const [teamName] = selectedTeam.textContent.split(' · ');
+    const button = row.querySelector('[data-openliga-role="countdown-preview-button"]');
+    const requestId = Number(row.dataset.countdownPreviewRequest || 0) + 1;
+    row.dataset.countdownPreviewRequest = String(requestId);
+    button.disabled = true;
+    status.textContent = 'Embed-Vorschau wird erstellt …';
+    status.className = 'cfg-hint';
+    try {
+      const response = await fetch('/api/openligadb/countdown-preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          teamId: select.value,
+          teamName: teamName.trim(),
+          leagueName: row.querySelector('[data-openliga-role="title"]').textContent.trim(),
+          countdownStyle: row.querySelector('[data-openliga-role="countdown-style"]').value,
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.ok) throw new Error(result.error || 'Embed-Vorschau konnte nicht erstellt werden.');
+      if (requestId !== Number(row.dataset.countdownPreviewRequest)) return;
+
+      const embed = result.embed;
+      const accent = Number.isInteger(embed.color) ? `#${embed.color.toString(16).padStart(6, '0')}` : '#d6b32a';
+      preview.style.borderLeftColor = accent;
+      const author = preview.querySelector('[data-openliga-role="countdown-preview-author"]');
+      author.textContent = embed.author?.name || '';
+      author.hidden = !embed.author?.name;
+      preview.querySelector('[data-openliga-role="countdown-preview-title"]').textContent = embed.title || '';
+      preview.querySelector('[data-openliga-role="countdown-preview-description"]').innerHTML = formatOpenLigaDbEmbedText(embed.description);
+      preview.querySelector('[data-openliga-role="countdown-preview-footer"]').textContent = embed.footer?.text || '';
+      const fields = preview.querySelector('[data-openliga-role="countdown-preview-fields"]');
+      fields.replaceChildren();
+      for (const field of embed.fields || []) {
+        const fieldElement = document.createElement('div');
+        const name = document.createElement('strong');
+        name.textContent = field.name;
+        const value = document.createElement('div');
+        value.innerHTML = formatOpenLigaDbEmbedText(field.value);
+        value.style.marginTop = '4px';
+        fieldElement.append(name, value);
+        fields.appendChild(fieldElement);
+      }
+      status.textContent = `Vorschau: ${select.selectedOptions[0]?.textContent || 'Countdown'} · Beispieldaten`;
+      preview.hidden = false;
+    } catch (error) {
+      if (requestId !== Number(row.dataset.countdownPreviewRequest)) return;
+      status.textContent = error.message;
+      status.className = 'cfg-hint err';
+    } finally {
+      if (requestId === Number(row.dataset.countdownPreviewRequest)) {
+        button.disabled = !select.value;
+      }
+    }
   }
 
   function updateOpenLigaDbFavoriteSelection(row, trimOverflow = false) {
@@ -6581,7 +6700,30 @@
           <option value="">Countdown deaktiviert</option>
         </select>
       </label>
-      <div class="cfg-hint">Ein einzelner Beitrag wird beim nächsten Spiel aktualisiert. Discord zeigt die verbleibende Zeit automatisch an.</div>
+      <label class="cfg-label">Countdown-Embed-Variante
+        <select class="cfg-input" data-openliga-role="countdown-style">
+          <option value="classic">1 · Klassisch – Datum und Countdown</option>
+          <option value="compact">2 · Kompakt – nur Countdown</option>
+          <option value="detailed">3 · Ausführlich – Details und Wettbewerb</option>
+          <option value="focus">4 · Countdown-Fokus</option>
+          <option value="calendar">5 · Kalenderkarte</option>
+          <option value="matchday">6 · Spieltag-Karte</option>
+          <option value="homeaway">7 · Heim-/Auswärtsspiel</option>
+          <option value="minimal">8 · Minimal</option>
+          <option value="competition">9 · Wettbewerbs-Embed</option>
+          <option value="spotlight">10 · Spotlight</option>
+        </select>
+      </label>
+      <button class="btn" type="button" data-openliga-role="countdown-preview-button" disabled>Countdown-Vorschau anzeigen</button>
+      <div data-openliga-role="countdown-preview-status" class="cfg-hint" aria-live="polite"></div>
+      <div data-openliga-role="countdown-preview" hidden style="margin-top:4px;padding:12px;border-left:4px solid #d6b32a;border-radius:4px;background:#232428;color:#f2f3f5">
+        <div data-openliga-role="countdown-preview-author" hidden style="margin-bottom:6px;color:#b9bbbe;font-size:12px"></div>
+        <strong data-openliga-role="countdown-preview-title"></strong>
+        <div data-openliga-role="countdown-preview-description" style="margin-top:8px;line-height:1.45"></div>
+        <div data-openliga-role="countdown-preview-fields" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:12px"></div>
+        <div data-openliga-role="countdown-preview-footer" style="margin-top:12px;color:#b9bbbe;font-size:12px"></div>
+      </div>
+      <div class="cfg-hint">Die Varianten sind Discord-Embeds. Discord aktualisiert die relative Anstoßzeit automatisch.</div>
       <label class="cfg-label">Kanal für den Countdown (optional)
         <input class="cfg-input" data-openliga-role="countdown-channel" type="text" autocomplete="off" placeholder="Discord-Kanal-ID · leer = Meldungskanal">
       </label>
@@ -6630,6 +6772,11 @@
     row.querySelector('[data-openliga-role="countdown-team"]').dataset.savedValue = feed.countdownTeamId == null
       ? ''
       : String(feed.countdownTeamId);
+    const countdownStyle = [
+      'classic', 'compact', 'detailed', 'focus', 'calendar',
+      'matchday', 'homeaway', 'minimal', 'competition', 'spotlight',
+    ].includes(feed.countdownStyle) ? feed.countdownStyle : 'classic';
+    row.querySelector('[data-openliga-role="countdown-style"]').value = countdownStyle;
     const savedUpdateInterval = Number(feed.updateIntervalMinutes);
     row.querySelector('[data-openliga-role="update-interval"]').value = String(
       Number.isInteger(savedUpdateInterval) && savedUpdateInterval >= 1 && savedUpdateInterval <= 60
@@ -6671,6 +6818,19 @@
       const input = event.currentTarget;
       input.value = String(getOpenLigaDbFavoriteLimit(row));
       updateOpenLigaDbFavoriteSelection(row, true);
+    });
+    row.querySelector('[data-openliga-role="countdown-preview-button"]').addEventListener('click', () => {
+      renderOpenLigaDbCountdownPreview(row);
+    });
+    row.querySelector('[data-openliga-role="countdown-team"]').addEventListener('change', () => {
+      const preview = row.querySelector('[data-openliga-role="countdown-preview"]');
+      if (!row.querySelector('[data-openliga-role="countdown-team"]').value) preview.hidden = true;
+      else if (!preview.hidden) void renderOpenLigaDbCountdownPreview(row);
+    });
+    row.querySelector('[data-openliga-role="countdown-style"]').addEventListener('change', () => {
+      if (!row.querySelector('[data-openliga-role="countdown-preview"]').hidden) {
+        void renderOpenLigaDbCountdownPreview(row);
+      }
     });
     row.querySelector('[data-openliga-role="finished-image-preview"]').addEventListener('click', () => {
       void previewOpenLigaDbFinishedImage(row);
@@ -6778,6 +6938,7 @@
         maxFavorites: getOpenLigaDbFavoriteLimit(row),
         favoriteTeamIds: Array.from(row.querySelectorAll('[data-openliga-role="favorites"] input[type="checkbox"]:checked'), checkbox => Number(checkbox.value)).filter(Number.isInteger),
         countdownTeamId: row.querySelector('[data-openliga-role="countdown-team"]').value || null,
+        countdownStyle: row.querySelector('[data-openliga-role="countdown-style"]').value,
         countdownChannelId: row.querySelector('[data-openliga-role="countdown-channel"]').value.trim(),
         notificationChannelId: row.querySelector('[data-openliga-role="notification"]').value.trim(),
         tableChannelIds: [...new Set(row.querySelector('[data-openliga-role="tables"]').value.split(/[;,]/).map(id => id.trim()).filter(Boolean))],
