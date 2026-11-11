@@ -1,7 +1,13 @@
 'use strict';
 
-const { EmbedBuilder } = require('discord.js');
+const { AttachmentBuilder, EmbedBuilder } = require('discord.js');
 const { recordApiRequest } = require('./api-usage');
+const {
+  buildFinishedMatchPng,
+  buildNextMatchCountdownMessage,
+  getFavoriteTeamIds,
+  OPENLIGADB_COUNTDOWN_STYLES,
+} = require('./openligadb');
 
 const API_BASE = 'https://v3.football.api-sports.io';
 const REQUEST_TIMEOUT_MS = 10_000;
@@ -38,12 +44,16 @@ function normalizeApiFootballFeeds(value) {
     const season = Number(feed.season);
     const liveChannelId = String(feed.liveChannelId || feed.channelId || '').trim();
     const tableChannelId = String(feed.tableChannelId || '').trim();
+    const notificationChannelId = String(feed.notificationChannelId || '').trim();
+    const countdownChannelId = String(feed.countdownChannelId || '').trim();
     const competition = API_FOOTBALL_COMPETITIONS.find(item => item.leagueId === leagueId);
     if (!competition || !Number.isInteger(season) || season < 2000 || season > 2200
       || (liveChannelId && !/^\d{5,24}$/.test(liveChannelId))
       || (tableChannelId && !/^\d{5,24}$/.test(tableChannelId))
-      || (!liveChannelId && !tableChannelId)) {
-      throw new Error('Jeder Feed braucht einen unterstützten Wettbewerb, eine Saison und mindestens einen gültigen Live- oder Tabellenkanal.');
+      || (notificationChannelId && !/^\d{5,24}$/.test(notificationChannelId))
+      || (countdownChannelId && !/^\d{5,24}$/.test(countdownChannelId))
+      || (!liveChannelId && !tableChannelId && !notificationChannelId && !countdownChannelId)) {
+      throw new Error('Jeder Feed braucht einen unterstützten Wettbewerb, eine Saison und mindestens einen gültigen Discord-Kanal.');
     }
     const key = `${leagueId}:${season}`;
     if (seen.has(key)) throw new Error(`${competition.name} · ${season} ist doppelt eingetragen.`);
@@ -59,14 +69,69 @@ function normalizeApiFootballFeeds(value) {
     if (!Number.isInteger(interval) || interval < MIN_REFRESH_INTERVAL_MINUTES || interval > MAX_REFRESH_INTERVAL_MINUTES) {
       throw new Error(`Das Abrufintervall für ${competition.name} muss zwischen ${MIN_REFRESH_INTERVAL_MINUTES} und ${MAX_REFRESH_INTERVAL_MINUTES} Minuten liegen.`);
     }
+    const rawFavoriteTeamIds = feed.favoriteTeamIds == null ? [] : feed.favoriteTeamIds;
+    if (!Array.isArray(rawFavoriteTeamIds) || rawFavoriteTeamIds.length > 40
+      || rawFavoriteTeamIds.some(id => !Number.isInteger(Number(id)) || Number(id) <= 0)) {
+      throw new Error(`Ungültige Favoriten für ${competition.name}.`);
+    }
+    const favoriteTeamIds = [...new Set(rawFavoriteTeamIds.map(Number))];
+    const maxFavorites = feed.maxFavorites == null || feed.maxFavorites === ''
+      ? Math.min(40, Math.max(5, favoriteTeamIds.length))
+      : Number(feed.maxFavorites);
+    if (!Number.isInteger(maxFavorites) || maxFavorites < 1 || maxFavorites > 40) {
+      throw new Error(`Die maximale Favoritenanzahl für ${competition.name} muss zwischen 1 und 40 liegen.`);
+    }
+    if (favoriteTeamIds.length > maxFavorites) {
+      throw new Error(`Für ${competition.name} sind höchstens ${maxFavorites} Favoriten erlaubt.`);
+    }
+    const countdownTeamId = feed.countdownTeamId == null || feed.countdownTeamId === '' ? null : Number(feed.countdownTeamId);
+    if (countdownTeamId !== null && (!Number.isInteger(countdownTeamId) || !favoriteTeamIds.includes(countdownTeamId))) {
+      throw new Error(`Das Countdown-Team für ${competition.name} muss als Favorit ausgewählt sein.`);
+    }
+    const countdownStyle = String(feed.countdownStyle || 'classic');
+    if (!OPENLIGADB_COUNTDOWN_STYLES.includes(countdownStyle)) {
+      throw new Error(`Ungültige Countdown-Vorlage für ${competition.name}.`);
+    }
+    const countdownColor = String(feed.countdownColor || '#1C8C73').trim();
+    if (!/^#[\da-f]{6}$/i.test(countdownColor)) {
+      throw new Error(`Ungültige Countdown-Farbe für ${competition.name}.`);
+    }
+    const imageSettings = feed.finishedMatchImage == null ? {} : feed.finishedMatchImage;
+    if (typeof imageSettings !== 'object' || Array.isArray(imageSettings)) {
+      throw new Error(`Ungültige Ergebnisgrafik-Einstellungen für ${competition.name}.`);
+    }
+    const normalizeImageFlag = (key, defaultValue) => {
+      const flag = imageSettings[key];
+      if (flag == null) return defaultValue;
+      if (typeof flag !== 'boolean') throw new Error(`Ungültige Ergebnisgrafik-Einstellung "${key}" für ${competition.name}.`);
+      return flag;
+    };
+    const imageTemplate = String(imageSettings.template || 'stadium');
+    if (!['stadium', 'classic', 'minimal'].includes(imageTemplate)) {
+      throw new Error(`Ungültige Ergebnisgrafik-Vorlage für ${competition.name}.`);
+    }
     return {
       leagueId,
       season,
       name: competition.name,
       liveChannelId,
       tableChannelId,
+      notificationChannelId,
+      countdownChannelId,
       startDate,
       updateIntervalMinutes: interval,
+      favoriteTeamIds,
+      maxFavorites,
+      countdownTeamId,
+      countdownStyle,
+      countdownColor,
+      finishedMatchImage: {
+        enabled: normalizeImageFlag('enabled', false),
+        showScorers: normalizeImageFlag('showScorers', true),
+        showCompetition: normalizeImageFlag('showCompetition', true),
+        showDate: normalizeImageFlag('showDate', false),
+        template: imageTemplate,
+      },
     };
   });
 }
@@ -78,7 +143,9 @@ function parseApiFootballFeeds(settings) {
       && Number.isInteger(Number(feed.leagueId))
       && Number.isInteger(Number(feed.season))
       && (/^\d{5,24}$/.test(String(feed.liveChannelId || feed.channelId || ''))
-        || /^\d{5,24}$/.test(String(feed.tableChannelId || '')))) : [];
+        || /^\d{5,24}$/.test(String(feed.tableChannelId || ''))
+        || /^\d{5,24}$/.test(String(feed.notificationChannelId || ''))
+        || /^\d{5,24}$/.test(String(feed.countdownChannelId || '')))) : [];
   } catch {
     return [];
   }
@@ -124,6 +191,70 @@ async function fetchApiFootballFixtures(http, apiKey, { leagueId, season }, usag
 async function fetchApiFootballStandings(http, apiKey, { leagueId, season }, usageTracker = { recordApiRequest }) {
   const response = await requestApiFootball(http, apiKey, '/standings', { league: Number(leagueId), season: Number(season) }, usageTracker);
   return Array.isArray(response) ? response : [];
+}
+
+async function fetchApiFootballTeams(http, apiKey, { leagueId, season }, usageTracker = { recordApiRequest }) {
+  const response = await requestApiFootball(http, apiKey, '/teams', {
+    league: Number(leagueId),
+    season: Number(season),
+  }, usageTracker);
+  return response.map(item => item?.team)
+    .filter(team => Number.isInteger(Number(team?.id)) && Number(team.id) > 0 && team.name)
+    .map(team => ({ teamId: Number(team.id), teamName: String(team.name), shortName: String(team.code || team.name) }))
+    .sort((a, b) => a.teamName.localeCompare(b.teamName, 'de'));
+}
+
+function toOpenLigaDbCountdownMatch(fixture) {
+  const date = fixture?.fixture?.date;
+  if (!date) return null;
+  return {
+    matchDateTimeUTC: date,
+    group: { groupName: fixture.league?.round || '' },
+    team1: {
+      teamId: Number(fixture.teams?.home?.id),
+      teamName: fixture.teams?.home?.name || 'Heimteam',
+      shortName: fixture.teams?.home?.name || 'Heimteam',
+    },
+    team2: {
+      teamId: Number(fixture.teams?.away?.id),
+      teamName: fixture.teams?.away?.name || 'Auswärtsteam',
+      shortName: fixture.teams?.away?.name || 'Auswärtsteam',
+    },
+  };
+}
+
+async function buildApiFootballFinishedMatchGraphic(http, apiKey, feed, fixture, usageTracker = { recordApiRequest }) {
+  const match = {
+    ...toOpenLigaDbCountdownMatch(fixture),
+    matchIsFinished: true,
+    goals: [],
+    matchResults: [{
+      resultTypeKind: 'After90Minutes',
+      pointsTeam1: Number(fixture.goals?.home) || 0,
+      pointsTeam2: Number(fixture.goals?.away) || 0,
+    }],
+  };
+
+  if (feed.finishedMatchImage?.showScorers && fixture.fixture?.id) {
+    try {
+      const events = await requestApiFootball(http, apiKey, '/fixtures/events', { fixture: fixture.fixture.id }, usageTracker);
+      match.goals = events.filter(event => event.type === 'Goal' && event.team?.id)
+        .map(event => ({
+          goalGetterName: event.player?.name || 'Unbekannt',
+          matchMinute: Number(event.time?.elapsed) || 0,
+        }));
+    } catch (error) {
+      if (error.code !== 'API_DAILY_LIMIT') throw error;
+    }
+  }
+
+  return buildFinishedMatchPng({
+    leagueName: feed.name || fixture.league?.name || 'API-Football',
+    group: { groupName: fixture.league?.round || '' },
+    match,
+    settings: feed.finishedMatchImage,
+    sourceLabel: 'API-Football',
+  });
 }
 
 async function fetchApiFootballSeasonStartDate(http, apiKey, { leagueId, season }, usageTracker = { recordApiRequest }) {
@@ -231,6 +362,20 @@ function buildApiFootballLivePayload(feed, fixtures, scheduledFixtures = [], now
   return { embeds: [embed] };
 }
 
+function buildApiFootballFavoriteMatchPayload(feed, fixture) {
+  const favoriteIds = getFavoriteTeamIds(feed);
+  const favorite = [fixture.teams?.home, fixture.teams?.away]
+    .find(team => favoriteIds.includes(Number(team?.id)));
+  const elapsed = fixture.fixture?.status?.elapsed;
+  const status = fixture.fixture?.status?.short === 'HT' ? 'Halbzeit' : (elapsed == null ? 'Live' : `${elapsed}. Minute`);
+  const embed = new EmbedBuilder()
+    .setColor(0xE74C3C)
+    .setTitle(`⚽ ${favorite?.name || 'Favorit'} · Live-Spiel`)
+    .setDescription(`**${fixture.teams?.home?.name || 'Heimteam'} ${Number(fixture.goals?.home) || 0}:${Number(fixture.goals?.away) || 0} ${fixture.teams?.away?.name || 'Auswärtsteam'}**\n${status} · ${fixture.league?.round || feed.name || 'Wettbewerb'}`)
+    .setFooter({ text: 'API-Football · Favoritenspiel' });
+  return { embeds: [embed] };
+}
+
 function buildApiFootballStandingsPayload(feed, response) {
   const embed = new EmbedBuilder()
     .setColor(0x1C8C73)
@@ -303,6 +448,8 @@ function createApiFootballWatcher({ http, client, logger, getApiKey, getFeeds, n
   const standingsFetchedAtByFeed = new Map();
   const messages = new Map();
   const signatures = new Map();
+  const announcedFinishedMatches = new Set();
+  const favoriteGoalScores = new Map();
 
   async function getChannel(channelId) {
     let channel = client.channels.cache.get(String(channelId));
@@ -330,8 +477,9 @@ function createApiFootballWatcher({ http, client, logger, getApiKey, getFeeds, n
       message = recent.find(candidate => candidate.author.id === client.user.id
         && candidate.embeds.some(existing => (existing.footer?.text || '').includes(marker)));
     }
-    if (message) message = await message.edit({ embeds: [embed] });
-    else message = await channel.send({ embeds: [embed] });
+    const messagePayload = { ...payload, embeds: [embed] };
+    if (message) message = await message.edit(messagePayload);
+    else message = await channel.send(messagePayload);
     messages.set(key, message);
     signatures.set(key, signature);
   }
@@ -388,6 +536,64 @@ function createApiFootballWatcher({ http, client, logger, getApiKey, getFeeds, n
           }
         }
 
+        const countdownChannelId = String(feed.countdownChannelId || feed.notificationChannelId || feed.liveChannelId || feed.channelId || '').trim();
+        const countdownTeamId = Number(feed.countdownTeamId);
+        const fixtures = fixturesByFeed.get(feedKey) || [];
+        if (countdownChannelId && Number.isInteger(countdownTeamId) && countdownTeamId > 0) {
+          const nextMatch = fixtures
+            .filter(item => Number(item.teams?.home?.id) === countdownTeamId || Number(item.teams?.away?.id) === countdownTeamId)
+            .filter(item => Date.parse(item.fixture?.date || '') > now
+              && !['FT', 'AET', 'PEN', 'CANC', 'ABD', 'AWD', 'WO'].includes(item.fixture?.status?.short))
+            .sort((a, b) => Date.parse(a.fixture.date) - Date.parse(b.fixture.date))[0];
+          const match = toOpenLigaDbCountdownMatch(nextMatch);
+          if (match) {
+            try {
+              const payload = await buildNextMatchCountdownMessage({
+                leagueName: feed.name || nextMatch.league?.name,
+                match,
+                teamId: countdownTeamId,
+                countdownStyle: feed.countdownStyle,
+                countdownColor: feed.countdownColor,
+                now,
+              });
+              await upsertMessage(feedKey, countdownChannelId, 'countdown', payload);
+            } catch (error) {
+              logger.warn(`API-Football-Countdown ${feed.name || feedKey} fehlgeschlagen: ${error.message}`);
+            }
+          }
+        }
+
+        const imageSettings = feed.finishedMatchImage || {};
+        const notificationChannelId = String(feed.notificationChannelId || feed.liveChannelId || feed.channelId || '').trim();
+        if (imageSettings.enabled && notificationChannelId) {
+          for (const fixture of fixtures) {
+            const fixtureId = Number(fixture.fixture?.id);
+            const fixtureStatus = fixture.fixture?.status?.short;
+            const matchKey = `${feedKey}:${fixtureId}`;
+            const teamIds = [Number(fixture.teams?.home?.id), Number(fixture.teams?.away?.id)];
+            if (!Number.isInteger(fixtureId) || !['FT', 'AET', 'PEN'].includes(fixtureStatus)
+              || !teamIds.some(teamId => getFavoriteTeamIds(feed).includes(teamId))
+              || announcedFinishedMatches.has(matchKey)) continue;
+            try {
+              const png = await buildApiFootballFinishedMatchGraphic(http, apiKey, feed, fixture, usageTracker);
+              const channel = await getChannel(notificationChannelId);
+              if (!channel) throw new Error('Ergebnisgrafik-Kanal ist nicht erreichbar.');
+              await channel.send({
+                content: `Ergebnisgrafik · ${fixture.teams?.home?.name || 'Heim'} ${Number(fixture.goals?.home) || 0}:${Number(fixture.goals?.away) || 0} ${fixture.teams?.away?.name || 'Auswärts'}`,
+                files: [new AttachmentBuilder(png, { name: `api-football-${fixtureId}.png` })],
+              });
+              announcedFinishedMatches.add(matchKey);
+            } catch (error) {
+              if (error.code === 'API_DAILY_LIMIT') {
+                pausedUntilUtcDate = currentUtcDate;
+                logger.warn('API-Football-Tageslimit erreicht; weitere API-Football-Aufrufe werden bis UTC-Mitternacht pausiert.');
+                return;
+              }
+              logger.warn(`API-Football-Ergebnisgrafik ${fixtureId} fehlgeschlagen: ${error.message}`);
+            }
+          }
+        }
+
         const tableChannelId = String(feed.tableChannelId || '').trim();
         const standingsFetchedAt = standingsFetchedAtByFeed.get(feedKey) || 0;
         const refreshInterval = getApiFootballRefreshIntervalMs(feed);
@@ -408,7 +614,7 @@ function createApiFootballWatcher({ http, client, logger, getApiKey, getFeeds, n
         }
       }
 
-      const liveFeeds = feeds.filter(feed => feed.liveChannelId || feed.channelId);
+      const liveFeeds = feeds.filter(feed => feed.liveChannelId || feed.channelId || feed.notificationChannelId);
       const scheduledFixtures = liveFeeds.flatMap(feed => fixturesByFeed.get(`${feed.leagueId}:${feed.season}`) || []);
       const now = nowProvider();
       if (apiKey && liveFeeds.length && now - lastLivePollAt >= LIVE_POLL_INTERVAL_MS
@@ -419,6 +625,35 @@ function createApiFootballWatcher({ http, client, logger, getApiKey, getFeeds, n
             const feedKey = `${feed.leagueId}:${feed.season}`;
             const payload = buildApiFootballLivePayload(feed, liveFixtures, fixturesByFeed.get(feedKey) || [], now);
             await upsertMessage(feedKey, feed.liveChannelId || feed.channelId, 'live', payload);
+            const favoriteIds = getFavoriteTeamIds(feed);
+            const favoriteChannelId = String(feed.notificationChannelId || feed.liveChannelId || feed.channelId || '').trim();
+            for (const fixture of liveFixtures) {
+              if (Number(fixture.league?.id) !== Number(feed.leagueId)) continue;
+              const homeId = Number(fixture.teams?.home?.id);
+              const awayId = Number(fixture.teams?.away?.id);
+              const favoriteHome = favoriteIds.includes(homeId);
+              const favoriteAway = favoriteIds.includes(awayId);
+              if (!favoriteHome && !favoriteAway) continue;
+              await upsertMessage(feedKey, feed.liveChannelId || feed.channelId, `favorite-game:${fixture.fixture?.id}`, buildApiFootballFavoriteMatchPayload(feed, fixture));
+              const scoreKey = `${feedKey}:${fixture.fixture?.id}`;
+              const currentScores = new Map([
+                [homeId, Number(fixture.goals?.home) || 0],
+                [awayId, Number(fixture.goals?.away) || 0],
+              ]);
+              const previousScores = favoriteGoalScores.get(scoreKey);
+              if (previousScores && favoriteChannelId) {
+                for (const [teamId, score] of currentScores) {
+                  if (!favoriteIds.includes(teamId) || score <= (previousScores.get(teamId) || 0)) continue;
+                  const channel = await getChannel(favoriteChannelId);
+                  if (channel) {
+                    await channel.send({
+                      content: `⚽ ${teamId === homeId ? fixture.teams?.home?.name : fixture.teams?.away?.name} trifft! ${fixture.teams?.home?.name} ${currentScores.get(homeId)}:${currentScores.get(awayId)} ${fixture.teams?.away?.name} · API-Football`,
+                    });
+                  }
+                }
+              }
+              favoriteGoalScores.set(scoreKey, currentScores);
+            }
           }
           lastLivePollAt = now;
         } catch (error) {
@@ -466,6 +701,7 @@ function createApiFootballWatcher({ http, client, logger, getApiKey, getFeeds, n
 
 module.exports = {
   API_FOOTBALL_COMPETITIONS,
+  buildApiFootballFavoriteMatchPayload,
   buildApiFootballTournamentPayload,
   buildApiFootballLivePayload,
   buildApiFootballStandingsPayload,
@@ -474,6 +710,7 @@ module.exports = {
   fetchApiFootballLiveFixtures,
   fetchApiFootballSeasonStartDate,
   fetchApiFootballStandings,
+  fetchApiFootballTeams,
   getApiFootballRefreshIntervalMs,
   hasApiFootballMatchWindow,
   normalizeApiFootballFeeds,

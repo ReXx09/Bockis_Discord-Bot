@@ -707,7 +707,7 @@ function fitSvgText(value, maxLength = 34) {
     : text;
 }
 
-function buildFinishedMatchSvg({ leagueName, group, match, settings = {} }) {
+function buildFinishedMatchSvg({ leagueName, group, match, settings = {}, sourceLabel = 'OpenLigaDB · ODbL 1.0' }) {
   const templates = {
     stadium: { background: '#101b24', panel: '#1a2a35', accent: '#f5c400', text: '#ffffff', muted: '#b2c2cb' },
     classic: { background: '#101525', panel: '#202a40', accent: '#d8b15a', text: '#fffaf0', muted: '#c4c6ce' },
@@ -744,7 +744,7 @@ function buildFinishedMatchSvg({ leagueName, group, match, settings = {} }) {
       : '<path d="M0 560 1200 250v425H0z" fill="#142b30" opacity=".7"/><circle cx="600" cy="335" r="205" fill="#1a2a35" opacity=".92"/>';
   const infoLines = [
     showCompetition ? `<text x="600" y="108" text-anchor="middle" fill="${palette.muted}" font-size="25">${escapeSvgText(competition)}</text>` : '',
-    `<text x="600" y="610" text-anchor="middle" fill="${palette.muted}" font-size="17">OpenLigaDB · ODbL 1.0</text>`,
+    `<text x="600" y="610" text-anchor="middle" fill="${palette.muted}" font-size="17">${escapeSvgText(sourceLabel)}</text>`,
     showScorers ? `<text x="600" y="500" text-anchor="middle" fill="${palette.text}" font-size="21">${escapeSvgText(`Torschützen: ${scorerText}`)}</text>` : '',
     showDate ? `<text x="600" y="548" text-anchor="middle" fill="${palette.muted}" font-size="20">${escapeSvgText(dateText)}</text>` : '',
   ].filter(Boolean).join('');
@@ -762,8 +762,8 @@ function buildFinishedMatchSvg({ leagueName, group, match, settings = {} }) {
   </svg>`;
 }
 
-async function buildFinishedMatchPng({ leagueName, group, match, settings }) {
-  return sharp(Buffer.from(buildFinishedMatchSvg({ leagueName, group, match, settings })))
+async function buildFinishedMatchPng({ leagueName, group, match, settings, sourceLabel }) {
+  return sharp(Buffer.from(buildFinishedMatchSvg({ leagueName, group, match, settings, sourceLabel })))
     .png()
     .toBuffer();
 }

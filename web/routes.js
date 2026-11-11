@@ -27,6 +27,7 @@ const {
   API_FOOTBALL_COMPETITIONS,
   buildApiFootballLivePayload,
   buildApiFootballStandingsPayload,
+  fetchApiFootballTeams,
   fetchApiFootballSeasonStartDate,
   normalizeApiFootballFeeds,
 } = require('../services/api-football');
@@ -45,6 +46,7 @@ const {
 const ALLOWED_SERVICES = ['bockis-bot', 'uptime-kuma', 'cloudflared'];
 const ALLOWED_ACTIONS  = ['start', 'stop', 'restart', 'status'];
 const apiFootballSeasonStartCache = new Map();
+const apiFootballTeamsCache = new Map();
 const API_FOOTBALL_SEASON_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 
 function normalizeOpenLigaDbFeeds(value) {
@@ -439,6 +441,33 @@ module.exports = function startWebServer({
     }
   });
 
+  app.get('/api/api-football/teams', dashboardAuth, async (req, res) => {
+    const leagueId = Number(req.query?.leagueId);
+    const season = Number(req.query?.season);
+    if (!API_FOOTBALL_COMPETITIONS.some(competition => competition.leagueId === leagueId)
+      || !Number.isInteger(season) || season < 2000 || season > 2200) {
+      return res.status(400).json({ ok: false, error: 'Ungültiger Wettbewerb oder Saison.' });
+    }
+    const apiKey = String(config.get('discord.apiFootball.apiKey') || '').trim();
+    if (!apiKey) return res.status(409).json({ ok: false, error: 'Bitte zuerst den API-Football-Schlüssel speichern.' });
+    const cacheKey = `${leagueId}:${season}`;
+    const cached = apiFootballTeamsCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      return res.set('Cache-Control', 'no-store').json({ ok: true, teams: cached.teams });
+    }
+    try {
+      const teams = await fetchApiFootballTeams(axios, apiKey, { leagueId, season });
+      apiFootballTeamsCache.set(cacheKey, { teams, expiresAt: Date.now() + API_FOOTBALL_SEASON_CACHE_TTL_MS });
+      return res.set('Cache-Control', 'no-store').json({ ok: true, teams });
+    } catch (error) {
+      logger.warn(`API-Football-Teamliste ${leagueId}:${season} fehlgeschlagen: ${error.message}`);
+      if (error.code === 'API_DAILY_LIMIT') {
+        return res.status(429).json({ ok: false, error: 'API-Football-Tageslimit erreicht.' });
+      }
+      return res.status(502).json({ ok: false, error: 'Teams sind momentan nicht verfügbar.' });
+    }
+  });
+
   app.post('/api/api-football/test', dashboardAuth, async (req, res) => {
     const guildId = String(req.body?.guildId || '').trim();
     const channelId = String(req.body?.channelId || '').trim();
@@ -453,9 +482,9 @@ module.exports = function startWebServer({
     }
     const guild = client.guilds.cache.get(guildId);
     if (!guild) return res.status(404).json({ ok: false, error: 'Der ausgewählte Discord-Server ist nicht erreichbar.' });
-    const profile = await ServerProfile.findOne({ where: { guildId } });
-    if (!profile) return res.status(403).json({ ok: false, error: 'Für diesen Server ist kein Dashboard-Profil vorhanden.' });
     try {
+      const profile = await ServerProfile.findOne({ where: { guildId } });
+      if (!profile) return res.status(403).json({ ok: false, error: 'Für diesen Server ist kein Dashboard-Profil vorhanden.' });
       const channel = client.channels.cache.get(channelId) || await client.channels.fetch(channelId);
       if (!channel?.isTextBased?.() || typeof channel.send !== 'function') {
         return res.status(400).json({ ok: false, error: 'Der ausgewählte Kanal kann keine Nachrichten empfangen.' });
@@ -488,6 +517,129 @@ module.exports = function startWebServer({
     } catch (error) {
       logger.error(`API-Football-${kind}-Test konnte nicht gesendet werden: ${error.message}`);
       return res.status(500).json({ ok: false, error: 'Testnachricht konnte nicht an Discord gesendet werden. Kanalrechte prüfen.' });
+    }
+  });
+
+  app.post('/api/api-football/countdown-preview', dashboardAuth, async (req, res) => {
+    const teamId = Number(req.body?.teamId);
+    const teamName = String(req.body?.teamName || '').trim().slice(0, 100);
+    const leagueName = String(req.body?.leagueName || '').trim().slice(0, 100);
+    const countdownStyle = String(req.body?.countdownStyle || 'classic');
+    const countdownColor = String(req.body?.countdownColor || '#1C8C73');
+    if (!Number.isSafeInteger(teamId) || teamId <= 0 || !teamName) {
+      return res.status(400).json({ ok: false, error: 'Bitte eine Favoritenmannschaft auswählen.' });
+    }
+    if (!OPENLIGADB_COUNTDOWN_STYLES.includes(countdownStyle) || !/^#[\da-f]{6}$/i.test(countdownColor)) {
+      return res.status(400).json({ ok: false, error: 'Ungültige Countdown-Optionen.' });
+    }
+    try {
+      const now = Date.now();
+      const match = {
+        matchDateTimeUTC: new Date(now + 7 * 24 * 60 * 60 * 1000).toISOString(),
+        group: { groupName: 'Beispielrunde' },
+        team1: { teamId, teamName, shortName: teamName },
+        team2: { teamId: teamId + 1, teamName: 'Beispielgegner', shortName: 'Beispielgegner' },
+      };
+      const payload = await buildNextMatchCountdownMessage({ leagueName, match, teamId, countdownStyle, countdownColor, now });
+      return res.set('Cache-Control', 'no-store').json({
+        ok: true,
+        embed: payload.embeds[0].toJSON(),
+        graphic: payload.files?.[0]?.attachment.toString('base64') || null,
+      });
+    } catch (error) {
+      logger.error(`API-Football-Countdownvorschau fehlgeschlagen: ${error.message}`);
+      return res.status(500).json({ ok: false, error: 'Countdown-Vorschau konnte nicht erstellt werden.' });
+    }
+  });
+
+  app.post('/api/api-football/countdown-test', dashboardAuth, async (req, res) => {
+    const guildId = String(req.body?.guildId || '').trim();
+    const channelId = String(req.body?.channelId || '').trim();
+    const teamId = Number(req.body?.teamId);
+    const teamName = String(req.body?.teamName || '').trim().slice(0, 100);
+    const leagueName = String(req.body?.leagueName || '').trim().slice(0, 100);
+    const countdownStyle = String(req.body?.countdownStyle || 'classic');
+    const countdownColor = String(req.body?.countdownColor || '#1C8C73');
+    if (!/^\d{1,24}$/.test(guildId) || !/^\d{5,24}$/.test(channelId)
+      || !Number.isSafeInteger(teamId) || teamId <= 0 || !teamName
+      || !OPENLIGADB_COUNTDOWN_STYLES.includes(countdownStyle) || !/^#[\da-f]{6}$/i.test(countdownColor)) {
+      return res.status(400).json({ ok: false, error: 'Bitte Server, Kanal, Favorit und gültige Countdown-Optionen prüfen.' });
+    }
+    const guild = client.guilds.cache.get(guildId);
+    if (!guild) return res.status(404).json({ ok: false, error: 'Der ausgewählte Discord-Server ist nicht erreichbar.' });
+    try {
+      const profile = await ServerProfile.findOne({ where: { guildId } });
+      if (!profile) return res.status(403).json({ ok: false, error: 'Für diesen Server ist kein Dashboard-Profil vorhanden.' });
+      const channel = client.channels.cache.get(channelId) || await client.channels.fetch(channelId);
+      if (!channel?.isTextBased?.() || typeof channel.send !== 'function'
+        || String(channel.guildId || channel.guild?.id || '') !== guildId) {
+        return res.status(400).json({ ok: false, error: 'Der Countdown-Kanal ist ungültig oder gehört nicht zum gewählten Server.' });
+      }
+      const now = Date.now();
+      const payload = await buildNextMatchCountdownMessage({
+        leagueName,
+        match: {
+          matchDateTimeUTC: new Date(now + 7 * 24 * 60 * 60 * 1000).toISOString(),
+          group: { groupName: 'Beispielrunde' },
+          team1: { teamId, teamName, shortName: teamName },
+          team2: { teamId: teamId + 1, teamName: 'Beispielgegner', shortName: 'Beispielgegner' },
+        },
+        teamId,
+        countdownStyle,
+        countdownColor,
+        now,
+      });
+      await channel.send({ content: 'API-Football-Countdown · Beispieldaten, kein echtes Spiel.', ...payload });
+      return res.json({ ok: true, message: `Countdown-Test wurde an #${channel.name || channelId} gesendet.` });
+    } catch (error) {
+      logger.error(`API-Football-Countdown-Test fehlgeschlagen: ${error.message}`);
+      return res.status(500).json({ ok: false, error: 'Countdown-Test konnte nicht an Discord gesendet werden.' });
+    }
+  });
+
+  app.post('/api/api-football/finished-match-preview.png', dashboardAuth, async (req, res) => {
+    let settings;
+    try { settings = normalizeFinishedMatchImageSettings(req.body?.settings); }
+    catch (error) { return res.status(400).json({ ok: false, error: error.message }); }
+    try {
+      const preview = createFinishedMatchPreview();
+      const png = await buildFinishedMatchPng({ ...preview, leagueName: 'API-Football · Vorschau', settings, sourceLabel: 'API-Football' });
+      return res.set('Cache-Control', 'no-store').type('png').send(png);
+    } catch (error) {
+      logger.error(`API-Football-Grafikvorschau fehlgeschlagen: ${error.message}`);
+      return res.status(500).json({ ok: false, error: 'Grafikvorschau konnte nicht erstellt werden.' });
+    }
+  });
+
+  app.post('/api/api-football/finished-match-test', dashboardAuth, async (req, res) => {
+    let settings;
+    try { settings = normalizeFinishedMatchImageSettings(req.body?.settings); }
+    catch (error) { return res.status(400).json({ ok: false, error: error.message }); }
+    const guildId = String(req.body?.guildId || '').trim();
+    const channelId = String(req.body?.channelId || '').trim();
+    if (!/^\d{1,24}$/.test(guildId) || !/^\d{5,24}$/.test(channelId)) {
+      return res.status(400).json({ ok: false, error: 'Bitte einen gültigen Server und Meldungskanal auswählen.' });
+    }
+    const guild = client.guilds.cache.get(guildId);
+    if (!guild) return res.status(404).json({ ok: false, error: 'Der ausgewählte Discord-Server ist nicht erreichbar.' });
+    const profile = await ServerProfile.findOne({ where: { guildId } });
+    if (!profile) return res.status(403).json({ ok: false, error: 'Für diesen Server ist kein Dashboard-Profil vorhanden.' });
+    try {
+      const channel = client.channels.cache.get(channelId) || await client.channels.fetch(channelId);
+      if (!channel?.isTextBased?.() || typeof channel.send !== 'function'
+        || String(channel.guildId || channel.guild?.id || '') !== guildId) {
+        return res.status(400).json({ ok: false, error: 'Der Meldungskanal ist ungültig oder gehört nicht zum gewählten Server.' });
+      }
+      const preview = createFinishedMatchPreview();
+      const png = await buildFinishedMatchPng({ ...preview, leagueName: 'API-Football · Vorschau', settings, sourceLabel: 'API-Football' });
+      await channel.send({
+        content: 'API-Football-Testgrafik · Beispieldaten, kein echtes Spielergebnis.',
+        files: [new AttachmentBuilder(png, { name: 'api-football-testgrafik.png' })],
+      });
+      return res.json({ ok: true, message: `Testgrafik wurde an #${channel.name || channelId} gesendet.` });
+    } catch (error) {
+      logger.error(`API-Football-Testgrafik fehlgeschlagen: ${error.message}`);
+      return res.status(500).json({ ok: false, error: 'Testgrafik konnte nicht an Discord gesendet werden.' });
     }
   });
 

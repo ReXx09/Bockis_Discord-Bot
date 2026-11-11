@@ -7255,7 +7255,212 @@
       updateIntervalMinutes: Number(row.querySelector('[data-api-football-role="interval"]').value),
       liveChannelId: row.querySelector('[data-api-football-role="live-channel"]').value.trim(),
       tableChannelId: row.querySelector('[data-api-football-role="table-channel"]').value.trim(),
+      notificationChannelId: row.querySelector('[data-api-football-role="notification-channel"]').value.trim(),
+      countdownChannelId: row.querySelector('[data-api-football-role="countdown-channel"]').value.trim(),
+      maxFavorites: getApiFootballFavoriteLimit(row),
+      favoriteTeamIds: Array.from(row.querySelectorAll('[data-api-football-role="favorites"] input[type="checkbox"]:checked'), checkbox => Number(checkbox.value)).filter(Number.isInteger),
+      countdownTeamId: row.querySelector('[data-api-football-role="countdown-team"]').value || null,
+      countdownStyle: row.querySelector('[data-api-football-role="countdown-style"]').value,
+      countdownColor: row.querySelector('[data-api-football-role="countdown-color"]').value,
+      finishedMatchImage: getApiFootballFinishedImageSettings(row),
     }));
+  }
+
+  function getApiFootballFavoriteLimit(row) {
+    const input = row.querySelector('[data-api-football-role="max-favorites"]');
+    const value = Number(input.value);
+    const limit = Number.isInteger(value) ? Math.min(40, Math.max(1, value)) : 5;
+    input.value = String(limit);
+    return limit;
+  }
+
+  function getApiFootballFinishedImageSettings(row) {
+    return {
+      enabled: row.querySelector('[data-api-football-role="finished-image-enabled"]').checked,
+      showScorers: row.querySelector('[data-api-football-role="finished-image-scorers"]').checked,
+      showCompetition: row.querySelector('[data-api-football-role="finished-image-competition"]').checked,
+      showDate: row.querySelector('[data-api-football-role="finished-image-date"]').checked,
+      template: row.querySelector('[data-api-football-role="finished-image-template"]').value,
+    };
+  }
+
+  function updateApiFootballFavoriteSelection(row, enforceLimit = false) {
+    const checkboxes = Array.from(row.querySelectorAll('[data-api-football-role="favorites"] input[type="checkbox"]'));
+    const limit = getApiFootballFavoriteLimit(row);
+    const checked = checkboxes.filter(checkbox => checkbox.checked);
+    if (enforceLimit && checked.length > limit) {
+      for (const checkbox of checked.slice(limit)) checkbox.checked = false;
+    }
+    const selected = checkboxes.filter(checkbox => checkbox.checked);
+    for (const checkbox of checkboxes) checkbox.disabled = !checkbox.checked && selected.length >= limit;
+    const select = row.querySelector('[data-api-football-role="countdown-team"]');
+    const selectedTeamId = select.value || select.dataset.savedValue || '';
+    select.replaceChildren(new Option('Countdown deaktiviert', ''));
+    for (const checkbox of selected) {
+      const option = new Option(checkbox.dataset.teamName, checkbox.value);
+      select.appendChild(option);
+    }
+    select.value = selected.some(checkbox => checkbox.value === selectedTeamId) ? selectedTeamId : '';
+    select.dataset.savedValue = select.value;
+    const hasFavorite = selected.length > 0;
+    row.querySelector('[data-api-football-role="countdown-preview-button"]').disabled = !select.value;
+    row.querySelector('[data-api-football-role="countdown-test-button"]').disabled = !select.value;
+    if (!hasFavorite) row.querySelector('[data-api-football-role="countdown-preview"]').hidden = true;
+  }
+
+  async function loadApiFootballTeams(row, selectedIds = []) {
+    const status = row.querySelector('[data-api-football-role="teams-status"]');
+    const favorites = row.querySelector('[data-api-football-role="favorites"]');
+    const countdown = row.querySelector('[data-api-football-role="countdown-team"]');
+    const leagueId = row.querySelector('[data-api-football-role="competition"]').value;
+    const season = row.querySelector('[data-api-football-role="season"]').value;
+    status.textContent = 'Teams werden geladen …';
+    status.className = 'cfg-hint';
+    favorites.replaceChildren();
+    countdown.replaceChildren(new Option('Countdown deaktiviert', ''));
+    try {
+      const response = await fetch(`/api/api-football/teams?leagueId=${encodeURIComponent(leagueId)}&season=${encodeURIComponent(season)}`);
+      const result = await response.json();
+      if (!response.ok || !result.ok) throw new Error(result.error || 'Teams sind momentan nicht verfügbar.');
+      const selected = new Set((Array.isArray(selectedIds) ? selectedIds : []).map(Number));
+      for (const team of result.teams || []) {
+        const label = document.createElement('label');
+        label.style.cssText = 'display:flex;align-items:center;gap:8px;padding:5px;cursor:pointer';
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.value = String(team.teamId);
+        checkbox.dataset.teamName = team.teamName;
+        checkbox.checked = selected.has(team.teamId);
+        const name = document.createElement('span');
+        name.textContent = team.shortName && team.shortName !== team.teamName ? `${team.teamName} · ${team.shortName}` : team.teamName;
+        label.append(checkbox, name);
+        favorites.appendChild(label);
+      }
+      status.textContent = `${(result.teams || []).length} Teams · API-Football`;
+      if (!result.teams?.length) status.textContent = 'Für diese Saison sind keine Teams verfügbar.';
+      updateApiFootballFavoriteSelection(row, true);
+    } catch (error) {
+      for (const teamId of (Array.isArray(selectedIds) ? selectedIds : []).map(Number).filter(id => Number.isInteger(id) && id > 0)) {
+        const label = document.createElement('label');
+        label.style.cssText = 'display:flex;align-items:center;gap:8px;padding:5px;cursor:pointer';
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.value = String(teamId);
+        checkbox.dataset.teamName = `Team ${teamId}`;
+        checkbox.checked = true;
+        const name = document.createElement('span');
+        name.textContent = `Team ${teamId} · nicht geladen`;
+        label.append(checkbox, name);
+        favorites.appendChild(label);
+      }
+      updateApiFootballFavoriteSelection(row, true);
+      status.textContent = error.message;
+      status.className = 'cfg-hint err';
+    }
+  }
+
+  async function renderApiFootballCountdownPreview(row) {
+    const select = row.querySelector('[data-api-football-role="countdown-team"]');
+    const team = select.selectedOptions[0];
+    const status = row.querySelector('[data-api-football-role="countdown-preview-status"]');
+    const preview = row.querySelector('[data-api-football-role="countdown-preview"]');
+    const button = row.querySelector('[data-api-football-role="countdown-preview-button"]');
+    if (!select.value || !team) return;
+    button.disabled = true;
+    status.textContent = 'Vorschau wird erstellt …';
+    try {
+      const response = await fetch('/api/api-football/countdown-preview', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ teamId: select.value, teamName: team.textContent.split(' · ')[0], leagueName: row.querySelector('[data-api-football-role="title"]').textContent, countdownStyle: row.querySelector('[data-api-football-role="countdown-style"]').value, countdownColor: row.querySelector('[data-api-football-role="countdown-color"]').value }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.ok) throw new Error(result.error || 'Countdown-Vorschau konnte nicht erstellt werden.');
+      const embed = result.embed;
+      const accent = Number.isInteger(embed.color) ? `#${embed.color.toString(16).padStart(6, '0')}` : '#1c8c73';
+      preview.style.borderLeftColor = accent;
+      preview.querySelector('[data-api-football-role="countdown-preview-title"]').textContent = embed.title || '';
+      preview.querySelector('[data-api-football-role="countdown-preview-description"]').innerHTML = formatOpenLigaDbEmbedText(embed.description);
+      preview.querySelector('[data-api-football-role="countdown-preview-footer"]').textContent = embed.footer?.text || '';
+      const image = preview.querySelector('[data-api-football-role="countdown-preview-image"]');
+      if (result.graphic) { image.src = `data:image/png;base64,${result.graphic}`; image.hidden = false; }
+      else { image.removeAttribute('src'); image.hidden = true; }
+      const fields = preview.querySelector('[data-api-football-role="countdown-preview-fields"]');
+      fields.replaceChildren();
+      for (const field of embed.fields || []) {
+        const item = document.createElement('div');
+        const title = document.createElement('strong');
+        title.textContent = field.name;
+        const value = document.createElement('div');
+        value.innerHTML = formatOpenLigaDbEmbedText(field.value);
+        item.append(title, value);
+        fields.appendChild(item);
+      }
+      preview.hidden = false;
+      status.textContent = 'Vorschau mit Beispieldaten.';
+      status.className = 'cfg-hint ok';
+    } catch (error) {
+      status.textContent = error.message;
+      status.className = 'cfg-hint err';
+    } finally { button.disabled = !select.value; }
+  }
+
+  async function sendApiFootballCountdownTest(row) {
+    const select = row.querySelector('[data-api-football-role="countdown-team"]');
+    const team = select.selectedOptions[0];
+    const status = row.querySelector('[data-api-football-role="countdown-test-status"]');
+    const button = row.querySelector('[data-api-football-role="countdown-test-button"]');
+    const channelId = row.querySelector('[data-api-football-role="countdown-channel"]').value.trim() || row.querySelector('[data-api-football-role="notification-channel"]').value.trim();
+    if (!activeServerProfileGuildId || !channelId || !team || !select.value) { status.textContent = 'Bitte Server, Countdown-Kanal und Favorit auswählen.'; status.className = 'cfg-hint err'; return; }
+    button.disabled = true;
+    try {
+      const response = await fetch('/api/api-football/countdown-test', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ guildId: activeServerProfileGuildId, channelId, teamId: select.value, teamName: team.textContent.split(' · ')[0], leagueName: row.querySelector('[data-api-football-role="title"]').textContent, countdownStyle: row.querySelector('[data-api-football-role="countdown-style"]').value, countdownColor: row.querySelector('[data-api-football-role="countdown-color"]').value }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.ok) throw new Error(result.error || 'Countdown-Test konnte nicht gesendet werden.');
+      status.textContent = result.message;
+      status.className = 'cfg-hint ok';
+    } catch (error) { status.textContent = error.message; status.className = 'cfg-hint err'; }
+    finally { button.disabled = !select.value; }
+  }
+
+  async function previewApiFootballFinishedImage(row) {
+    const status = row.querySelector('[data-api-football-role="finished-image-status"]');
+    const image = row.querySelector('[data-api-football-role="finished-image-preview-image"]');
+    status.textContent = 'Vorschau wird erstellt …';
+    try {
+      const response = await fetch('/api/api-football/finished-match-preview.png', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ settings: getApiFootballFinishedImageSettings(row) }),
+      });
+      if (!response.ok) { const result = await response.json(); throw new Error(result.error || 'Vorschau konnte nicht erstellt werden.'); }
+      if (image.dataset.objectUrl) URL.revokeObjectURL(image.dataset.objectUrl);
+      image.dataset.objectUrl = URL.createObjectURL(await response.blob());
+      image.src = image.dataset.objectUrl;
+      image.hidden = false;
+      status.textContent = 'Vorschau mit Beispieldaten.';
+      status.className = 'cfg-hint ok';
+    } catch (error) { status.textContent = error.message; status.className = 'cfg-hint err'; }
+  }
+
+  async function sendApiFootballFinishedImageTest(row) {
+    const status = row.querySelector('[data-api-football-role="finished-image-status"]');
+    const button = row.querySelector('[data-api-football-role="finished-image-test"]');
+    const channelId = row.querySelector('[data-api-football-role="notification-channel"]').value.trim();
+    if (!activeServerProfileGuildId || !channelId) { status.textContent = 'Bitte Server und Meldungskanal auswählen.'; status.className = 'cfg-hint err'; return; }
+    button.disabled = true;
+    try {
+      const response = await fetch('/api/api-football/finished-match-test', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ guildId: activeServerProfileGuildId, channelId, settings: getApiFootballFinishedImageSettings(row) }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.ok) throw new Error(result.error || 'Testgrafik konnte nicht gesendet werden.');
+      status.textContent = result.message;
+      status.className = 'cfg-hint ok';
+    } catch (error) { status.textContent = error.message; status.className = 'cfg-hint err'; }
+    finally { button.disabled = false; }
   }
 
   function syncApiFootballFeedsDirtyState() {
@@ -7310,33 +7515,99 @@
       <label class="cfg-label">Wettbewerb
         <select class="cfg-input" data-api-football-role="competition"></select>
       </label>
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px">
-        <label class="cfg-label">Saison
-          <input class="cfg-input" data-api-football-role="season" type="number" min="2000" max="2200" step="1" required>
-        </label>
-        <label class="cfg-label">Turnierbeginn
-          <span style="display:flex;gap:6px;align-items:center">
-            <input class="cfg-input" data-api-football-role="start-date" type="date" style="min-width:0;flex:1">
-            <button class="btn" type="button" data-api-football-role="fetch-start-date" title="Turnierbeginn erneut von API-Football abrufen">Abrufen</button>
-          </span>
-          <span class="cfg-hint" data-api-football-role="start-date-status" aria-live="polite"></span>
-        </label>
-        <label class="cfg-label">Spielplan/Tabelle aktualisieren (Minuten)
-          <input class="cfg-input" data-api-football-role="interval" type="number" min="60" max="1440" step="1" required>
-        </label>
+      <div class="cfg-field" style="border:1px solid var(--border);border-radius:8px;padding:12px">
+        <div class="cfg-label">Turnier und Aktualisierung</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px">
+          <label class="cfg-label">Saison
+            <input class="cfg-input" data-api-football-role="season" type="number" min="2000" max="2200" step="1" required>
+          </label>
+          <label class="cfg-label">Turnierbeginn
+            <span style="display:flex;gap:6px;align-items:center">
+              <input class="cfg-input" data-api-football-role="start-date" type="date" style="min-width:0;flex:1">
+              <button class="btn" type="button" data-api-football-role="fetch-start-date" title="Turnierbeginn erneut von API-Football abrufen">Abrufen</button>
+            </span>
+            <span class="cfg-hint" data-api-football-role="start-date-status" aria-live="polite"></span>
+          </label>
+          <label class="cfg-label">Spielplan/Tabelle aktualisieren (Minuten)
+            <input class="cfg-input" data-api-football-role="interval" type="number" min="60" max="1440" step="1" required>
+          </label>
+        </div>
       </div>
-      <label class="cfg-label">Kanal für Live-Spielstände (optional)
-        <input class="cfg-input" data-api-football-role="live-channel" type="text" inputmode="numeric" autocomplete="off" placeholder="Discord-Kanal-ID">
+      <div class="cfg-field" style="border:1px solid var(--border);border-radius:8px;padding:12px">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px">
+          <input type="checkbox" data-api-football-role="finished-image-enabled" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
+          <span>Ergebnisgrafik nach Spielende senden</span>
+        </label>
+        <div class="cfg-hint">Für abgeschlossene Spiele mit mindestens einem Favoritenteam.</div>
+        <div style="display:grid;gap:6px;margin-top:10px">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px"><input type="checkbox" data-api-football-role="finished-image-scorers" checked><span>Torschützen anzeigen</span></label>
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px"><input type="checkbox" data-api-football-role="finished-image-competition" checked><span>Turnier und Runde anzeigen</span></label>
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px"><input type="checkbox" data-api-football-role="finished-image-date"><span>Datum und Uhrzeit anzeigen</span></label>
+        </div>
+        <label class="cfg-label" style="display:block;margin-top:10px">Grafikvorlage
+          <select class="cfg-input" data-api-football-role="finished-image-template"><option value="stadium">Stadion · dunkelgrün</option><option value="classic">Klassisch · dunkelblau/gold</option><option value="minimal">Minimal · hell</option></select>
+        </label>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px">
+          <button class="btn" type="button" data-api-football-role="finished-image-preview">Vorschau anzeigen</button>
+          <button class="btn" type="button" data-api-football-role="finished-image-test">Test an Discord senden</button>
+        </div>
+        <div data-api-football-role="finished-image-status" class="cfg-hint" aria-live="polite"></div>
+        <img data-api-football-role="finished-image-preview-image" alt="Vorschau der Ergebnisgrafik" hidden style="max-width:100%;height:auto;margin-top:10px;border:1px solid var(--border);border-radius:6px">
+      </div>
+      <label class="cfg-label">Maximale Favoriten
+        <input class="cfg-input" data-api-football-role="max-favorites" type="number" min="1" max="40" step="1" style="max-width:120px">
       </label>
-      <label class="cfg-label">Kanal für Tabelle (optional)
-        <input class="cfg-input" data-api-football-role="table-channel" type="text" inputmode="numeric" autocomplete="off" placeholder="Discord-Kanal-ID">
-      </label>`;
-    row.insertAdjacentHTML('beforeend', `
-      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-        <button class="btn" type="button" data-api-football-role="live-test">Live-Embed testen</button>
-        <button class="btn" type="button" data-api-football-role="table-test">Tabellen-Embed testen</button>
-        <span class="cfg-hint" data-api-football-role="test-status" aria-live="polite"></span>
-      </div>`);
+      <div class="cfg-field">
+        <label class="cfg-label">Favoriten für Spielmeldungen und Countdown</label>
+        <div data-api-football-role="favorites" style="max-height:220px;overflow:auto;border:1px solid var(--border);border-radius:6px;background:var(--surface);display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:2px;padding:4px"></div>
+        <div data-api-football-role="teams-status" class="cfg-hint" aria-live="polite">Teams werden geladen …</div>
+      </div>
+      <div class="cfg-field" style="border:1px solid var(--border);border-radius:8px;padding:12px">
+        <label class="cfg-label">Countdown für eine Favoritenmannschaft
+          <select class="cfg-input" data-api-football-role="countdown-team"><option value="">Countdown deaktiviert</option></select>
+        </label>
+        <label class="cfg-label">Countdown-Embed-Variante
+          <select class="cfg-input" data-api-football-role="countdown-style">
+            <option value="classic">1 · Klassisch</option><option value="compact">2 · Kompakt</option><option value="detailed">3 · Ausführlich</option><option value="focus">4 · Countdown-Fokus</option><option value="calendar">5 · Kalenderkarte</option><option value="matchday">6 · Spieltag-Karte</option><option value="homeaway">7 · Heim-/Auswärtsspiel</option><option value="minimal">8 · Minimal</option><option value="competition">9 · Wettbewerb</option><option value="spotlight">10 · Spotlight</option><option value="live_timer">11 · Live-Timer</option><option value="graphic_timer">12 · SVG-Grafik</option>
+          </select>
+        </label>
+        <label class="cfg-label">Countdown-Farbe
+          <input class="cfg-input" data-api-football-role="countdown-color" type="color" value="#1C8C73" style="width:76px;height:40px;padding:4px">
+        </label>
+        <div style="display:flex;flex-wrap:wrap;gap:8px">
+          <button class="btn" type="button" data-api-football-role="countdown-preview-button" disabled>Countdown-Vorschau anzeigen</button>
+          <button class="btn" type="button" data-api-football-role="countdown-test-button" disabled>Countdown-Test an Discord senden</button>
+        </div>
+        <div data-api-football-role="countdown-preview-status" class="cfg-hint" aria-live="polite"></div>
+        <div data-api-football-role="countdown-test-status" class="cfg-hint" aria-live="polite"></div>
+        <div data-api-football-role="countdown-preview" hidden style="margin-top:4px;padding:12px;border-left:4px solid #1C8C73;border-radius:4px;background:#232428;color:#f2f3f5">
+          <strong data-api-football-role="countdown-preview-title"></strong>
+          <div data-api-football-role="countdown-preview-description" style="margin-top:8px;line-height:1.45"></div>
+          <div data-api-football-role="countdown-preview-fields" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:12px"></div>
+          <img data-api-football-role="countdown-preview-image" alt="Vorschau der Countdown-Grafik" hidden style="display:block;max-width:100%;height:auto;margin-top:12px;border-radius:6px">
+          <div data-api-football-role="countdown-preview-footer" style="margin-top:12px;color:#b9bbbe;font-size:12px"></div>
+        </div>
+      </div>
+      <div class="cfg-field" style="border:1px solid var(--border);border-radius:8px;padding:12px">
+        <div class="cfg-label">Discord-Kanäle</div>
+        <label class="cfg-label">Kanal für Live-Spielstände (optional)
+          <input class="cfg-input" data-api-football-role="live-channel" type="text" inputmode="numeric" autocomplete="off" placeholder="Discord-Kanal-ID">
+        </label>
+        <label class="cfg-label">Kanal für Tabelle (optional)
+          <input class="cfg-input" data-api-football-role="table-channel" type="text" inputmode="numeric" autocomplete="off" placeholder="Discord-Kanal-ID">
+        </label>
+        <label class="cfg-label">Kanal für Favoritenmeldungen und Ergebnisgrafiken (optional)
+          <input class="cfg-input" data-api-football-role="notification-channel" type="text" inputmode="numeric" autocomplete="off" placeholder="Discord-Kanal-ID">
+        </label>
+        <label class="cfg-label">Kanal für Countdown (optional)
+          <input class="cfg-input" data-api-football-role="countdown-channel" type="text" inputmode="numeric" autocomplete="off" placeholder="Discord-Kanal-ID · leer = Meldungskanal">
+        </label>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px">
+          <button class="btn" type="button" data-api-football-role="live-test">Live-Embed testen</button>
+          <button class="btn" type="button" data-api-football-role="table-test">Tabellen-Embed testen</button>
+          <span class="cfg-hint" data-api-football-role="test-status" aria-live="polite"></span>
+        </div>
+      </div>`;
     const select = row.querySelector('[data-api-football-role="competition"]');
     for (const item of apiFootballCompetitionCatalog) {
       const option = document.createElement('option');
@@ -7351,11 +7622,30 @@
     row.querySelector('[data-api-football-role="interval"]').value = String(feed.updateIntervalMinutes || 1440);
     row.querySelector('[data-api-football-role="live-channel"]').value = feed.liveChannelId || feed.channelId || '';
     row.querySelector('[data-api-football-role="table-channel"]').value = feed.tableChannelId || '';
+    row.querySelector('[data-api-football-role="notification-channel"]').value = feed.notificationChannelId || '';
+    row.querySelector('[data-api-football-role="countdown-channel"]').value = feed.countdownChannelId || '';
+    row.querySelector('[data-api-football-role="max-favorites"]').value = String(
+      Number.isInteger(Number(feed.maxFavorites)) && Number(feed.maxFavorites) >= 1 && Number(feed.maxFavorites) <= 40
+        ? Number(feed.maxFavorites)
+        : Math.min(40, Math.max(5, feed.favoriteTeamIds?.length || 0)),
+    );
+    row.querySelector('[data-api-football-role="countdown-team"]').dataset.savedValue = feed.countdownTeamId == null ? '' : String(feed.countdownTeamId);
+    row.querySelector('[data-api-football-role="countdown-style"]').value = [
+      'classic', 'compact', 'detailed', 'focus', 'calendar', 'matchday', 'homeaway', 'minimal', 'competition', 'spotlight', 'live_timer', 'graphic_timer',
+    ].includes(feed.countdownStyle) ? feed.countdownStyle : 'classic';
+    row.querySelector('[data-api-football-role="countdown-color"]').value = /^#[\da-f]{6}$/i.test(feed.countdownColor || '') ? feed.countdownColor : '#1C8C73';
+    const finishedImage = feed.finishedMatchImage || {};
+    row.querySelector('[data-api-football-role="finished-image-enabled"]').checked = finishedImage.enabled === true;
+    row.querySelector('[data-api-football-role="finished-image-scorers"]').checked = finishedImage.showScorers !== false;
+    row.querySelector('[data-api-football-role="finished-image-competition"]').checked = finishedImage.showCompetition !== false;
+    row.querySelector('[data-api-football-role="finished-image-date"]').checked = finishedImage.showDate === true;
+    row.querySelector('[data-api-football-role="finished-image-template"]').value = ['stadium', 'classic', 'minimal'].includes(finishedImage.template) ? finishedImage.template : 'stadium';
     select.addEventListener('change', () => {
       const selected = apiFootballCompetitionCatalog.find(item => item.leagueId === Number(select.value));
       row.querySelector('[data-api-football-role="title"]').textContent = `${selected?.name || 'Wettbewerb'} · ${row.querySelector('[data-api-football-role="season"]').value}`;
       row.querySelector('[data-api-football-role="start-date"]').value = '';
       void fetchApiFootballStartDate(row);
+      void loadApiFootballTeams(row, []);
       syncApiFootballFeedsDirtyState();
     });
     row.querySelector('[data-api-football-role="season"]').addEventListener('input', event => {
@@ -7365,6 +7655,7 @@
     row.querySelector('[data-api-football-role="season"]').addEventListener('change', () => {
       row.querySelector('[data-api-football-role="start-date"]').value = '';
       void fetchApiFootballStartDate(row);
+      void loadApiFootballTeams(row, []);
     });
     row.addEventListener('input', syncApiFootballFeedsDirtyState);
     row.addEventListener('change', syncApiFootballFeedsDirtyState);
@@ -7382,13 +7673,38 @@
     row.querySelector('[data-api-football-role="table-test"]').addEventListener('click', () => {
       void sendApiFootballTest(row, 'table');
     });
+    row.querySelector('[data-api-football-role="favorites"]').addEventListener('change', () => updateApiFootballFavoriteSelection(row));
+    row.querySelector('[data-api-football-role="max-favorites"]').addEventListener('change', () => updateApiFootballFavoriteSelection(row, true));
+    row.querySelector('[data-api-football-role="countdown-team"]').addEventListener('change', () => {
+      const countdown = row.querySelector('[data-api-football-role="countdown-team"]');
+      countdown.dataset.savedValue = countdown.value;
+      updateApiFootballFavoriteSelection(row);
+      if (!countdown.value) row.querySelector('[data-api-football-role="countdown-preview"]').hidden = true;
+    });
+    row.querySelector('[data-api-football-role="countdown-preview-button"]').addEventListener('click', () => void renderApiFootballCountdownPreview(row));
+    row.querySelector('[data-api-football-role="countdown-test-button"]').addEventListener('click', () => void sendApiFootballCountdownTest(row));
+    for (const role of ['countdown-style', 'countdown-color']) {
+      row.querySelector(`[data-api-football-role="${role}"]`).addEventListener('change', () => {
+        if (!row.querySelector('[data-api-football-role="countdown-preview"]').hidden) void renderApiFootballCountdownPreview(row);
+      });
+    }
+    row.querySelector('[data-api-football-role="finished-image-preview"]').addEventListener('click', () => void previewApiFootballFinishedImage(row));
+    row.querySelector('[data-api-football-role="finished-image-test"]').addEventListener('click', () => void sendApiFootballFinishedImageTest(row));
+    for (const role of ['finished-image-scorers', 'finished-image-competition', 'finished-image-date', 'finished-image-template']) {
+      row.querySelector(`[data-api-football-role="${role}"]`).addEventListener('change', () => {
+        if (!row.querySelector('[data-api-football-role="finished-image-preview-image"]').hidden) void previewApiFootballFinishedImage(row);
+      });
+    }
     row.querySelector('[data-api-football-role="remove"]').addEventListener('click', () => {
       const wasSelected = row.dataset.apiFootballFeedId === activeApiFootballFeedId;
+      const previewImage = row.querySelector('[data-api-football-role="finished-image-preview-image"]');
+      if (previewImage.dataset.objectUrl) URL.revokeObjectURL(previewImage.dataset.objectUrl);
       row.remove();
       if (wasSelected) activeApiFootballFeedId = '';
       syncApiFootballFeedsDirtyState();
     });
     container.appendChild(row);
+    await loadApiFootballTeams(row, feed.favoriteTeamIds || []);
     syncApiFootballFeedsDirtyState();
     if (selectAfterAdd) selectApiFootballFeed(row.dataset.apiFootballFeedId);
   }
@@ -7543,13 +7859,19 @@
         return;
       }
       const invalidChannelRow = Array.from(document.querySelectorAll('#cfgApiFootballFeeds [data-api-football-feed]')).find(row => {
-        const liveChannelId = row.querySelector('[data-api-football-role="live-channel"]').value.trim();
-        const tableChannelId = row.querySelector('[data-api-football-role="table-channel"]').value.trim();
+        const channelIds = ['live-channel', 'table-channel', 'notification-channel', 'countdown-channel']
+          .map(role => row.querySelector(`[data-api-football-role="${role}"]`).value.trim());
         const isValid = value => !value || /^\d{5,24}$/.test(value);
-        return (!liveChannelId && !tableChannelId) || !isValid(liveChannelId) || !isValid(tableChannelId);
+        const favoriteCount = row.querySelectorAll('[data-api-football-role="favorites"] input[type="checkbox"]:checked').length;
+        const favoriteLimit = getApiFootballFavoriteLimit(row);
+        const countdownTeamId = row.querySelector('[data-api-football-role="countdown-team"]').value;
+        const selectedFavorites = new Set(Array.from(row.querySelectorAll('[data-api-football-role="favorites"] input[type="checkbox"]:checked'), checkbox => checkbox.value));
+        return (!channelIds.some(Boolean) || channelIds.some(value => !isValid(value)))
+          || favoriteCount > favoriteLimit
+          || (countdownTeamId && !selectedFavorites.has(countdownTeamId));
       });
       if (invalidChannelRow) {
-        setStatus('Je Feed mindestens einen Discord-Kanal angeben; Kanal-IDs müssen 5 bis 24 Ziffern haben.', 'cfg-hint err');
+        setStatus('Je Feed mindestens einen gültigen Discord-Kanal angeben; Favoritenlimit und Countdown-Team prüfen.', 'cfg-hint err');
         return;
       }
       const body = {};

@@ -19,6 +19,7 @@ const {
 const { createApiUsageTracker } = require('../services/api-usage');
 const {
   API_FOOTBALL_COMPETITIONS,
+  buildApiFootballFavoriteMatchPayload,
   buildApiFootballTournamentPayload,
   buildApiFootballLivePayload,
   buildApiFootballStandingsPayload,
@@ -27,6 +28,7 @@ const {
   fetchApiFootballLiveFixtures,
   fetchApiFootballSeasonStartDate,
   fetchApiFootballStandings,
+  fetchApiFootballTeams,
   getApiFootballRefreshIntervalMs,
   hasApiFootballMatchWindow,
   normalizeApiFootballFeeds,
@@ -118,14 +120,138 @@ describe('OpenLigaDB data formatting', () => {
       name: 'UEFA Europameisterschaft',
       liveChannelId: '12345678901234567',
       tableChannelId: '',
+      notificationChannelId: '',
+      countdownChannelId: '',
       startDate: '',
       updateIntervalMinutes: 1440,
+      favoriteTeamIds: [],
+      maxFavorites: 5,
+      countdownTeamId: null,
+      countdownStyle: 'classic',
+      countdownColor: '#1C8C73',
+      finishedMatchImage: {
+        enabled: false,
+        showScorers: true,
+        showCompetition: true,
+        showDate: false,
+        template: 'stadium',
+      },
     }]);
     expect(() => normalizeApiFootballFeeds([{ leagueId: 9999, season: 2030, liveChannelId: '12345678901234567' }])).toThrow('unterstützten Wettbewerb');
     expect(() => normalizeApiFootballFeeds([
       { leagueId: 4, season: 2028, liveChannelId: '12345678901234567' },
       { leagueId: 4, season: 2028, tableChannelId: '12345678901234568' },
     ])).toThrow('doppelt');
+  });
+
+  test('normalizes API-Football favorites, graphic settings, and countdown options', () => {
+    const [feed] = normalizeApiFootballFeeds([{
+      leagueId: 4,
+      season: 2028,
+      notificationChannelId: '12345678901234567',
+      favoriteTeamIds: [11, 12, 11],
+      maxFavorites: 2,
+      countdownTeamId: 12,
+      countdownStyle: 'graphic_timer',
+      countdownColor: '#12AB34',
+      finishedMatchImage: { enabled: true, showScorers: false, template: 'minimal' },
+    }]);
+
+    expect(feed.favoriteTeamIds).toEqual([11, 12]);
+    expect(feed.countdownTeamId).toBe(12);
+    expect(feed.countdownStyle).toBe('graphic_timer');
+    expect(feed.finishedMatchImage).toEqual({
+      enabled: true,
+      showScorers: false,
+      showCompetition: true,
+      showDate: false,
+      template: 'minimal',
+    });
+    expect(() => normalizeApiFootballFeeds([{
+      leagueId: 4, season: 2028, notificationChannelId: '12345678901234567', favoriteTeamIds: [11, 12], maxFavorites: 1,
+    }])).toThrow('höchstens 1 Favoriten');
+  });
+
+  test('formats a live match involving a selected API-Football favorite', () => {
+    const payload = buildApiFootballFavoriteMatchPayload({
+      name: 'UEFA Europameisterschaft', favoriteTeamIds: [11],
+    }, {
+      fixture: { status: { short: '1H', elapsed: 24 } },
+      league: { id: 4, round: 'Group A' },
+      teams: { home: { id: 11, name: 'Germany' }, away: { id: 12, name: 'France' } },
+      goals: { home: 1, away: 0 },
+    });
+
+    expect(payload.embeds[0].toJSON().title).toContain('Germany');
+    expect(payload.embeds[0].toJSON().description).toContain('Germany 1:0 France');
+    expect(payload.embeds[0].toJSON().description).toContain('24. Minute');
+  });
+
+  test('posts an API-Football countdown for the selected favorite team', async () => {
+    const now = Date.parse('2028-06-01T12:00:00Z');
+    const channelId = '12345678901234567';
+    const sent = [];
+    const channel = {
+      isTextBased: () => true,
+      messages: { fetch: jest.fn(async () => []) },
+      send: jest.fn(async payload => { sent.push(payload); return { author: { id: 'bot' }, embeds: payload.embeds }; }),
+    };
+    const http = { get: jest.fn(async () => ({ data: { response: [{
+      fixture: { id: 101, date: new Date(now + 7 * 24 * 60 * 60_000).toISOString(), status: { short: 'NS' } },
+      league: { id: 4, round: 'Group A' },
+      teams: { home: { id: 11, name: 'Germany' }, away: { id: 12, name: 'France' } },
+    }] } })) };
+    const watcher = createApiFootballWatcher({
+      http,
+      client: { user: { id: 'bot' }, channels: { cache: new Map([[channelId, channel]]) } },
+      logger: { warn: jest.fn(), info: jest.fn() },
+      getApiKey: () => 'test-key',
+      getFeeds: () => [{ leagueId: 4, season: 2028, countdownChannelId: channelId, favoriteTeamIds: [11], countdownTeamId: 11 }],
+      nowProvider: () => now,
+      usageTracker: { recordApiRequest: jest.fn(() => true) },
+    });
+
+    await watcher.checkOnce();
+
+    expect(sent).toHaveLength(1);
+    expect(sent[0].embeds[0].toJSON().description).toContain('Germany');
+  });
+
+  test('sends one result graphic for a finished API-Football favorite match', async () => {
+    const now = Date.parse('2028-06-10T12:00:00Z');
+    const channelId = '12345678901234567';
+    const channel = {
+      isTextBased: () => true,
+      messages: { fetch: jest.fn(async () => []) },
+      send: jest.fn(async payload => payload),
+    };
+    const http = { get: jest.fn(async () => ({ data: { response: [{
+      fixture: { id: 102, date: '2028-06-09T12:00:00Z', status: { short: 'FT' } },
+      league: { id: 4, round: 'Group A' },
+      teams: { home: { id: 11, name: 'Germany' }, away: { id: 12, name: 'France' } },
+      goals: { home: 2, away: 1 },
+    }] } })) };
+    const watcher = createApiFootballWatcher({
+      http,
+      client: { user: { id: 'bot' }, channels: { cache: new Map([[channelId, channel]]) } },
+      logger: { warn: jest.fn(), info: jest.fn() },
+      getApiKey: () => 'test-key',
+      getFeeds: () => [{
+        leagueId: 4,
+        season: 2028,
+        notificationChannelId: channelId,
+        favoriteTeamIds: [11],
+        finishedMatchImage: { enabled: true, showScorers: false, template: 'minimal' },
+      }],
+      nowProvider: () => now,
+      usageTracker: { recordApiRequest: jest.fn(() => true) },
+    });
+
+    await watcher.checkOnce();
+
+    expect(channel.send).toHaveBeenCalledTimes(1);
+    expect(channel.send.mock.calls[0][0].content).toContain('Germany 2:1 France');
+    expect(channel.send.mock.calls[0][0].files[0].name).toContain('102');
   });
 
   test('fetches standings and shared live fixtures and formats both Discord embeds', async () => {
@@ -167,6 +293,25 @@ describe('OpenLigaDB data formatting', () => {
       params: { id: 4, season: 2028 },
     }));
     expect(startDate).toBe('2028-06-09');
+    expect(usageTracker.recordApiRequest).toHaveBeenCalledWith('apiFootball');
+  });
+
+  test('loads and sorts teams for an API-Football tournament feed', async () => {
+    const usageTracker = { recordApiRequest: jest.fn(() => true) };
+    const http = { get: jest.fn(async () => ({ data: { response: [
+      { team: { id: 2, name: 'Wales', code: 'WAL' } },
+      { team: { id: 1, name: 'Germany', code: 'GER' } },
+      { team: { id: 0, name: 'Invalid' } },
+    ] } })) };
+
+    const teams = await fetchApiFootballTeams(http, 'test-key', { leagueId: 4, season: 2028 }, usageTracker);
+
+    expect(http.get.mock.calls[0][0]).toContain('/teams');
+    expect(http.get.mock.calls[0][1].params).toEqual({ league: 4, season: 2028 });
+    expect(teams).toEqual([
+      { teamId: 1, teamName: 'Germany', shortName: 'GER' },
+      { teamId: 2, teamName: 'Wales', shortName: 'WAL' },
+    ]);
     expect(usageTracker.recordApiRequest).toHaveBeenCalledWith('apiFootball');
   });
 
