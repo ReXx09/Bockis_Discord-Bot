@@ -294,7 +294,11 @@ async function requestApiFootball(http, apiKey, endpoint, params, usageTracker) 
   });
   const errors = response.data?.errors;
   if (errors && (Array.isArray(errors) ? errors.length : Object.keys(errors).length)) {
-    throw new Error('API-Football hat die Abfrage abgelehnt.');
+    const error = new Error('API-Football hat die Abfrage abgelehnt.');
+    error.code = /key|token|authori[sz]|subscription|access/i.test(JSON.stringify(errors))
+      ? 'API_FOOTBALL_AUTH'
+      : 'API_FOOTBALL_REJECTED';
+    throw error;
   }
   return Array.isArray(response.data?.response) ? response.data.response : [];
 }

@@ -2903,6 +2903,18 @@
 
 <script>
   const STORAGE_KEY_ACTIVE_PANE = 'dashboard-active-pane';
+  const nativeDashboardFetch = window.fetch.bind(window);
+  window.fetch = async (...args) => {
+    const response = await nativeDashboardFetch(...args);
+    if (response.status === 401) {
+      const request = args[0];
+      const requestUrl = new URL(typeof request === 'string' ? request : request.url, window.location.href);
+      if (requestUrl.origin === window.location.origin && !window.location.pathname.startsWith('/login')) {
+        window.location.assign('/login');
+      }
+    }
+    return response;
+  };
 
   function setActivePane(pane) {
     const paneLabels = {
@@ -7496,6 +7508,33 @@
       return;
     }
     await addApiFootballFeed({ leagueId, season }, { selectAfterAdd: true });
+  }
+
+  async function fetchApiFootballStartDate(row, { force = false } = {}) {
+    const status = row.querySelector('[data-api-football-role="start-date-status"]');
+    const input = row.querySelector('[data-api-football-role="start-date"]');
+    const leagueId = row.querySelector('[data-api-football-role="competition"]').value;
+    const season = row.querySelector('[data-api-football-role="season"]').value;
+    if (!force && input.value) return;
+    status.textContent = 'Turnierbeginn wird abgerufen …';
+    status.className = 'cfg-hint';
+    try {
+      const response = await fetch(`/api/api-football/season-start?leagueId=${encodeURIComponent(leagueId)}&season=${encodeURIComponent(season)}`, { cache: 'no-store' });
+      const result = await response.json();
+      if (!response.ok || !result.ok) throw new Error(result.error || 'Turnierbeginn konnte nicht geladen werden.');
+      if (result.startDate) {
+        input.value = result.startDate;
+        status.textContent = 'Von API-Football übernommen';
+        status.className = 'cfg-hint ok';
+        syncApiFootballFeedsDirtyState();
+      } else {
+        status.textContent = 'Für diese Saison ist kein Turnierbeginn verfügbar.';
+        status.className = 'cfg-hint warn';
+      }
+    } catch (error) {
+      status.textContent = error.message;
+      status.className = 'cfg-hint err';
+    }
   }
 
   async function addApiFootballFeed(feed = {}, { selectAfterAdd = false } = {}) {

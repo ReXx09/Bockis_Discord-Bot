@@ -315,6 +315,14 @@ describe('OpenLigaDB data formatting', () => {
     expect(usageTracker.recordApiRequest).toHaveBeenCalledWith('apiFootball');
   });
 
+  test('classifies an API-Football key rejection when loading teams', async () => {
+    const usageTracker = { recordApiRequest: jest.fn(() => true) };
+    const http = { get: jest.fn(async () => ({ data: { errors: { token: 'Invalid API key' }, response: [] } })) };
+
+    await expect(fetchApiFootballTeams(http, 'invalid-key', { leagueId: 4, season: 2028 }, usageTracker))
+      .rejects.toMatchObject({ code: 'API_FOOTBALL_AUTH' });
+  });
+
   test('refreshes configured standings before the distant tournament fixture window', async () => {
     const now = Date.parse('2026-01-01T00:00:00Z');
     const standings = Array.from({ length: 10 }, (_, groupIndex) => Array.from({ length: 20 }, (_, teamIndex) => ({

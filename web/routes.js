@@ -464,7 +464,19 @@ module.exports = function startWebServer({
       if (error.code === 'API_DAILY_LIMIT') {
         return res.status(429).json({ ok: false, error: 'API-Football-Tageslimit erreicht.' });
       }
-      return res.status(502).json({ ok: false, error: 'Teams sind momentan nicht verfügbar.' });
+      if (error.code === 'API_FOOTBALL_AUTH' || [401, 403].includes(error.response?.status)) {
+        return res.status(502).json({ ok: false, error: 'API-Football-Schlüssel ungültig oder der Tarif erlaubt diesen Endpunkt nicht.' });
+      }
+      if (error.response?.status === 429) {
+        return res.status(429).json({ ok: false, error: 'API-Football-Anfragelimit erreicht; Tariflimit oder Rate Limit prüfen.' });
+      }
+      if (error.code === 'API_FOOTBALL_REJECTED') {
+        return res.status(502).json({ ok: false, error: 'API-Football hat Wettbewerb oder Saison abgelehnt.' });
+      }
+      if (!error.response) {
+        return res.status(502).json({ ok: false, error: 'API-Football ist nicht erreichbar; Netzwerkverbindung prüfen.' });
+      }
+      return res.status(502).json({ ok: false, error: `API-Football-Teamabfrage fehlgeschlagen (HTTP ${error.response.status}).` });
     }
   });
 
