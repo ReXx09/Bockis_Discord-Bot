@@ -2786,9 +2786,11 @@ module.exports = function startWebServer({
           return res.json({ ok: false, error: 'UPDATE_INTERVAL muss eine Zahl >= 10000 sein' });
       }
       if (key === 'WEB_PORT') {
-        const n = parseInt(val, 10);
-        if (!Number.isFinite(n) || n < 1 || n > 65535)
+        const n = Number(val);
+        if (!/^\d+$/.test(val) || !Number.isSafeInteger(n) || n < 1 || n > 65535)
           return res.json({ ok: false, error: 'WEB_PORT muss zwischen 1 und 65535 liegen' });
+        updates[key] = String(n);
+        continue;
       }
       if (key === 'OPENAI_MAX_TOKENS') {
         const n = parseInt(val, 10);
@@ -3446,6 +3448,12 @@ module.exports = function startWebServer({
     const isLoopbackHost = host === 'localhost' || host === '::1'
       || /^127(?:\.\d{1,3}){3}$/.test(host);
     if (!isLoopbackHost) logger.warn(`Dashboard an ${host} gebunden; externen Zugriff nur mit HTTPS-Proxy freigeben.`);
+  });
+  server.on('error', error => {
+    let detail = error.message;
+    if (error.code === 'EADDRINUSE') detail = `Port ${port} ist bereits belegt.`;
+    else if (error.code === 'EADDRNOTAVAIL') detail = `Host-Adresse ${host} ist auf diesem Rechner nicht verfügbar.`;
+    logger.error(`Dashboard konnte nicht unter ${host}:${port} starten (${error.code || 'ERROR'}): ${detail}`);
   });
 
   // ── WigiDash Status-API Server (optionaler separater Server) ─────────────────

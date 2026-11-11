@@ -2028,7 +2028,7 @@
             <div class="cfg-section-body">
               <div class="cfg-field" style="margin-bottom:0">
           <label class="cfg-label" for="cfgWebPort">Web Port</label>
-          <input class="cfg-input" id="cfgWebPort" type="number" min="1" max="65535"
+          <input class="cfg-input" id="cfgWebPort" type="number" min="1" max="65535" step="1"
                  placeholder="3000">
               </div>
             </div>
@@ -7356,6 +7356,7 @@
       updateChannelNamePreview();
       setCfg('cfgUpdateInterval', d.UPDATE_INTERVAL || '300000');
       setCfg('cfgWebPort', d.WEB_PORT || '3000');
+      document.getElementById('cfgWebPort').dataset.configuredPort = String(d.WEB_PORT || '3000');
       setCfg('cfgDbStorage', d.DB_STORAGE || './data/status.db');
 
       document.getElementById('cfgStatus').textContent = '';
@@ -8097,6 +8098,41 @@
         st.textContent = `✓ Gespeichert: ${res.updated.join(', ')}${res.restartId ? ' · Bot startet neu…' : ''}`;
         st.className = 'ok';
         toast('✓ Konfiguration gespeichert', 'ok');
+
+        const previousWebPort = Number(document.getElementById('cfgWebPort').dataset.configuredPort);
+        const requestedWebPort = Number(body.WEB_PORT);
+        const browserPort = Number(window.location.port) || (window.location.protocol === 'https:' ? 443 : 80);
+        if (res.restartId && Number.isInteger(requestedWebPort) && requestedWebPort !== previousWebPort
+          && browserPort === previousWebPort) {
+          const targetUrl = new URL(window.location.href);
+          targetUrl.port = String(requestedWebPort);
+          targetUrl.pathname = '/dashboard';
+          targetUrl.search = '';
+          targetUrl.hash = '';
+          st.textContent = 'Der Web-Port wurde geändert. Das Dashboard öffnet gleich unter: ';
+          const link = document.createElement('a');
+          link.href = targetUrl.href;
+          link.textContent = targetUrl.href;
+          st.append(link);
+          st.className = 'warn';
+          btn.disabled = false;
+          btn.textContent = configSaveButtonLabel();
+          const portReadyDeadline = Date.now() + 90_000;
+          const waitForNewPort = async () => {
+            if (Date.now() >= portReadyDeadline) {
+              st.prepend(document.createTextNode('Der neue Port antwortet noch nicht. Bitte Start und Port prüfen. '));
+              return;
+            }
+            try {
+              await fetch(new URL('/login', targetUrl).href, { mode: 'no-cors', cache: 'no-store' });
+              window.location.assign(targetUrl.href);
+            } catch {
+              window.setTimeout(waitForNewPort, 1000);
+            }
+          };
+          window.setTimeout(waitForNewPort, 1000);
+          return;
+        }
         
         // Bot-Polling nach Restart vornehmen
         if (res.restartId) {
