@@ -16,8 +16,88 @@ const {
   getSeasonForLeague,
   OPENLIGADB_COUNTDOWN_STYLES,
 } = require('../services/openligadb');
+const { createApiUsageTracker } = require('../services/api-usage');
+const {
+  buildApiFootballTournamentPayload,
+  fetchApiFootballFixtures,
+  getApiFootballRefreshIntervalMs,
+  shouldPollApiFootballFixtures,
+} = require('../services/api-football');
 
 describe('OpenLigaDB data formatting', () => {
+  test('persists daily request counts for both providers and resets them on UTC day change', () => {
+    const fs = require('fs');
+    const os = require('os');
+    const path = require('path');
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'bockis-api-usage-'));
+    const filePath = path.join(directory, 'usage.json');
+    let now = new Date('2026-11-11T23:59:00Z');
+    try {
+      const tracker = createApiUsageTracker({ filePath, nowProvider: () => now });
+      tracker.recordApiRequest('openligadb');
+      tracker.recordApiRequest('apiFootball');
+      tracker.recordApiRequest('apiFootball');
+      expect(tracker.getUsageSnapshot()).toEqual({
+        dateUtc: '2026-11-11',
+        totalRequests: 3,
+        providers: {
+          openligadb: { requests: 1, dailyLimit: null, remaining: null },
+          apiFootball: { requests: 2, dailyLimit: 100, remaining: 98 },
+        },
+      });
+
+      const restoredTracker = createApiUsageTracker({ filePath, nowProvider: () => now });
+      expect(restoredTracker.getUsageSnapshot().providers.apiFootball.requests).toBe(2);
+      now = new Date('2026-11-12T00:00:00Z');
+      expect(restoredTracker.getUsageSnapshot().providers.apiFootball.requests).toBe(0);
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  test('stops API-Football requests at the configured daily limit', () => {
+    const fs = require('fs');
+    const os = require('os');
+    const path = require('path');
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'bockis-api-limit-'));
+    try {
+      const tracker = createApiUsageTracker({
+        filePath: path.join(directory, 'usage.json'),
+      });
+      tracker.setDailyLimit('apiFootball', 1);
+      expect(tracker.recordApiRequest('apiFootball')).toBe(true);
+      expect(tracker.recordApiRequest('apiFootball')).toBe(false);
+      expect(tracker.getUsageSnapshot().providers.apiFootball).toEqual({ requests: 1, dailyLimit: 1, remaining: 0 });
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  test('fetches API-Football fixtures with the key header and renders a local Discord countdown', async () => {
+    const usageTracker = { recordApiRequest: jest.fn(() => true) };
+    const http = { get: jest.fn(async () => ({ data: { response: [{
+      fixture: { date: '2028-06-09T13:00:00+00:00', venue: { name: 'National Stadium of Wales', city: 'Cardiff' }, status: { short: 'NS' } },
+      teams: { home: { name: 'Wales' }, away: { name: 'Opponent' } },
+      league: { name: 'EURO 2028', round: 'Group A' },
+    }] } })) };
+    const fixtures = await fetchApiFootballFixtures(http, 'test-key', { leagueId: 4, season: 2028 }, usageTracker);
+    expect(usageTracker.recordApiRequest).toHaveBeenCalledWith('apiFootball');
+    expect(http.get.mock.calls[0][1].headers['x-apisports-key']).toBe('test-key');
+    const embed = buildApiFootballTournamentPayload({ name: 'UEFA EURO 2028' }, fixtures, Date.parse('2028-06-01T00:00:00Z')).embeds[0].toJSON();
+    expect(embed.description).toContain('<t:1844168400:R>');
+    expect(embed.description).toContain('National Stadium of Wales · Cardiff');
+  });
+
+  test('keeps distant tournaments local and skips API polling until 30 days before kickoff', () => {
+    const now = Date.parse('2026-01-01T00:00:00Z');
+    const feed = { name: 'UEFA EURO 2028', startDate: '2028-06-09' };
+    expect(shouldPollApiFootballFixtures(feed, now)).toBe(false);
+    expect(shouldPollApiFootballFixtures({ startDate: '2026-01-15' }, now)).toBe(true);
+    expect(getApiFootballRefreshIntervalMs({})).toBe(24 * 60 * 60 * 1000);
+    const embed = buildApiFootballTournamentPayload(feed, [], now).embeds[0].toJSON();
+    expect(embed.description).toContain('<t:1844121600:R>');
+  });
+
   test('resolves latest season for the selected league', () => {
     const leagues = [
       { leagueShortcut: 'bl1', leagueSeason: '2024' },

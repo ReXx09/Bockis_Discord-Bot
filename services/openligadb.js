@@ -3,6 +3,7 @@
 const { AttachmentBuilder, EmbedBuilder } = require('discord.js');
 const { createHash } = require('crypto');
 const sharp = require('sharp');
+const { recordApiRequest } = require('./api-usage');
 
 const API_BASE = 'https://api.openligadb.de';
 const LEAGUE_SHORTCUT = 'bl1';
@@ -56,6 +57,7 @@ async function apiGet(http, url, requestIntervalMs = 1050) {
   const wait = Math.max(0, requestIntervalMs - (Date.now() - lastApiRequestAt));
   if (wait) await new Promise(resolve => setTimeout(resolve, wait));
   lastApiRequestAt = Date.now();
+  recordApiRequest('openligadb');
   try {
     return await http.get(url, { timeout: REQUEST_TIMEOUT_MS });
   } finally {

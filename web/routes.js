@@ -23,6 +23,7 @@ const { AttachmentBuilder, ChannelType } = require('discord.js');
 const { execFile, execFileSync, execSync, spawn } = require('child_process');
 const { createDashboardAuth, timingSafeStringEqual } = require('./dashboard-auth');
 const { SERVER_PROFILE_ENV_PATHS, createServerProfileDefaults, setServerProfileSettings } = require('../server-profiles');
+const { getApiUsageSnapshot } = require('../services/api-usage');
 const {
   buildFinishedMatchPng,
   buildNextMatchCountdownMessage,
@@ -142,6 +143,37 @@ function normalizeOpenLigaDbFeeds(value) {
       countdownChannelId,
       tableChannelIds: [...new Set(tableChannelIds.map(String))],
     };
+  });
+}
+
+function normalizeApiFootballFeeds(value) {
+  let feeds;
+  try { feeds = JSON.parse(String(value)); } catch { throw new Error('API-Football-Feeds müssen gültiges JSON sein.'); }
+  if (!Array.isArray(feeds) || feeds.length > 12) throw new Error('Es sind höchstens 12 API-Football-Turnierfeeds erlaubt.');
+  const seen = new Set();
+  return feeds.map(feed => {
+    const leagueId = Number(feed?.leagueId);
+    const season = Number(feed?.season);
+    const channelId = String(feed?.channelId || '').trim();
+    if (!feed || typeof feed !== 'object' || Array.isArray(feed)
+      || !Number.isInteger(leagueId) || leagueId <= 0
+      || !Number.isInteger(season) || season < 2000 || season > 2200
+      || !/^\d{5,24}$/.test(channelId)) {
+      throw new Error('Jeder API-Football-Feed benötigt eine Liga-ID, Saison und gültige Discord-Kanal-ID.');
+    }
+    const key = `${leagueId}:${season}:${channelId}`;
+    if (seen.has(key)) throw new Error('Doppelte API-Football-Liga, Saison und Kanal-Kombination.');
+    seen.add(key);
+    const name = String(feed.name || `Turnier ${leagueId}`).trim().slice(0, 100);
+    const startDate = String(feed.startDate || '').trim();
+    if (startDate && (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) || Number.isNaN(Date.parse(`${startDate}T00:00:00Z`)))) {
+      throw new Error(`Ungültiges Startdatum für ${name}.`);
+    }
+    const interval = feed.updateIntervalMinutes == null || feed.updateIntervalMinutes === '' ? 1440 : Number(feed.updateIntervalMinutes);
+    if (!Number.isInteger(interval) || interval < 60 || interval > 1440) {
+      throw new Error(`Das Abrufintervall für ${name} muss zwischen 60 und 1440 Minuten liegen.`);
+    }
+    return { leagueId, season, name, channelId, startDate, updateIntervalMinutes: interval };
   });
 }
 
@@ -391,6 +423,10 @@ module.exports = function startWebServer({
       logger.warn(`OpenLigaDB-Teamliste konnte nicht geladen werden: ${err.message}`);
       return res.status(502).json({ ok: false, error: 'Teams sind momentan nicht verfügbar.' });
     }
+  });
+
+  app.get('/api/api-usage', dashboardAuth, (req, res) => {
+    return res.set('Cache-Control', 'no-store').json({ ok: true, usage: getApiUsageSnapshot() });
   });
 
   app.post('/api/openligadb/countdown-preview', dashboardAuth, async (req, res) => {
@@ -2167,6 +2203,7 @@ module.exports = function startWebServer({
       const webhookUrl = get('DISCORD_STATUS_WEBHOOK_URL');
       const dashboardPassword = get('DASHBOARD_PASSWORD');
       const translateApiKey = get('DISCORD_TRANSLATE_API_KEY');
+      const apiFootballKey = get('API_FOOTBALL_KEY');
       const commandTileTemplateEncoded = get('DISCORD_COMMAND_TILE_TEMPLATE_B64');
       const commandTileTemplate = commandTileTemplateEncoded
         ? Buffer.from(commandTileTemplateEncoded, 'base64').toString('utf8')
@@ -2229,6 +2266,9 @@ module.exports = function startWebServer({
         DISCORD_OPENLIGADB_CHANNEL_ID: get('DISCORD_OPENLIGADB_CHANNEL_ID') || '',
         DISCORD_OPENLIGADB_FAVORITES: get('DISCORD_OPENLIGADB_FAVORITES') || '',
         DISCORD_OPENLIGADB_FEEDS: get('DISCORD_OPENLIGADB_FEEDS') || '',
+        API_FOOTBALL_KEY: maskSecret(apiFootballKey),
+        API_FOOTBALL_FEEDS: get('API_FOOTBALL_FEEDS') || '[]',
+        API_FOOTBALL_DAILY_LIMIT: get('API_FOOTBALL_DAILY_LIMIT') || '100',
         DISCORD_TRANSLATE_DEFAULT_TARGET: get('DISCORD_TRANSLATE_DEFAULT_TARGET') || 'de',
         DISCORD_TRANSLATE_DEFAULT_SOURCE: get('DISCORD_TRANSLATE_DEFAULT_SOURCE') || 'auto',
         DISCORD_TRANSLATE_PROVIDER: get('DISCORD_TRANSLATE_PROVIDER') || (get('DISCORD_USE_DEEPL') === 'true' && get('DISCORD_DEEPL_API_KEY') ? 'deepl' : 'auto'),
@@ -2347,6 +2387,9 @@ module.exports = function startWebServer({
       'DISCORD_OPENLIGADB_CHANNEL_ID',
       'DISCORD_OPENLIGADB_FAVORITES',
       'DISCORD_OPENLIGADB_FEEDS',
+      'API_FOOTBALL_KEY',
+      'API_FOOTBALL_FEEDS',
+      'API_FOOTBALL_DAILY_LIMIT',
       'DISCORD_TRANSLATE_DEFAULT_TARGET',
       'DISCORD_TRANSLATE_DEFAULT_SOURCE',
       'DISCORD_TRANSLATE_PROVIDER',
@@ -2443,6 +2486,8 @@ module.exports = function startWebServer({
       'DISCORD_OPENLIGADB_CHANNEL_ID',
       'DISCORD_OPENLIGADB_FAVORITES',
       'DISCORD_OPENLIGADB_FEEDS',
+      'API_FOOTBALL_KEY',
+      'API_FOOTBALL_FEEDS',
       'DISCORD_WELCOME_CHANNEL_ID',
       'DISCORD_WELCOME_MESSAGE_TEMPLATE',
       'DISCORD_GITHUB_CHANNEL_ID',
@@ -2561,7 +2606,7 @@ module.exports = function startWebServer({
         updates.DISCORD_COMMAND_TILE_TEMPLATE_B64 = Buffer.from(val, 'utf8').toString('base64');
         continue;
       }
-      if (key === 'DISCORD_TOKEN' || key === 'UPTIME_KUMA_API_KEY' || key === 'DISCORD_STATUS_WEBHOOK_URL' || key === 'DASHBOARD_PASSWORD' || key === 'DISCORD_TRANSLATE_API_KEY' || key === 'OPENAI_API_KEY' || key === 'WIGIDASH_API_KEY') {
+      if (key === 'DISCORD_TOKEN' || key === 'UPTIME_KUMA_API_KEY' || key === 'DISCORD_STATUS_WEBHOOK_URL' || key === 'DASHBOARD_PASSWORD' || key === 'DISCORD_TRANSLATE_API_KEY' || key === 'OPENAI_API_KEY' || key === 'WIGIDASH_API_KEY' || key === 'API_FOOTBALL_KEY') {
         if (val.includes('*')) continue;
         if (/[\n\r]/.test(val)) return res.json({ ok: false, error: 'Ungültiger Token (enthält Zeilenumbruch)' });
       }
@@ -2611,6 +2656,17 @@ module.exports = function startWebServer({
         return res.json({ ok: false, error: 'DISCORD_TRANSLATE_ENABLED muss true oder false sein' });
       if (key === 'DISCORD_OPENLIGADB_ENABLED' && !['true', 'false'].includes(val))
         return res.json({ ok: false, error: 'DISCORD_OPENLIGADB_ENABLED muss true oder false sein' });
+      if (key === 'API_FOOTBALL_FEEDS') {
+        try { updates[key] = JSON.stringify(normalizeApiFootballFeeds(val)); }
+        catch (error) { return res.json({ ok: false, error: error.message }); }
+        continue;
+      }
+      if (key === 'API_FOOTBALL_DAILY_LIMIT') {
+        const limit = Number(val);
+        if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100_000) {
+          return res.json({ ok: false, error: 'API_FOOTBALL_DAILY_LIMIT muss zwischen 1 und 100000 liegen.' });
+        }
+      }
       if ((key === 'DISCORD_TRANSLATE_DEFAULT_TARGET' || key === 'DISCORD_TRANSLATE_DEFAULT_SOURCE')) {
         if (!/^[a-z]{2,3}(?:-[a-z]{2,4})?$/i.test(val) && !(key === 'DISCORD_TRANSLATE_DEFAULT_SOURCE' && val.toLowerCase() === 'auto')) {
           return res.json({ ok: false, error: `${key} muss auto (nur Quelle) oder Sprachcode wie de/en/fr sein` });

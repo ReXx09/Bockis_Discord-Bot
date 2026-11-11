@@ -158,6 +158,27 @@ const config = convict({
       default: '',
       env: 'DISCORD_OPENLIGADB_FEEDS'
     },
+    apiFootball: {
+      apiKey: {
+        doc: 'API-Key für API-Football',
+        format: String,
+        default: '',
+        env: 'API_FOOTBALL_KEY',
+        sensitive: true
+      },
+      feeds: {
+        doc: 'JSON-Konfiguration für API-Football-Turnierfeeds',
+        format: String,
+        default: '[]',
+        env: 'API_FOOTBALL_FEEDS'
+      },
+      dailyLimit: {
+        doc: 'Maximale API-Football-Aufrufe pro UTC-Tag',
+        format: 'int',
+        default: 100,
+        env: 'API_FOOTBALL_DAILY_LIMIT'
+      }
+    },
     translateDefaultTarget: {
       doc: 'Standard-Zielsprache fuer /translate (z.B. de, en, fr)',
       format: String,

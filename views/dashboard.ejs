@@ -1032,6 +1032,7 @@
           <button class="cfg-nav-btn" data-cfg-pane-btn="raspi" onclick="setActiveSettingsPane('raspi')">🍓 Raspi & Web</button>
           <button class="cfg-nav-btn" data-cfg-pane-btn="welcome" onclick="setActiveSettingsPane('welcome')">👋 Willkommen & Auto-Reply</button>
           <button class="cfg-nav-btn" data-cfg-pane-btn="openligadb" onclick="setActiveSettingsPane('openligadb')">⚽ OpenLigaDB</button>
+          <button class="cfg-nav-btn" data-cfg-pane-btn="apifootball" onclick="setActiveSettingsPane('apifootball')">🏆 API-Football</button>
           <button class="cfg-nav-btn" data-cfg-pane-btn="github" onclick="setActiveSettingsPane('github')">🐙 GitHub-Watcher</button>
           <button class="cfg-nav-btn" data-cfg-pane-btn="aichat" onclick="setActiveSettingsPane('aichat')">🤖 KI-Chat (OpenAI)</button>
         </div>
@@ -2380,6 +2381,34 @@
               </div>
             </div>
           </div>
+        </div>
+      </div>
+
+      <div class="cfg-pane-card hidden" data-cfg-pane="apifootball">
+        <div class="cfg-pane-title">🏆 API-Football · Turniere</div>
+        <div class="cfg-section open">
+          <div class="cfg-section-header" onclick="toggleConfigSection(this)">
+            <div class="cfg-section-header-title"><span class="cfg-section-toggle">▾</span><span>API-Zugang &amp; Spielplan</span></div>
+          </div>
+          <div class="cfg-section-content"><div class="cfg-section-body">
+            <label class="cfg-label" for="cfgApiFootballKey">API-Football-Schlüssel</label>
+            <input class="cfg-input" id="cfgApiFootballKey" type="password" autocomplete="new-password" placeholder="API-Key eingeben">
+            <label style="display:flex;align-items:center;gap:6px;margin:8px 0 14px"><input id="cfgApiFootballClearKey" type="checkbox"><span>Gespeicherten API-Key entfernen</span></label>
+            <label class="cfg-label" for="cfgApiFootballDailyLimit">Tageslimit (UTC)</label>
+            <input class="cfg-input" id="cfgApiFootballDailyLimit" type="number" min="1" max="100000" step="1">
+            <label class="cfg-label" for="cfgApiFootballFeeds" style="margin-top:14px">Turnierfeeds (JSON)</label>
+            <textarea class="cfg-input" id="cfgApiFootballFeeds" rows="7" spellcheck="false" placeholder='[{"leagueId":4,"season":2028,"name":"UEFA EURO 2028","channelId":"12345678901234567","startDate":"2028-06-09","updateIntervalMinutes":1440}]'></textarea>
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:12px">
+              <button class="btn btn-green" id="btnApiFootballSave" type="button" onclick="saveApiFootballSettings()">💾 API-Football speichern</button>
+              <span id="cfgApiFootballSaveStatus" class="cfg-hint" style="margin:0" aria-live="polite"></span>
+            </div>
+          </div></div>
+        </div>
+        <div class="cfg-section open">
+          <div class="cfg-section-header" onclick="toggleConfigSection(this)">
+            <div class="cfg-section-header-title"><span class="cfg-section-toggle">▾</span><span>API-Aufrufe heute</span></div>
+          </div>
+          <div class="cfg-section-content"><div class="cfg-section-body" id="apiUsageStatus" aria-live="polite">Verbrauch wird geladen …</div></div>
         </div>
       </div>
 
@@ -7128,6 +7157,98 @@
     updateOpenLigaDbFeedVisibility();
   }
 
+  function loadApiFootballSettings(configData) {
+    const keyInput = document.getElementById('cfgApiFootballKey');
+    keyInput.value = '';
+    keyInput.dataset.initialValue = configData.API_FOOTBALL_KEY ? '__MASKED__' : '';
+    keyInput.placeholder = configData.API_FOOTBALL_KEY
+      ? `Aktuell: ${configData.API_FOOTBALL_KEY} — leer lassen = unverändert`
+      : 'API-Key eingeben';
+    document.getElementById('cfgApiFootballClearKey').checked = false;
+    const feedsInput = document.getElementById('cfgApiFootballFeeds');
+    let feeds = [];
+    try { feeds = JSON.parse(configData.API_FOOTBALL_FEEDS || '[]'); } catch {}
+    feedsInput.value = JSON.stringify(Array.isArray(feeds) ? feeds : [], null, 2);
+    feedsInput.dataset.initialValue = feedsInput.value;
+    const limitInput = document.getElementById('cfgApiFootballDailyLimit');
+    limitInput.value = configData.API_FOOTBALL_DAILY_LIMIT || '100';
+    limitInput.dataset.initialValue = limitInput.value;
+    void refreshApiUsage();
+    if (!window.apiUsageRefreshTimer) window.apiUsageRefreshTimer = setInterval(refreshApiUsage, 60_000);
+  }
+
+  async function refreshApiUsage() {
+    const status = document.getElementById('apiUsageStatus');
+    if (!status) return;
+    try {
+      const response = await fetch('/api/api-usage', { cache: 'no-store' }).then(result => result.json());
+      if (!response.ok) throw new Error(response.error || 'Verbrauch nicht verfügbar');
+      const { dateUtc, totalRequests, providers } = response.usage;
+      status.replaceChildren();
+      const total = document.createElement('strong');
+      total.textContent = `${totalRequests} Aufrufe insgesamt`;
+      status.append(total);
+      const date = document.createElement('div');
+      date.className = 'cfg-hint';
+      date.textContent = `UTC · ${dateUtc}`;
+      status.append(date);
+      for (const [provider, label] of [['openligadb', 'OpenLigaDB'], ['apiFootball', 'API-Football']]) {
+        const usage = providers[provider];
+        const row = document.createElement('div');
+        row.style.cssText = 'display:flex;justify-content:space-between;gap:16px;padding:8px 0;border-bottom:1px solid var(--border)';
+        const name = document.createElement('span');
+        name.textContent = label;
+        const count = document.createElement('strong');
+        count.textContent = usage.dailyLimit == null
+          ? `${usage.requests} Aufrufe`
+          : `${usage.requests} / ${usage.dailyLimit} Aufrufe · ${usage.remaining} übrig`;
+        row.append(name, count);
+        status.append(row);
+      }
+    } catch (error) {
+      status.textContent = error.message;
+    }
+  }
+
+  async function saveApiFootballSettings() {
+    const button = document.getElementById('btnApiFootballSave');
+    const status = document.getElementById('cfgApiFootballSaveStatus');
+    const keyInput = document.getElementById('cfgApiFootballKey');
+    const clearKey = document.getElementById('cfgApiFootballClearKey').checked;
+    const feedsInput = document.getElementById('cfgApiFootballFeeds');
+    const limitInput = document.getElementById('cfgApiFootballDailyLimit');
+    button.disabled = true;
+    status.textContent = '';
+    try {
+      const feeds = JSON.parse(feedsInput.value || '[]');
+      const body = { API_FOOTBALL_FEEDS: JSON.stringify(feeds) };
+      if (clearKey) body.API_FOOTBALL_KEY = '';
+      else if (keyInput.value.trim()) body.API_FOOTBALL_KEY = keyInput.value.trim();
+      if (limitInput.value !== limitInput.dataset.initialValue) body.API_FOOTBALL_DAILY_LIMIT = limitInput.value;
+      if (body.API_FOOTBALL_FEEDS === feedsInput.dataset.initialValue) delete body.API_FOOTBALL_FEEDS;
+      if (!Object.keys(body).length) {
+        status.textContent = 'Keine Änderungen erkannt.';
+        status.className = 'cfg-hint warn';
+        return;
+      }
+      const response = await fetch('/api/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      }).then(result => result.json());
+      if (!response.ok) throw new Error(response.error || 'API-Football-Einstellungen konnten nicht gespeichert werden.');
+      status.textContent = response.restartId ? 'Gespeichert · Bot startet neu …' : 'Gespeichert.';
+      status.className = 'cfg-hint ok';
+      toast('API-Football-Einstellungen gespeichert', 'ok');
+      await loadConfig({ force: true });
+    } catch (error) {
+      status.textContent = error.message;
+      status.className = 'cfg-hint err';
+    } finally {
+      button.disabled = false;
+    }
+  }
+
   async function loadConfig({ force = false } = {}) {
     try {
       const configUrl = activeServerProfileGuildId
@@ -7167,6 +7288,7 @@
       document.getElementById('cfgWebhookUrl').dataset.initialValue = d.DISCORD_STATUS_WEBHOOK_URL ? '__MASKED__' : '';
       document.getElementById('cfgDashPassword').dataset.initialValue = d.DASHBOARD_PASSWORD ? '__MASKED__' : '';
       document.getElementById('cfgWigiDashApiKey').dataset.initialValue = d.WIGIDASH_API_KEY ? '__MASKED__' : '';
+      loadApiFootballSettings(d);
 
       setCfg('cfgStatusCh', d.STATUS_CHANNEL_ID || '');
       setCfg('cfgCommandsCh', d.DISCORD_COMMANDS_CHANNEL_ID || '');
@@ -7200,6 +7322,7 @@
       setCfg('cfgTranslateAllowedGuildIds', d.DISCORD_TRANSLATE_ALLOWED_GUILD_IDS || '');
       setCfg('cfgTranslateMaxTextLength', d.DISCORD_TRANSLATE_MAX_TEXT_LENGTH || '1800');
       await loadOpenLigaDbSettings(d);
+      loadApiFootballSettings(d);
       setCfg('cfgWigiDashHost', d.WIGIDASH_API_HOST || '0.0.0.0');
       setCfg('cfgWigiDashPort', d.WIGIDASH_API_PORT || '47900');
       setCfg('cfgWigiDashPath', d.WIGIDASH_API_PATH || '/status');
