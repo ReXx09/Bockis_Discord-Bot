@@ -25,6 +25,8 @@ const { createDashboardAuth, timingSafeStringEqual } = require('./dashboard-auth
 const { describeWebServerListenError, normalizeWebPort } = require('./server-config');
 const {
   API_FOOTBALL_COMPETITIONS,
+  buildApiFootballLivePayload,
+  buildApiFootballStandingsPayload,
   fetchApiFootballSeasonStartDate,
   normalizeApiFootballFeeds,
 } = require('../services/api-football');
@@ -434,6 +436,58 @@ module.exports = function startWebServer({
         return res.status(429).json({ ok: false, error: 'API-Football-Tageslimit erreicht.' });
       }
       return res.status(502).json({ ok: false, error: 'Saisonstart ist momentan nicht verfügbar.' });
+    }
+  });
+
+  app.post('/api/api-football/test', dashboardAuth, async (req, res) => {
+    const guildId = String(req.body?.guildId || '').trim();
+    const channelId = String(req.body?.channelId || '').trim();
+    const leagueId = Number(req.body?.leagueId);
+    const season = Number(req.body?.season);
+    const kind = String(req.body?.kind || '');
+    const competition = API_FOOTBALL_COMPETITIONS.find(item => item.leagueId === leagueId);
+    if (!/^\d{1,24}$/.test(guildId) || !/^\d{5,24}$/.test(channelId)
+      || !competition || !Number.isInteger(season) || season < 2000 || season > 2200
+      || !['live', 'table'].includes(kind)) {
+      return res.status(400).json({ ok: false, error: 'Bitte Server, Kanal, Wettbewerb, Saison und Testtyp prüfen.' });
+    }
+    const guild = client.guilds.cache.get(guildId);
+    if (!guild) return res.status(404).json({ ok: false, error: 'Der ausgewählte Discord-Server ist nicht erreichbar.' });
+    const profile = await ServerProfile.findOne({ where: { guildId } });
+    if (!profile) return res.status(403).json({ ok: false, error: 'Für diesen Server ist kein Dashboard-Profil vorhanden.' });
+    try {
+      const channel = client.channels.cache.get(channelId) || await client.channels.fetch(channelId);
+      if (!channel?.isTextBased?.() || typeof channel.send !== 'function') {
+        return res.status(400).json({ ok: false, error: 'Der ausgewählte Kanal kann keine Nachrichten empfangen.' });
+      }
+      if (String(channel.guildId || channel.guild?.id || '') !== guildId) {
+        return res.status(400).json({ ok: false, error: 'Der ausgewählte Kanal gehört nicht zum gewählten Discord-Server.' });
+      }
+      const feed = { leagueId, season, name: competition.name };
+      let payload;
+      if (kind === 'live') {
+        const fixture = {
+          fixture: { date: new Date().toISOString(), status: { short: '1H', elapsed: 12 } },
+          league: { id: leagueId, name: competition.name, round: 'Beispielrunde' },
+          teams: { home: { name: 'Beispiel Heimteam' }, away: { name: 'Beispiel Auswärtsteam' } },
+          goals: { home: 1, away: 0 },
+        };
+        payload = buildApiFootballLivePayload(feed, [fixture], [fixture]);
+      } else {
+        const group = [
+          { rank: 1, team: { name: 'Beispiel Heimteam' }, points: 9, all: { played: 3 }, goalsDiff: 6 },
+          { rank: 2, team: { name: 'Beispiel Auswärtsteam' }, points: 6, all: { played: 3 }, goalsDiff: 2 },
+        ];
+        payload = buildApiFootballStandingsPayload(feed, [{ league: { standings: [group] } }]);
+      }
+      await channel.send({
+        content: `🧪 API-Football-${kind === 'live' ? 'Live' : 'Tabellen'}test · Beispieldaten, kein echtes Spiel.`,
+        ...payload,
+      });
+      return res.json({ ok: true, message: `Testnachricht wurde an #${channel.name || channelId} gesendet.` });
+    } catch (error) {
+      logger.error(`API-Football-${kind}-Test konnte nicht gesendet werden: ${error.message}`);
+      return res.status(500).json({ ok: false, error: 'Testnachricht konnte nicht an Discord gesendet werden. Kanalrechte prüfen.' });
     }
   });
 

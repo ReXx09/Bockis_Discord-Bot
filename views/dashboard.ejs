@@ -7321,6 +7321,12 @@
       <label class="cfg-label">Kanal für Tabelle (optional)
         <input class="cfg-input" data-api-football-role="table-channel" type="text" inputmode="numeric" autocomplete="off" placeholder="Discord-Kanal-ID">
       </label>`;
+    row.insertAdjacentHTML('beforeend', `
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <button class="btn" type="button" data-api-football-role="live-test">Live-Embed testen</button>
+        <button class="btn" type="button" data-api-football-role="table-test">Tabellen-Embed testen</button>
+        <span class="cfg-hint" data-api-football-role="test-status" aria-live="polite"></span>
+      </div>`);
     const select = row.querySelector('[data-api-football-role="competition"]');
     for (const item of apiFootballCompetitionCatalog) {
       const option = document.createElement('option');
@@ -7360,6 +7366,12 @@
     row.querySelector('[data-api-football-role="fetch-start-date"]').addEventListener('click', () => {
       void fetchApiFootballStartDate(row, { force: true });
     });
+    row.querySelector('[data-api-football-role="live-test"]').addEventListener('click', () => {
+      void sendApiFootballTest(row, 'live');
+    });
+    row.querySelector('[data-api-football-role="table-test"]').addEventListener('click', () => {
+      void sendApiFootballTest(row, 'table');
+    });
     row.querySelector('[data-api-football-role="remove"]').addEventListener('click', () => {
       const wasSelected = row.dataset.apiFootballFeedId === activeApiFootballFeedId;
       row.remove();
@@ -7369,6 +7381,43 @@
     container.appendChild(row);
     syncApiFootballFeedsDirtyState();
     if (selectAfterAdd) selectApiFootballFeed(row.dataset.apiFootballFeedId);
+  }
+
+  async function sendApiFootballTest(row, kind) {
+    const channelRole = kind === 'live' ? 'live-channel' : 'table-channel';
+    const buttonRole = kind === 'live' ? 'live-test' : 'table-test';
+    const channelId = row.querySelector(`[data-api-football-role="${channelRole}"]`).value.trim();
+    const status = row.querySelector('[data-api-football-role="test-status"]');
+    const button = row.querySelector(`[data-api-football-role="${buttonRole}"]`);
+    if (!activeServerProfileGuildId || !channelId) {
+      status.textContent = 'Bitte Server und passenden Discord-Kanal eintragen.';
+      status.className = 'cfg-hint err';
+      return;
+    }
+    button.disabled = true;
+    status.textContent = 'Test-Embed wird an Discord gesendet …';
+    status.className = 'cfg-hint';
+    try {
+      const response = await fetch('/api/api-football/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          guildId: activeServerProfileGuildId,
+          channelId,
+          leagueId: row.querySelector('[data-api-football-role="competition"]').value,
+          season: row.querySelector('[data-api-football-role="season"]').value,
+          kind,
+        }),
+      }).then(result => result.json());
+      if (!response.ok) throw new Error(response.error || 'Test-Embed konnte nicht gesendet werden.');
+      status.textContent = response.message || 'Test-Embed wurde gesendet.';
+      status.className = 'cfg-hint ok';
+    } catch (error) {
+      status.textContent = error.message;
+      status.className = 'cfg-hint err';
+    } finally {
+      button.disabled = false;
+    }
   }
 
   async function loadApiFootballSettings(configData) {
