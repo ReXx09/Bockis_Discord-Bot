@@ -27,6 +27,7 @@ const {
   API_FOOTBALL_COMPETITIONS,
   buildApiFootballLivePayload,
   buildApiFootballStandingsPayload,
+  classifyApiFootballProviderError,
   fetchApiFootballTeams,
   fetchApiFootballSeasonStartDate,
   normalizeApiFootballFeeds,
@@ -54,7 +55,15 @@ function describeApiFootballFailure(error, resource) {
     return { status: 429, message: 'Konfiguriertes API-Football-Tageslimit erreicht.' };
   }
   if (error.code === 'API_FOOTBALL_AUTH' || [401, 403].includes(error.response?.status)) {
-    return { status: 502, message: 'API-Football-Schlüssel ungültig oder der Tarif erlaubt diesen Endpunkt nicht.' };
+    const cause = classifyApiFootballProviderError(error);
+    const messages = {
+      key: 'API-Football weist den gespeicherten Schlüssel zurück.',
+      subscription: 'Für diesen Schlüssel meldet API-Football keine passende aktive FOOTBALL-Subscription.',
+      restriction: 'API-Football blockiert den Aufruf durch eine IP- oder Domainbeschränkung.',
+      access: 'API-Football verweigert den Zugriff; Subscription oder Berechtigung für diesen Endpunkt prüfen.',
+      unknown: 'API-Football weist Schlüssel oder Berechtigung zurück; Subscription und Schlüsselzuordnung prüfen.',
+    };
+    return { status: 502, message: messages[cause] };
   }
   if (error.response?.status === 429) {
     return { status: 429, message: 'API-Football-Anfragelimit erreicht; Tariflimit oder Rate Limit prüfen.' };

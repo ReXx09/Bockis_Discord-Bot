@@ -23,6 +23,7 @@ const {
   buildApiFootballTournamentPayload,
   buildApiFootballLivePayload,
   buildApiFootballStandingsPayload,
+  classifyApiFootballProviderError,
   createApiFootballWatcher,
   fetchApiFootballFixtures,
   fetchApiFootballLiveFixtures,
@@ -321,6 +322,14 @@ describe('OpenLigaDB data formatting', () => {
 
     await expect(fetchApiFootballTeams(http, 'invalid-key', { leagueId: 4, season: 2028 }, usageTracker))
       .rejects.toMatchObject({ code: 'API_FOOTBALL_AUTH' });
+  });
+
+  test.each([
+    [{ token: 'Invalid API key' }, 'key'],
+    [{ subscription: 'You are not subscribed to this API' }, 'subscription'],
+    [{ ip: 'This IP is not allowed to call the API' }, 'restriction'],
+  ])('classifies provider access errors without returning their raw details', (providerErrors, expected) => {
+    expect(classifyApiFootballProviderError({ providerErrors })).toBe(expected);
   });
 
   test('refreshes configured standings before the distant tournament fixture window', async () => {

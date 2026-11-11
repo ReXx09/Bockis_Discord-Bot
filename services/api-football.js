@@ -295,12 +295,28 @@ async function requestApiFootball(http, apiKey, endpoint, params, usageTracker) 
   const errors = response.data?.errors;
   if (errors && (Array.isArray(errors) ? errors.length : Object.keys(errors).length)) {
     const error = new Error('API-Football hat die Abfrage abgelehnt.');
+    error.providerErrors = errors;
     error.code = /key|token|authori[sz]|subscription|access/i.test(JSON.stringify(errors))
       ? 'API_FOOTBALL_AUTH'
       : 'API_FOOTBALL_REJECTED';
     throw error;
   }
   return Array.isArray(response.data?.response) ? response.data.response : [];
+}
+
+function classifyApiFootballProviderError(error) {
+  const providerErrors = error.providerErrors || error.response?.data?.errors;
+  const message = `${JSON.stringify(providerErrors || '')} ${error.response?.data?.message || ''}`.toLowerCase();
+  if (/(?:ip|domain).*(?:not allowed|denied|unauthori[sz]ed)|(?:not allowed|denied|unauthori[sz]ed).*(?:ip|domain)/.test(message)) {
+    return 'restriction';
+  }
+  if (/not subscribed|subscription|subscribe/.test(message)) return 'subscription';
+  if (/invalid.{0,20}(?:api[_ -]?)?(?:key|token)|(?:key|token).{0,20}invalid|unauthori[sz]ed|authentication/.test(message)
+    || error.response?.status === 401) {
+    return 'key';
+  }
+  if (error.response?.status === 403) return 'access';
+  return 'unknown';
 }
 
 function buildApiFootballTournamentPayload(feed, fixtures, now = Date.now()) {
@@ -722,6 +738,7 @@ module.exports = {
   buildApiFootballTournamentPayload,
   buildApiFootballLivePayload,
   buildApiFootballStandingsPayload,
+  classifyApiFootballProviderError,
   createApiFootballWatcher,
   fetchApiFootballFixtures,
   fetchApiFootballLiveFixtures,
