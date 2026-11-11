@@ -2388,17 +2388,26 @@
         <div class="cfg-pane-title">🏆 API-Football · Turniere</div>
         <div class="cfg-section open">
           <div class="cfg-section-header" onclick="toggleConfigSection(this)">
-            <div class="cfg-section-header-title"><span class="cfg-section-toggle">▾</span><span>API-Zugang &amp; Spielplan</span></div>
+            <div class="cfg-section-header-title"><span class="cfg-section-toggle">▾</span><span>API-Zugang</span></div>
           </div>
           <div class="cfg-section-content"><div class="cfg-section-body">
-            <div id="cfgApiFootballGeneral">
-              <label class="cfg-label" for="cfgApiFootballKey">API-Football-Schlüssel</label>
-              <input class="cfg-input" id="cfgApiFootballKey" type="password" autocomplete="new-password" placeholder="API-Key eingeben">
-              <label style="display:flex;align-items:center;gap:6px;margin:8px 0 14px"><input id="cfgApiFootballClearKey" type="checkbox"><span>Gespeicherten API-Key entfernen</span></label>
-              <label class="cfg-label" for="cfgApiFootballDailyLimit">Tageslimit (UTC)</label>
-              <input class="cfg-input" id="cfgApiFootballDailyLimit" type="number" min="1" max="100000" step="1">
-              <div class="cfg-hint">Wähle einen Wettbewerb im Untermenü, um dessen Feed-Einstellungen zu bearbeiten.</div>
+            <label class="cfg-label" for="cfgApiFootballKey">API-Football-Schlüssel</label>
+            <input class="cfg-input" id="cfgApiFootballKey" type="password" autocomplete="new-password" placeholder="API-Key eingeben">
+            <label style="display:flex;align-items:center;gap:6px;margin:8px 0 14px"><input id="cfgApiFootballClearKey" type="checkbox"><span>Gespeicherten API-Key entfernen</span></label>
+            <label class="cfg-label" for="cfgApiFootballDailyLimit">Tageslimit (UTC)</label>
+            <input class="cfg-input" id="cfgApiFootballDailyLimit" type="number" min="1" max="100000" step="1">
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:12px">
+              <button class="btn btn-green" type="button" data-api-football-save onclick="saveApiFootballSettings()">💾 API-Football speichern</button>
+              <span class="cfg-hint" data-api-football-save-status style="margin:0" aria-live="polite"></span>
             </div>
+          </div></div>
+        </div>
+        <div class="cfg-section open">
+          <div class="cfg-section-header" onclick="toggleConfigSection(this)">
+            <div class="cfg-section-header-title"><span class="cfg-section-toggle">▾</span><span>Live-Feeds &amp; Tabellen</span></div>
+          </div>
+          <div class="cfg-section-content"><div class="cfg-section-body">
+            <div id="cfgApiFootballFeedsGeneral" class="cfg-hint">Wähle einen Wettbewerb im Untermenü, um dessen Einstellungen zu bearbeiten.</div>
             <div id="cfgApiFootballFeeds" style="display:grid;gap:10px;margin:8px 0"></div>
             <input id="cfgApiFootballFeedsValue" type="hidden" value="[]">
             <div id="cfgApiFootballActions" style="display:flex;align-items:end;gap:10px;flex-wrap:wrap">
@@ -2414,8 +2423,8 @@
               <span class="cfg-hint" id="cfgApiFootballFeedStatus" style="margin:0" aria-live="polite">Wettbewerbe werden geladen …</span>
             </div>
             <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:12px">
-              <button class="btn btn-green" id="btnApiFootballSave" type="button" onclick="saveApiFootballSettings()">💾 API-Football speichern</button>
-              <span id="cfgApiFootballSaveStatus" class="cfg-hint" style="margin:0" aria-live="polite"></span>
+              <button class="btn btn-green" id="btnApiFootballSave" type="button" data-api-football-save onclick="saveApiFootballSettings()">💾 API-Football speichern</button>
+              <span id="cfgApiFootballSaveStatus" class="cfg-hint" data-api-football-save-status style="margin:0" aria-live="polite"></span>
             </div>
           </div></div>
         </div>
@@ -5354,7 +5363,7 @@
 
   function updateApiFootballFeedVisibility() {
     const hasSelectedFeed = !!activeApiFootballFeedId;
-    document.getElementById('cfgApiFootballGeneral')?.classList.toggle('api-football-feed-hidden', hasSelectedFeed);
+    document.getElementById('cfgApiFootballFeedsGeneral')?.classList.toggle('api-football-feed-hidden', hasSelectedFeed);
     document.getElementById('cfgApiFootballActions')?.classList.toggle('api-football-feed-hidden', hasSelectedFeed);
     document.querySelectorAll('#cfgApiFootballFeeds [data-api-football-feed]').forEach(row => {
       row.classList.toggle('api-football-feed-hidden', !hasSelectedFeed || row.dataset.apiFootballFeedId !== activeApiFootballFeedId);
@@ -5367,7 +5376,7 @@
     const rows = Array.from(document.querySelectorAll('#cfgApiFootballFeeds [data-api-football-feed]'));
     if (!rows.some(row => row.dataset.apiFootballFeedId === activeApiFootballFeedId)) activeApiFootballFeedId = '';
     const searchTerm = document.getElementById('cfgSettingsSearch')?.value?.trim().toLowerCase() || '';
-    const insertionPoint = apiFootballNavSectionList.querySelector('[data-cfg-section-btn]:nth-of-type(2)');
+    const insertionPoint = apiFootballNavSectionList.querySelector('[data-cfg-section-btn]:nth-of-type(3)');
 
     rows.forEach(row => {
       const title = row.querySelector('[data-api-football-role="title"]')?.textContent?.trim() || 'Wettbewerb';
@@ -5388,7 +5397,8 @@
   function selectApiFootballFeed(feedId) {
     const row = Array.from(document.querySelectorAll('#cfgApiFootballFeeds [data-api-football-feed]'))
       .find(feedRow => feedRow.dataset.apiFootballFeedId === feedId);
-    const section = document.querySelector('#cfgCard [data-cfg-pane="apifootball"] > .cfg-section');
+    const section = Array.from(document.querySelectorAll('#cfgCard [data-cfg-pane="apifootball"] > .cfg-section'))
+      .find(candidate => candidate.querySelector('.cfg-section-header-title')?.textContent.includes('Live-Feeds & Tabellen'));
     if (!row || !section) return;
     selectSettingsSection('apifootball', section.dataset.cfgSectionId);
     activeApiFootballFeedId = feedId;
@@ -7513,14 +7523,18 @@
   }
 
   async function saveApiFootballSettings() {
-    const button = document.getElementById('btnApiFootballSave');
-    const status = document.getElementById('cfgApiFootballSaveStatus');
+    const buttons = Array.from(document.querySelectorAll('[data-api-football-save]'));
+    const statuses = Array.from(document.querySelectorAll('[data-api-football-save-status]'));
+    const setStatus = (message, className) => statuses.forEach(status => {
+      status.textContent = message;
+      status.className = className;
+    });
     const keyInput = document.getElementById('cfgApiFootballKey');
     const clearKey = document.getElementById('cfgApiFootballClearKey').checked;
     const feedsInput = document.getElementById('cfgApiFootballFeedsValue');
     const limitInput = document.getElementById('cfgApiFootballDailyLimit');
-    button.disabled = true;
-    status.textContent = '';
+    buttons.forEach(button => { button.disabled = true; });
+    setStatus('', 'cfg-hint');
     try {
       const invalidFeedInput = Array.from(document.querySelectorAll('#cfgApiFootballFeeds [data-api-football-feed] input'))
         .find(input => !input.checkValidity());
@@ -7535,8 +7549,7 @@
         return (!liveChannelId && !tableChannelId) || !isValid(liveChannelId) || !isValid(tableChannelId);
       });
       if (invalidChannelRow) {
-        status.textContent = 'Je Feed mindestens einen Discord-Kanal angeben; Kanal-IDs müssen 5 bis 24 Ziffern haben.';
-        status.className = 'cfg-hint err';
+        setStatus('Je Feed mindestens einen Discord-Kanal angeben; Kanal-IDs müssen 5 bis 24 Ziffern haben.', 'cfg-hint err');
         return;
       }
       const body = {};
@@ -7546,8 +7559,7 @@
       else if (keyInput.value.trim()) body.API_FOOTBALL_KEY = keyInput.value.trim();
       if (limitInput.value !== limitInput.dataset.initialValue) body.API_FOOTBALL_DAILY_LIMIT = limitInput.value;
       if (!Object.keys(body).length) {
-        status.textContent = 'Keine Änderungen erkannt.';
-        status.className = 'cfg-hint warn';
+        setStatus('Keine Änderungen erkannt.', 'cfg-hint warn');
         return;
       }
       const response = await fetch('/api/config', {
@@ -7556,15 +7568,13 @@
         body: JSON.stringify(body),
       }).then(result => result.json());
       if (!response.ok) throw new Error(response.error || 'API-Football-Einstellungen konnten nicht gespeichert werden.');
-      status.textContent = response.restartId ? 'Gespeichert · Bot startet neu …' : 'Gespeichert.';
-      status.className = 'cfg-hint ok';
+      setStatus(response.restartId ? 'Gespeichert · Bot startet neu …' : 'Gespeichert.', 'cfg-hint ok');
       toast('API-Football-Einstellungen gespeichert', 'ok');
       await loadConfig({ force: true });
     } catch (error) {
-      status.textContent = error.message;
-      status.className = 'cfg-hint err';
+      setStatus(error.message, 'cfg-hint err');
     } finally {
-      button.disabled = false;
+      buttons.forEach(button => { button.disabled = false; });
     }
   }
 
