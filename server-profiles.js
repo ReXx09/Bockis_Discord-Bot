@@ -67,6 +67,7 @@ const SERVER_PROFILE_ENV_PATHS = Object.freeze({
   DISCORD_OPENLIGADB_CHANNEL_ID: 'discord.openLigaDbChannelId',
   DISCORD_OPENLIGADB_FAVORITES: 'discord.openLigaDbFavorites',
   DISCORD_OPENLIGADB_FEEDS: 'discord.openLigaDbFeeds',
+  API_FOOTBALL_FEEDS: 'discord.apiFootball.feeds',
   DISCORD_TRANSLATE_DEFAULT_TARGET: 'discord.translateDefaultTarget',
   DISCORD_TRANSLATE_DEFAULT_SOURCE: 'discord.translateDefaultSource',
   DISCORD_TRANSLATE_PROVIDER: 'discord.translateProvider',
@@ -105,6 +106,7 @@ function createServerProfileDefaults(config, guildId) {
     if (/_ENABLED$/.test(key)) settings[key] = false;
   }
   settings.DISCORD_ENABLED_COMMANDS = '';
+  settings.API_FOOTBALL_FEEDS = '[]';
   settings.GUILD_ID = String(guildId);
   settings.SERVICE_GUILD_ID = String(guildId);
   settings.DISCORD_AUTO_REPLY_RULES_FILE = `./data/auto-replies-${guildId}.json`;

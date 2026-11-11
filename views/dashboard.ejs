@@ -7923,11 +7923,23 @@
         setStatus('Keine Änderungen erkannt.', 'cfg-hint warn');
         return;
       }
-      const response = await fetch('/api/config', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      }).then(result => result.json());
+      let response = { ok: true };
+      if (activeServerProfileGuildId && Object.hasOwn(body, 'API_FOOTBALL_FEEDS')) {
+        response = await fetch(`/api/server-profiles/${encodeURIComponent(activeServerProfileGuildId)}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ settings: { API_FOOTBALL_FEEDS: body.API_FOOTBALL_FEEDS } }),
+        }).then(result => result.json());
+        if (!response.ok) throw new Error(response.error || 'API-Football-Feeds konnten nicht im Serverprofil gespeichert werden.');
+        delete body.API_FOOTBALL_FEEDS;
+      }
+      if (Object.keys(body).length) {
+        response = await fetch('/api/config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        }).then(result => result.json());
+      }
       if (!response.ok) throw new Error(response.error || 'API-Football-Einstellungen konnten nicht gespeichert werden.');
       setStatus(response.restartId ? 'Gespeichert · Bot startet neu …' : 'Gespeichert.', 'cfg-hint ok');
       toast('API-Football-Einstellungen gespeichert', 'ok');

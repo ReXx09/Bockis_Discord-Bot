@@ -99,6 +99,7 @@ const pkg = require('./package.json');
 const {
   SERVER_PROFILE_ENV_PATHS,
   createServerProfileDefaults,
+  getServerProfileSettings,
   setServerProfileSettings,
   installServerProfileConfig,
   withServerProfile,
@@ -5744,7 +5745,15 @@ client.once('ready', async () => {
     client,
     logger,
     getApiKey: () => config.get('discord.apiFootball.apiKey'),
-    getFeeds: () => config.get('discord.apiFootball.feeds'),
+    getFeeds: () => [...client.guilds.cache.keys()].flatMap(guildId => {
+      const settings = getServerProfileSettings(guildId);
+      try {
+        const feeds = JSON.parse(settings?.API_FOOTBALL_FEEDS || '[]');
+        return Array.isArray(feeds) ? feeds.map(feed => ({ ...feed, guildId })) : [];
+      } catch {
+        return [];
+      }
+    }),
   }).start();
   await applyConfiguredBotName();
   startPresenceRotation();
@@ -5814,6 +5823,7 @@ async function initializeServerProfiles() {
   const serviceGuildId = String(config.get('discord.serviceGuildId') || '').trim();
   for (const guild of client.guilds.cache.values()) {
     let profile = await ServerProfile.findByPk(guild.id);
+    const hadSavedProfile = Boolean(profile);
     let settings = {};
     if (profile) {
       try { settings = JSON.parse(profile.settingsJson || '{}'); } catch { settings = {}; }
@@ -5822,6 +5832,11 @@ async function initializeServerProfiles() {
       profile = await ServerProfile.create({ guildId: guild.id, guildName: guild.name, settingsJson: JSON.stringify(settings) });
     } else {
       settings = createServerProfileDefaults(config, guild.id);
+    }
+    if (!hadSavedProfile || !Object.hasOwn(settings, 'API_FOOTBALL_FEEDS')) {
+      settings.API_FOOTBALL_FEEDS = guild.id === primaryGuildId
+        ? config.get('discord.apiFootball.feeds')
+        : '[]';
     }
     settings.GUILD_ID = guild.id;
     if (profile) {

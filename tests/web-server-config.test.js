@@ -1,6 +1,7 @@
 'use strict';
 
 const { describeWebServerListenError, normalizeWebPort } = require('../web/server-config');
+const { createServerProfileDefaults, SERVER_PROFILE_ENV_PATHS } = require('../server-profiles');
 
 describe('dashboard web server configuration', () => {
   test.each([
@@ -21,5 +22,12 @@ describe('dashboard web server configuration', () => {
       .toBe('Dashboard-Port 3210 auf 0.0.0.0 ist bereits belegt.');
     expect(describeWebServerListenError({ code: 'EADDRNOTAVAIL' }, '192.168.8.121', 3210))
       .toBe('Dashboard-Host 192.168.8.121 ist auf diesem Rechner nicht verfügbar.');
+  });
+
+  test('starts each new server profile with its own empty API-Football feed list', () => {
+    const config = { get: path => path === 'discord.apiFootball.feeds' ? '[{"leagueId":4,"season":2028}]' : '' };
+
+    expect(SERVER_PROFILE_ENV_PATHS.API_FOOTBALL_FEEDS).toBe('discord.apiFootball.feeds');
+    expect(createServerProfileDefaults(config, 'guild-id').API_FOOTBALL_FEEDS).toBe('[]');
   });
 });

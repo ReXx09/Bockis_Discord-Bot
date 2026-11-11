@@ -49,6 +49,35 @@ const apiFootballSeasonStartCache = new Map();
 const apiFootballTeamsCache = new Map();
 const API_FOOTBALL_SEASON_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 
+function describeApiFootballFailure(error, resource) {
+  if (error.code === 'API_DAILY_LIMIT') {
+    return { status: 429, message: 'Konfiguriertes API-Football-Tageslimit erreicht.' };
+  }
+  if (error.code === 'API_FOOTBALL_AUTH' || [401, 403].includes(error.response?.status)) {
+    return { status: 502, message: 'API-Football-Schlüssel ungültig oder der Tarif erlaubt diesen Endpunkt nicht.' };
+  }
+  if (error.response?.status === 429) {
+    return { status: 429, message: 'API-Football-Anfragelimit erreicht; Tariflimit oder Rate Limit prüfen.' };
+  }
+  if (error.code === 'API_FOOTBALL_REJECTED') {
+    return { status: 502, message: 'API-Football hat Wettbewerb oder Saison abgelehnt.' };
+  }
+  if (!error.response) {
+    return { status: 502, message: `API-Football ist nicht erreichbar; Verbindung für ${resource} prüfen.` };
+  }
+  return { status: 502, message: `API-Football-${resource} fehlgeschlagen (HTTP ${error.response.status}).` };
+}
+
+function describeOpenLigaDbFailure(error, resource) {
+  if (error.response?.status === 429) {
+    return { status: 429, message: 'OpenLigaDB-Anfragelimit erreicht.' };
+  }
+  if (!error.response) {
+    return { status: 502, message: `OpenLigaDB ist nicht erreichbar; Verbindung für ${resource} prüfen.` };
+  }
+  return { status: 502, message: `OpenLigaDB-${resource} fehlgeschlagen (HTTP ${error.response.status}).` };
+}
+
 function normalizeOpenLigaDbFeeds(value) {
   let feeds;
   try { feeds = JSON.parse(String(value)); } catch { throw new Error('OpenLigaDB-Feeds müssen gültiges JSON sein.'); }
@@ -339,6 +368,11 @@ module.exports = function startWebServer({
         if (value !== null && !['string', 'number', 'boolean'].includes(typeof value)) {
           return res.status(400).json({ ok: false, error: `Ungültiger Wert für ${key}.` });
         }
+        if (key === 'API_FOOTBALL_FEEDS') {
+          try { normalizedChanges[key] = JSON.stringify(normalizeApiFootballFeeds(value)); }
+          catch (error) { return res.status(400).json({ ok: false, error: error.message }); }
+          continue;
+        }
         if (key === 'DISCORD_OPENLIGADB_FEEDS') {
           try { normalizedChanges[key] = JSON.stringify(normalizeOpenLigaDbFeeds(value)); }
           catch (error) { return res.status(400).json({ ok: false, error: error.message }); }
@@ -387,7 +421,8 @@ module.exports = function startWebServer({
       return res.json({ ok: true, leagues });
     } catch (err) {
       logger.warn(`OpenLigaDB-Ligen konnten nicht geladen werden: ${err.message}`);
-      return res.status(502).json({ ok: false, error: 'Ligen sind momentan nicht verfügbar.' });
+      const failure = describeOpenLigaDbFailure(err, 'Ligenliste');
+      return res.status(failure.status).json({ ok: false, error: failure.message });
     }
   });
 
@@ -402,7 +437,8 @@ module.exports = function startWebServer({
       return res.json({ ok: true, ...league });
     } catch (err) {
       logger.warn(`OpenLigaDB-Teamliste konnte nicht geladen werden: ${err.message}`);
-      return res.status(502).json({ ok: false, error: 'Teams sind momentan nicht verfügbar.' });
+      const failure = describeOpenLigaDbFailure(err, 'Teamliste');
+      return res.status(failure.status).json({ ok: false, error: failure.message });
     }
   });
 
@@ -434,10 +470,8 @@ module.exports = function startWebServer({
       return res.set('Cache-Control', 'no-store').json({ ok: true, startDate });
     } catch (error) {
       logger.warn(`API-Football-Saisonstart ${leagueId}:${season} fehlgeschlagen: ${error.message}`);
-      if (error.code === 'API_DAILY_LIMIT') {
-        return res.status(429).json({ ok: false, error: 'API-Football-Tageslimit erreicht.' });
-      }
-      return res.status(502).json({ ok: false, error: 'Saisonstart ist momentan nicht verfügbar.' });
+      const failure = describeApiFootballFailure(error, 'Saisonstart');
+      return res.status(failure.status).json({ ok: false, error: failure.message });
     }
   });
 
@@ -461,22 +495,8 @@ module.exports = function startWebServer({
       return res.set('Cache-Control', 'no-store').json({ ok: true, teams });
     } catch (error) {
       logger.warn(`API-Football-Teamliste ${leagueId}:${season} fehlgeschlagen: ${error.message}`);
-      if (error.code === 'API_DAILY_LIMIT') {
-        return res.status(429).json({ ok: false, error: 'API-Football-Tageslimit erreicht.' });
-      }
-      if (error.code === 'API_FOOTBALL_AUTH' || [401, 403].includes(error.response?.status)) {
-        return res.status(502).json({ ok: false, error: 'API-Football-Schlüssel ungültig oder der Tarif erlaubt diesen Endpunkt nicht.' });
-      }
-      if (error.response?.status === 429) {
-        return res.status(429).json({ ok: false, error: 'API-Football-Anfragelimit erreicht; Tariflimit oder Rate Limit prüfen.' });
-      }
-      if (error.code === 'API_FOOTBALL_REJECTED') {
-        return res.status(502).json({ ok: false, error: 'API-Football hat Wettbewerb oder Saison abgelehnt.' });
-      }
-      if (!error.response) {
-        return res.status(502).json({ ok: false, error: 'API-Football ist nicht erreichbar; Netzwerkverbindung prüfen.' });
-      }
-      return res.status(502).json({ ok: false, error: `API-Football-Teamabfrage fehlgeschlagen (HTTP ${error.response.status}).` });
+      const failure = describeApiFootballFailure(error, 'Teamliste');
+      return res.status(failure.status).json({ ok: false, error: failure.message });
     }
   });
 
@@ -2572,6 +2592,7 @@ module.exports = function startWebServer({
         if (profile) {
           let settings = {};
           try { settings = JSON.parse(profile.settingsJson || '{}'); } catch { /* use global values */ }
+          if (!Object.hasOwn(settings, 'API_FOOTBALL_FEEDS')) settings.API_FOOTBALL_FEEDS = '[]';
           settings.GUILD_ID = guildId;
           if (client.guilds.cache.has(guildId)) setServerProfileSettings(guildId, settings);
           for (const [envKey, value] of Object.entries(settings)) {
