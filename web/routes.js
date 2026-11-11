@@ -30,6 +30,7 @@ const {
   classifyApiFootballProviderError,
   fetchApiFootballTeams,
   fetchApiFootballSeasonStartDate,
+  getSafeApiFootballProviderMessage,
   normalizeApiFootballFeeds,
 } = require('../services/api-football');
 const { SERVER_PROFILE_ENV_PATHS, createServerProfileDefaults, setServerProfileSettings } = require('../server-profiles');
@@ -50,7 +51,7 @@ const apiFootballSeasonStartCache = new Map();
 const apiFootballTeamsCache = new Map();
 const API_FOOTBALL_SEASON_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 
-function describeApiFootballFailure(error, resource) {
+function describeApiFootballFailure(error, resource, apiKey) {
   if (error.code === 'API_DAILY_LIMIT') {
     return { status: 429, message: 'Konfiguriertes API-Football-Tageslimit erreicht.' };
   }
@@ -63,7 +64,11 @@ function describeApiFootballFailure(error, resource) {
       access: 'API-Football verweigert den Zugriff; Subscription oder Berechtigung für diesen Endpunkt prüfen.',
       unknown: 'API-Football weist Schlüssel oder Berechtigung zurück; Subscription und Schlüsselzuordnung prüfen.',
     };
-    return { status: 502, message: messages[cause] };
+    const providerMessage = getSafeApiFootballProviderMessage(error, apiKey);
+    return {
+      status: 502,
+      message: providerMessage ? `${messages[cause]} Anbieterhinweis: ${providerMessage}` : messages[cause],
+    };
   }
   if (error.response?.status === 429) {
     return { status: 429, message: 'API-Football-Anfragelimit erreicht; Tariflimit oder Rate Limit prüfen.' };
@@ -479,7 +484,7 @@ module.exports = function startWebServer({
       return res.set('Cache-Control', 'no-store').json({ ok: true, startDate });
     } catch (error) {
       logger.warn(`API-Football-Saisonstart ${leagueId}:${season} fehlgeschlagen: ${error.message}`);
-      const failure = describeApiFootballFailure(error, 'Saisonstart');
+      const failure = describeApiFootballFailure(error, 'Saisonstart', apiKey);
       return res.status(failure.status).json({ ok: false, error: failure.message });
     }
   });
@@ -504,7 +509,7 @@ module.exports = function startWebServer({
       return res.set('Cache-Control', 'no-store').json({ ok: true, teams });
     } catch (error) {
       logger.warn(`API-Football-Teamliste ${leagueId}:${season} fehlgeschlagen: ${error.message}`);
-      const failure = describeApiFootballFailure(error, 'Teamliste');
+      const failure = describeApiFootballFailure(error, 'Teamliste', apiKey);
       return res.status(failure.status).json({ ok: false, error: failure.message });
     }
   });

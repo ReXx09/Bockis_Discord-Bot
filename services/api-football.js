@@ -319,6 +319,18 @@ function classifyApiFootballProviderError(error) {
   return 'unknown';
 }
 
+function getSafeApiFootballProviderMessage(error, apiKey) {
+  const details = error.providerErrors || error.response?.data?.errors || error.response?.data?.message;
+  if (!details) return '';
+  let message = typeof details === 'string' ? details : JSON.stringify(details);
+  const key = String(apiKey || '').trim();
+  if (key) message = message.split(key).join('[Schlüssel verborgen]');
+  return message
+    .replace(/\b[a-f\d]{32,}\b/gi, '[Wert verborgen]')
+    .replace(/[\r\n\t]+/g, ' ')
+    .slice(0, 180);
+}
+
 function buildApiFootballTournamentPayload(feed, fixtures, now = Date.now()) {
   const upcoming = (Array.isArray(fixtures) ? fixtures : [])
     .filter(item => item?.fixture?.date && Date.parse(item.fixture.date) > now
@@ -745,6 +757,7 @@ module.exports = {
   fetchApiFootballSeasonStartDate,
   fetchApiFootballStandings,
   fetchApiFootballTeams,
+  getSafeApiFootballProviderMessage,
   getApiFootballRefreshIntervalMs,
   hasApiFootballMatchWindow,
   normalizeApiFootballFeeds,

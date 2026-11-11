@@ -30,6 +30,7 @@ const {
   fetchApiFootballSeasonStartDate,
   fetchApiFootballStandings,
   fetchApiFootballTeams,
+  getSafeApiFootballProviderMessage,
   getApiFootballRefreshIntervalMs,
   hasApiFootballMatchWindow,
   normalizeApiFootballFeeds,
@@ -322,6 +323,16 @@ describe('OpenLigaDB data formatting', () => {
 
     await expect(fetchApiFootballTeams(http, 'invalid-key', { leagueId: 4, season: 2028 }, usageTracker))
       .rejects.toMatchObject({ code: 'API_FOOTBALL_AUTH' });
+  });
+
+  test('shows provider error details while redacting the API key', () => {
+    const apiKey = 'abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789';
+    const message = getSafeApiFootballProviderMessage({
+      response: { data: { errors: { token: `Invalid key ${apiKey}` } } },
+    }, apiKey);
+
+    expect(message).toContain('Invalid key [Schlüssel verborgen]');
+    expect(message).not.toContain(apiKey);
   });
 
   test.each([
