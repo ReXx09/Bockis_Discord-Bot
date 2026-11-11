@@ -12,6 +12,7 @@ const DEFAULT_REFRESH_INTERVAL_MINUTES = 1440;
 const MIN_REFRESH_INTERVAL_MINUTES = 60;
 const MAX_REFRESH_INTERVAL_MINUTES = 1440;
 const LIVE_MATCH_WINDOW_MS = 3 * 60 * 60_000;
+const MAX_DISCORD_EMBED_CHARACTERS = 6000;
 const API_FOOTBALL_COMPETITIONS = Object.freeze([
   { leagueId: 4, name: 'UEFA Europameisterschaft', category: 'Europameisterschaft', defaultSeason: 2028 },
   { leagueId: 960, name: 'UEFA Europameisterschaft Qualifikation', category: 'Qualifikation', defaultSeason: 2027 },
@@ -266,6 +267,32 @@ function hasApiFootballMatchWindow(fixtures, now = Date.now()) {
   });
 }
 
+function fitApiFootballEmbed(embed) {
+  const data = embed.toJSON();
+  const fixedTextLength = (data.title || '').length
+    + (data.footer?.text || '').length
+    + (data.author?.name || '').length;
+  const description = data.description || '';
+  const descriptionBudget = Math.min(4096, Math.max(0, MAX_DISCORD_EMBED_CHARACTERS - fixedTextLength));
+  const fittedDescription = description.slice(0, descriptionBudget);
+  if (fittedDescription !== description) embed.setDescription(fittedDescription || '\u200b');
+
+  let remainingCharacters = MAX_DISCORD_EMBED_CHARACTERS - fixedTextLength - fittedDescription.length;
+  const fields = [];
+  for (const field of (data.fields || []).slice(0, 25)) {
+    const name = String(field.name || '').slice(0, 256);
+    const value = String(field.value || '');
+    const valueBudget = Math.min(1024, remainingCharacters - name.length);
+    if (valueBudget < 1) break;
+    const fittedValue = value.slice(0, valueBudget);
+    fields.push({ ...field, name, value: fittedValue || '\u200b' });
+    remainingCharacters -= name.length + fittedValue.length;
+    if (fittedValue.length < value.length) break;
+  }
+  embed.setFields(fields);
+  return embed;
+}
+
 function createApiFootballWatcher({ http, client, logger, getApiKey, getFeeds, nowProvider = () => Date.now(), usageTracker = { recordApiRequest } }) {
   let timer = null;
   let inFlight = false;
@@ -292,6 +319,7 @@ function createApiFootballWatcher({ http, client, logger, getApiKey, getFeeds, n
     const embed = payload.embeds[0];
     const footer = embed.toJSON().footer?.text || 'API-Football';
     embed.setFooter({ text: `${footer} · ${marker}` });
+    fitApiFootballEmbed(embed);
     const signature = JSON.stringify(embed.toJSON());
     const key = `${kind}:${feedKey}:${channelId}`;
     if (signatures.get(key) === signature && messages.has(key)) return;

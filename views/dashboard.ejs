@@ -639,7 +639,7 @@
     }
     .cfg-nav-section-btn:hover, .cfg-nav-section-btn.active { color: var(--text); background: rgba(56,139,253,.14); }
     .cfg-nav-section-btn:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
-    .openliga-feed-hidden { display: none !important; }
+    .openliga-feed-hidden, .api-football-feed-hidden { display: none !important; }
     #cfgCard .cfg-search-hidden { display: none !important; }
     .cfg-search-input {
       width: 100%;
@@ -2391,15 +2391,17 @@
             <div class="cfg-section-header-title"><span class="cfg-section-toggle">▾</span><span>API-Zugang &amp; Spielplan</span></div>
           </div>
           <div class="cfg-section-content"><div class="cfg-section-body">
-            <label class="cfg-label" for="cfgApiFootballKey">API-Football-Schlüssel</label>
-            <input class="cfg-input" id="cfgApiFootballKey" type="password" autocomplete="new-password" placeholder="API-Key eingeben">
-            <label style="display:flex;align-items:center;gap:6px;margin:8px 0 14px"><input id="cfgApiFootballClearKey" type="checkbox"><span>Gespeicherten API-Key entfernen</span></label>
-            <label class="cfg-label" for="cfgApiFootballDailyLimit">Tageslimit (UTC)</label>
-            <input class="cfg-input" id="cfgApiFootballDailyLimit" type="number" min="1" max="100000" step="1">
-            <label class="cfg-label" style="margin-top:14px">Turnierfeeds</label>
+            <div id="cfgApiFootballGeneral">
+              <label class="cfg-label" for="cfgApiFootballKey">API-Football-Schlüssel</label>
+              <input class="cfg-input" id="cfgApiFootballKey" type="password" autocomplete="new-password" placeholder="API-Key eingeben">
+              <label style="display:flex;align-items:center;gap:6px;margin:8px 0 14px"><input id="cfgApiFootballClearKey" type="checkbox"><span>Gespeicherten API-Key entfernen</span></label>
+              <label class="cfg-label" for="cfgApiFootballDailyLimit">Tageslimit (UTC)</label>
+              <input class="cfg-input" id="cfgApiFootballDailyLimit" type="number" min="1" max="100000" step="1">
+              <div class="cfg-hint">Wähle einen Wettbewerb im Untermenü, um dessen Feed-Einstellungen zu bearbeiten.</div>
+            </div>
             <div id="cfgApiFootballFeeds" style="display:grid;gap:10px;margin:8px 0"></div>
             <input id="cfgApiFootballFeedsValue" type="hidden" value="[]">
-            <div style="display:flex;align-items:end;gap:10px;flex-wrap:wrap">
+            <div id="cfgApiFootballActions" style="display:flex;align-items:end;gap:10px;flex-wrap:wrap">
               <label class="cfg-label" for="cfgApiFootballCompetition">Wettbewerb
                 <select class="cfg-input" id="cfgApiFootballCompetition" aria-label="EM, WM oder Qualifikation auswählen">
                   <option value="">Wettbewerbe werden geladen …</option>
@@ -5164,6 +5166,9 @@
   let openLigaDbNavSectionList = null;
   let activeOpenLigaDbFeedId = '';
   let nextOpenLigaDbFeedId = 0;
+  let apiFootballNavSectionList = null;
+  let activeApiFootballFeedId = '';
+  let nextApiFootballFeedId = 0;
 
   function initSettingsNavigation() {
     const nav = document.querySelector('#cfgCard .cfg-nav');
@@ -5209,6 +5214,7 @@
       sectionList.className = 'cfg-nav-sections';
       sectionList.id = `cfg-nav-sections-${pane}`;
       if (pane === 'openligadb') openLigaDbNavSectionList = sectionList;
+      if (pane === 'apifootball') apiFootballNavSectionList = sectionList;
       paneButton.type = 'button';
       paneButton.removeAttribute('onclick');
       paneButton.setAttribute('aria-controls', sectionList.id);
@@ -5250,6 +5256,7 @@
     nav.replaceChildren(...groups);
     nav.dataset.ready = '1';
     refreshOpenLigaDbNavigation();
+    refreshApiFootballNavigation();
     setActiveSettingsPane('bot');
     const firstSection = document.querySelector('#cfgCard [data-cfg-pane="bot"] > .cfg-section');
     if (firstSection) selectSettingsSection('bot', firstSection.dataset.cfgSectionId);
@@ -5286,6 +5293,11 @@
       activeOpenLigaDbFeedId = '';
       updateOpenLigaDbFeedVisibility();
       refreshOpenLigaDbNavigation();
+    }
+    if (pane === 'apifootball') {
+      activeApiFootballFeedId = '';
+      updateApiFootballFeedVisibility();
+      refreshApiFootballNavigation();
     }
   }
 
@@ -5340,6 +5352,52 @@
     });
   }
 
+  function updateApiFootballFeedVisibility() {
+    const hasSelectedFeed = !!activeApiFootballFeedId;
+    document.getElementById('cfgApiFootballGeneral')?.classList.toggle('api-football-feed-hidden', hasSelectedFeed);
+    document.getElementById('cfgApiFootballActions')?.classList.toggle('api-football-feed-hidden', hasSelectedFeed);
+    document.querySelectorAll('#cfgApiFootballFeeds [data-api-football-feed]').forEach(row => {
+      row.classList.toggle('api-football-feed-hidden', !hasSelectedFeed || row.dataset.apiFootballFeedId !== activeApiFootballFeedId);
+    });
+  }
+
+  function refreshApiFootballNavigation() {
+    if (!apiFootballNavSectionList) return;
+    apiFootballNavSectionList.querySelectorAll('[data-api-football-nav-feed]').forEach(button => button.remove());
+    const rows = Array.from(document.querySelectorAll('#cfgApiFootballFeeds [data-api-football-feed]'));
+    if (!rows.some(row => row.dataset.apiFootballFeedId === activeApiFootballFeedId)) activeApiFootballFeedId = '';
+    const searchTerm = document.getElementById('cfgSettingsSearch')?.value?.trim().toLowerCase() || '';
+    const insertionPoint = apiFootballNavSectionList.querySelector('[data-cfg-section-btn]:nth-of-type(2)');
+
+    rows.forEach(row => {
+      const title = row.querySelector('[data-api-football-role="title"]')?.textContent?.trim() || 'Wettbewerb';
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'cfg-nav-section-btn';
+      button.dataset.apiFootballNavFeed = row.dataset.apiFootballFeedId;
+      button.textContent = title;
+      button.setAttribute('aria-controls', row.id);
+      button.classList.toggle('active', row.dataset.apiFootballFeedId === activeApiFootballFeedId);
+      button.classList.toggle('cfg-search-hidden', !!searchTerm && !title.toLowerCase().includes(searchTerm));
+      button.addEventListener('click', () => selectApiFootballFeed(row.dataset.apiFootballFeedId));
+      apiFootballNavSectionList.insertBefore(button, insertionPoint);
+    });
+    updateApiFootballFeedVisibility();
+  }
+
+  function selectApiFootballFeed(feedId) {
+    const row = Array.from(document.querySelectorAll('#cfgApiFootballFeeds [data-api-football-feed]'))
+      .find(feedRow => feedRow.dataset.apiFootballFeedId === feedId);
+    const section = document.querySelector('#cfgCard [data-cfg-pane="apifootball"] > .cfg-section');
+    if (!row || !section) return;
+    selectSettingsSection('apifootball', section.dataset.cfgSectionId);
+    activeApiFootballFeedId = feedId;
+    updateApiFootballFeedVisibility();
+    apiFootballNavSectionList?.querySelectorAll('[data-api-football-nav-feed]').forEach(button => {
+      button.classList.toggle('active', button.dataset.apiFootballNavFeed === feedId);
+    });
+  }
+
   let _settingsSearchActive = false;
   let _settingsSearchReturnPane = 'bot';
   let _settingsSearchReturnSection = '';
@@ -5350,6 +5408,7 @@
     const navButtons = Array.from(document.querySelectorAll('#cfgCard [data-cfg-pane-btn]'));
     const sectionButtons = Array.from(document.querySelectorAll('#cfgCard [data-cfg-section-btn]'));
     const openLigaDbButtons = Array.from(document.querySelectorAll('#cfgCard [data-openliga-nav-feed]'));
+    const apiFootballButtons = Array.from(document.querySelectorAll('#cfgCard [data-api-football-nav-feed]'));
     const status = document.getElementById('cfgSettingsSearchStatus');
 
     if (term && !_settingsSearchActive) {
@@ -5364,7 +5423,8 @@
       const navButton = navButtons.find((button) => button.dataset.cfgPaneBtn === pane);
       const paneText = `${navButton?.textContent || ''} ${card.querySelector('.cfg-pane-title')?.textContent || ''}`.toLowerCase();
       const paneMatches = !!term && (paneText.includes(term)
-        || (pane === 'openligadb' && openLigaDbButtons.some((button) => button.textContent.toLowerCase().includes(term))));
+        || (pane === 'openligadb' && openLigaDbButtons.some((button) => button.textContent.toLowerCase().includes(term)))
+        || (pane === 'apifootball' && apiFootballButtons.some(button => button.textContent.toLowerCase().includes(term))));
       let fieldMatches = 0;
 
       card.querySelectorAll('.cfg-section').forEach((section) => {
@@ -5401,6 +5461,7 @@
 
     if (!term) {
       openLigaDbButtons.forEach((button) => button.classList.remove('cfg-search-hidden'));
+      apiFootballButtons.forEach(button => button.classList.remove('cfg-search-hidden'));
       _settingsSearchActive = false;
       restoreSectionStates();
       setActiveSettingsPane(_settingsSearchReturnPane);
@@ -5413,6 +5474,9 @@
     }
 
     openLigaDbButtons.forEach((button) => {
+      button.classList.toggle('cfg-search-hidden', !button.textContent.toLowerCase().includes(term));
+    });
+    apiFootballButtons.forEach(button => {
       button.classList.toggle('cfg-search-hidden', !button.textContent.toLowerCase().includes(term));
     });
     if (status) status.textContent = matches.length ? `${matches.length} Bereiche gefunden` : 'Keine passenden Einstellungen gefunden';
@@ -7192,6 +7256,7 @@
     refreshConfigDirtyIndicator();
     const status = document.getElementById('cfgApiFootballFeedStatus');
     if (status) status.textContent = `${serializeApiFootballFeeds().length} Turnierfeeds`;
+    refreshApiFootballNavigation();
   }
 
   function updateApiFootballDefaultSeason() {
@@ -7200,7 +7265,7 @@
     if (competition) document.getElementById('cfgApiFootballSeason').value = competition.defaultSeason;
   }
 
-  function addSelectedApiFootballFeed() {
+  async function addSelectedApiFootballFeed() {
     const status = document.getElementById('cfgApiFootballFeedStatus');
     const leagueId = Number(document.getElementById('cfgApiFootballCompetition').value);
     const season = Number(document.getElementById('cfgApiFootballSeason').value);
@@ -7215,15 +7280,17 @@
       status.className = 'cfg-hint warn';
       return;
     }
-    void addApiFootballFeed({ leagueId, season });
+    await addApiFootballFeed({ leagueId, season }, { selectAfterAdd: true });
   }
 
-  async function addApiFootballFeed(feed = {}) {
+  async function addApiFootballFeed(feed = {}, { selectAfterAdd = false } = {}) {
     const container = document.getElementById('cfgApiFootballFeeds');
     const competition = apiFootballCompetitionCatalog.find(item => item.leagueId === Number(feed.leagueId));
     if (!competition) return;
     const row = document.createElement('div');
     row.dataset.apiFootballFeed = 'true';
+    row.dataset.apiFootballFeedId = `api-football-feed-${++nextApiFootballFeedId}`;
+    row.id = row.dataset.apiFootballFeedId;
     row.style.cssText = 'border:1px solid var(--border);border-radius:8px;padding:12px;background:var(--surface2);display:grid;gap:8px';
     row.innerHTML = `
       <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
@@ -7294,11 +7361,14 @@
       void fetchApiFootballStartDate(row, { force: true });
     });
     row.querySelector('[data-api-football-role="remove"]').addEventListener('click', () => {
+      const wasSelected = row.dataset.apiFootballFeedId === activeApiFootballFeedId;
       row.remove();
+      if (wasSelected) activeApiFootballFeedId = '';
       syncApiFootballFeedsDirtyState();
     });
     container.appendChild(row);
     syncApiFootballFeedsDirtyState();
+    if (selectAfterAdd) selectApiFootballFeed(row.dataset.apiFootballFeedId);
   }
 
   async function loadApiFootballSettings(configData) {
@@ -7344,6 +7414,7 @@
     }
     const container = document.getElementById('cfgApiFootballFeeds');
     container.replaceChildren();
+    activeApiFootballFeedId = '';
     let feeds = [];
     try { feeds = JSON.parse(configData.API_FOOTBALL_FEEDS || '[]'); } catch {}
     for (const feed of Array.isArray(feeds) ? feeds : []) await addApiFootballFeed(feed);
@@ -7351,6 +7422,7 @@
     feedsInput.value = JSON.stringify(serializeApiFootballFeeds());
     feedsInput.dataset.initialValue = feedsInput.value;
     _setDirtyState(feedsInput, false);
+    refreshApiFootballNavigation();
     const limitInput = document.getElementById('cfgApiFootballDailyLimit');
     limitInput.value = configData.API_FOOTBALL_DAILY_LIMIT || '100';
     limitInput.dataset.initialValue = limitInput.value;

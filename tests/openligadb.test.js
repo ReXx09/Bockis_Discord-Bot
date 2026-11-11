@@ -172,7 +172,15 @@ describe('OpenLigaDB data formatting', () => {
 
   test('refreshes configured standings before the distant tournament fixture window', async () => {
     const now = Date.parse('2026-01-01T00:00:00Z');
-    const http = { get: jest.fn(async () => ({ data: { response: [] } })) };
+    const standings = Array.from({ length: 10 }, (_, groupIndex) => Array.from({ length: 20 }, (_, teamIndex) => ({
+      rank: teamIndex + 1,
+      team: { name: `Group ${groupIndex + 1} Team ${teamIndex + 1} with an intentionally long name` },
+      points: 20 - teamIndex,
+      all: { played: 10 },
+      goalsDiff: 20 - teamIndex,
+      group: `Group ${groupIndex + 1}`,
+    })));
+    const http = { get: jest.fn(async () => ({ data: { response: [{ league: { standings } }] } })) };
     const channel = {
       isTextBased: () => true,
       messages: { fetch: jest.fn(async () => []) },
@@ -194,6 +202,13 @@ describe('OpenLigaDB data formatting', () => {
     expect(channel.send).toHaveBeenCalledWith(expect.objectContaining({
       embeds: [expect.objectContaining({ data: expect.objectContaining({ title: expect.stringContaining('Tabelle') }) })],
     }));
+    const embed = channel.send.mock.calls[0][0].embeds[0].toJSON();
+    const characterCount = (embed.title || '').length + (embed.description || '').length
+      + (embed.footer?.text || '').length + (embed.author?.name || '').length
+      + (embed.fields || []).reduce((total, field) => total + field.name.length + field.value.length, 0);
+    expect(characterCount).toBeLessThanOrEqual(6000);
+    expect(embed.fields.length).toBeLessThanOrEqual(25);
+    expect(embed.fields.every(field => field.name.length <= 256 && field.value.length <= 1024)).toBe(true);
   });
 
   test('uses one shared live fixture request only when matches are within three hours', async () => {
