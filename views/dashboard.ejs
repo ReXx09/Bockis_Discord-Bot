@@ -7326,6 +7326,23 @@
     const countdown = row.querySelector('[data-api-football-role="countdown-team"]');
     const leagueId = row.querySelector('[data-api-football-role="competition"]').value;
     const season = row.querySelector('[data-api-football-role="season"]').value;
+    const selected = new Set((Array.isArray(selectedIds) ? selectedIds : []).map(Number));
+    const manualTeams = Number(leagueId) === 4 && Number(season) === 2028
+      ? [{ teamId: 25, teamName: 'Deutschland', shortName: 'GER' }]
+      : [];
+    const appendTeamOption = team => {
+      const label = document.createElement('label');
+      label.style.cssText = 'display:flex;align-items:center;gap:8px;padding:5px;cursor:pointer';
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.value = String(team.teamId);
+      checkbox.dataset.teamName = team.teamName;
+      checkbox.checked = selected.has(Number(team.teamId));
+      const name = document.createElement('span');
+      name.textContent = team.shortName && team.shortName !== team.teamName ? `${team.teamName} · ${team.shortName}` : team.teamName;
+      label.append(checkbox, name);
+      favorites.appendChild(label);
+    };
     status.textContent = 'Teams werden geladen …';
     status.className = 'cfg-hint';
     favorites.replaceChildren();
@@ -7334,25 +7351,24 @@
       const response = await fetch(`/api/api-football/teams?leagueId=${encodeURIComponent(leagueId)}&season=${encodeURIComponent(season)}`);
       const result = await response.json();
       if (!response.ok || !result.ok) throw new Error(result.error || 'Teams sind momentan nicht verfügbar.');
-      const selected = new Set((Array.isArray(selectedIds) ? selectedIds : []).map(Number));
-      for (const team of result.teams || []) {
-        const label = document.createElement('label');
-        label.style.cssText = 'display:flex;align-items:center;gap:8px;padding:5px;cursor:pointer';
-        const checkbox = document.createElement('input');
-        checkbox.type = 'checkbox';
-        checkbox.value = String(team.teamId);
-        checkbox.dataset.teamName = team.teamName;
-        checkbox.checked = selected.has(team.teamId);
-        const name = document.createElement('span');
-        name.textContent = team.shortName && team.shortName !== team.teamName ? `${team.teamName} · ${team.shortName}` : team.teamName;
-        label.append(checkbox, name);
-        favorites.appendChild(label);
+      const teams = Array.isArray(result.teams) ? result.teams : [];
+      for (const team of teams) appendTeamOption(team);
+      const teamIds = new Set(teams.map(team => Number(team.teamId)));
+      const missingManualTeams = manualTeams.filter(team => !teamIds.has(team.teamId));
+      for (const team of missingManualTeams) appendTeamOption(team);
+      status.textContent = `${teams.length} Teams · API-Football`;
+      if (!teams.length && missingManualTeams.length) {
+        status.textContent = 'Deutschland manuell ergänzt; Spieldaten sind erst verfügbar, wenn API-Football die Saison unterstützt.';
+      } else if (missingManualTeams.length) {
+        status.textContent += ' · Deutschland manuell ergänzt';
+      } else if (!teams.length) {
+        status.textContent = 'Für diese Saison sind keine Teams verfügbar.';
       }
-      status.textContent = `${(result.teams || []).length} Teams · API-Football`;
-      if (!result.teams?.length) status.textContent = 'Für diese Saison sind keine Teams verfügbar.';
       updateApiFootballFavoriteSelection(row, true);
     } catch (error) {
-      for (const teamId of (Array.isArray(selectedIds) ? selectedIds : []).map(Number).filter(id => Number.isInteger(id) && id > 0)) {
+      for (const team of manualTeams) appendTeamOption(team);
+      const manualTeamIds = new Set(manualTeams.map(team => team.teamId));
+      for (const teamId of [...selected].filter(id => Number.isInteger(id) && id > 0 && !manualTeamIds.has(id))) {
         const label = document.createElement('label');
         label.style.cssText = 'display:flex;align-items:center;gap:8px;padding:5px;cursor:pointer';
         const checkbox = document.createElement('input');
@@ -7366,7 +7382,9 @@
         favorites.appendChild(label);
       }
       updateApiFootballFavoriteSelection(row, true);
-      status.textContent = error.message;
+      status.textContent = manualTeams.length
+        ? `${error.message} Deutschland ist manuell auswählbar; Live-Daten benötigen API-Zugriff auf die Saison 2028.`
+        : error.message;
       status.className = 'cfg-hint err';
     }
   }
