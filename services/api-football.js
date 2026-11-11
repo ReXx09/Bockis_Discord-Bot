@@ -450,6 +450,7 @@ function createApiFootballWatcher({ http, client, logger, getApiKey, getFeeds, n
   const signatures = new Map();
   const announcedFinishedMatches = new Set();
   const favoriteGoalScores = new Map();
+  let lastFeedConfigSignature = '';
 
   async function getChannel(channelId) {
     let channel = client.channels.cache.get(String(channelId));
@@ -461,7 +462,10 @@ function createApiFootballWatcher({ http, client, logger, getApiKey, getFeeds, n
     channelId = String(channelId || '').trim();
     if (!channelId) return;
     const channel = await getChannel(channelId);
-    if (!channel) return;
+    if (!channel) {
+      logger.warn(`API-Football-${kind} für Feed ${feedKey} nicht gesendet: Zielkanal ist nicht erreichbar oder kein Textkanal.`);
+      return;
+    }
     const marker = `API-Football:${kind}:${feedKey}`;
     const embed = payload.embeds[0];
     const footer = embed.toJSON().footer?.text || 'API-Football';
@@ -478,10 +482,12 @@ function createApiFootballWatcher({ http, client, logger, getApiKey, getFeeds, n
         && candidate.embeds.some(existing => (existing.footer?.text || '').includes(marker)));
     }
     const messagePayload = { ...payload, embeds: [embed] };
+    const wasExisting = Boolean(message);
     if (message) message = await message.edit(messagePayload);
     else message = await channel.send(messagePayload);
     messages.set(key, message);
     signatures.set(key, signature);
+    logger.info(`API-Football-${kind} für Feed ${feedKey} in Discord ${wasExisting ? 'aktualisiert' : 'gesendet'}.`);
   }
 
   async function checkOnce() {
@@ -493,6 +499,13 @@ function createApiFootballWatcher({ http, client, logger, getApiKey, getFeeds, n
       if (pausedUntilUtcDate === currentUtcDate) return;
       pausedUntilUtcDate = null;
       const feeds = parseApiFootballFeeds(getFeeds());
+      const feedConfigSignature = JSON.stringify(feeds);
+      if (feedConfigSignature !== lastFeedConfigSignature) {
+        const feedsWithDiscordTargets = feeds.filter(feed => feed.liveChannelId || feed.channelId
+          || feed.tableChannelId || feed.notificationChannelId || feed.countdownChannelId).length;
+        logger.info(`API-Football-Konfiguration geladen: ${feeds.length} Feed(s), ${feedsWithDiscordTargets} mit Discord-Ziel.`);
+        lastFeedConfigSignature = feedConfigSignature;
+      }
       const activeKeys = new Set(feeds.map(feed => `${feed.leagueId}:${feed.season}`));
       for (const feed of feeds) {
         const feedKey = `${feed.leagueId}:${feed.season}`;

@@ -32,7 +32,7 @@ const {
   normalizeApiFootballFeeds,
 } = require('../services/api-football');
 const { SERVER_PROFILE_ENV_PATHS, createServerProfileDefaults, setServerProfileSettings } = require('../server-profiles');
-const { getApiUsageSnapshot } = require('../services/api-usage');
+const { getApiUsageSnapshot, setApiUsageDailyLimit } = require('../services/api-usage');
 const {
   buildFinishedMatchPng,
   buildNextMatchCountdownMessage,
@@ -3076,6 +3076,17 @@ module.exports = function startWebServer({
       const tmpPath = `${envPath}.tmp.${Date.now()}`;
       fs.writeFileSync(tmpPath, newContent, 'utf8');
       fs.renameSync(tmpPath, envPath); // atomar auf POSIX
+      if (Object.hasOwn(updates, 'API_FOOTBALL_FEEDS')) {
+        config.set('discord.apiFootball.feeds', updates.API_FOOTBALL_FEEDS);
+      }
+      if (Object.hasOwn(updates, 'API_FOOTBALL_KEY')) {
+        config.set('discord.apiFootball.apiKey', updates.API_FOOTBALL_KEY);
+      }
+      if (Object.hasOwn(updates, 'API_FOOTBALL_DAILY_LIMIT')) {
+        const dailyLimit = Number(updates.API_FOOTBALL_DAILY_LIMIT);
+        config.set('discord.apiFootball.dailyLimit', dailyLimit);
+        setApiUsageDailyLimit(dailyLimit);
+      }
       logger.info(`Konfiguration aktualisiert: ${Object.keys(updates).join(', ')}`);
     } catch (err) {
       logger.error(`/api/config POST Schreibfehler: ${err.message}`);
