@@ -22,6 +22,8 @@ const axios       = require('axios');
 const { AttachmentBuilder, ChannelType } = require('discord.js');
 const { execFile, execFileSync, execSync, spawn } = require('child_process');
 const { createDashboardAuth, timingSafeStringEqual } = require('./dashboard-auth');
+const { describeWebServerListenError, normalizeWebPort } = require('./server-config');
+const { API_FOOTBALL_COMPETITIONS, normalizeApiFootballFeeds } = require('../services/api-football');
 const { SERVER_PROFILE_ENV_PATHS, createServerProfileDefaults, setServerProfileSettings } = require('../server-profiles');
 const { getApiUsageSnapshot } = require('../services/api-usage');
 const {
@@ -143,37 +145,6 @@ function normalizeOpenLigaDbFeeds(value) {
       countdownChannelId,
       tableChannelIds: [...new Set(tableChannelIds.map(String))],
     };
-  });
-}
-
-function normalizeApiFootballFeeds(value) {
-  let feeds;
-  try { feeds = JSON.parse(String(value)); } catch { throw new Error('API-Football-Feeds müssen gültiges JSON sein.'); }
-  if (!Array.isArray(feeds) || feeds.length > 12) throw new Error('Es sind höchstens 12 API-Football-Turnierfeeds erlaubt.');
-  const seen = new Set();
-  return feeds.map(feed => {
-    const leagueId = Number(feed?.leagueId);
-    const season = Number(feed?.season);
-    const channelId = String(feed?.channelId || '').trim();
-    if (!feed || typeof feed !== 'object' || Array.isArray(feed)
-      || !Number.isInteger(leagueId) || leagueId <= 0
-      || !Number.isInteger(season) || season < 2000 || season > 2200
-      || !/^\d{5,24}$/.test(channelId)) {
-      throw new Error('Jeder API-Football-Feed benötigt eine Liga-ID, Saison und gültige Discord-Kanal-ID.');
-    }
-    const key = `${leagueId}:${season}:${channelId}`;
-    if (seen.has(key)) throw new Error('Doppelte API-Football-Liga, Saison und Kanal-Kombination.');
-    seen.add(key);
-    const name = String(feed.name || `Turnier ${leagueId}`).trim().slice(0, 100);
-    const startDate = String(feed.startDate || '').trim();
-    if (startDate && (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) || Number.isNaN(Date.parse(`${startDate}T00:00:00Z`)))) {
-      throw new Error(`Ungültiges Startdatum für ${name}.`);
-    }
-    const interval = feed.updateIntervalMinutes == null || feed.updateIntervalMinutes === '' ? 1440 : Number(feed.updateIntervalMinutes);
-    if (!Number.isInteger(interval) || interval < 60 || interval > 1440) {
-      throw new Error(`Das Abrufintervall für ${name} muss zwischen 60 und 1440 Minuten liegen.`);
-    }
-    return { leagueId, season, name, channelId, startDate, updateIntervalMinutes: interval };
   });
 }
 
@@ -423,6 +394,10 @@ module.exports = function startWebServer({
       logger.warn(`OpenLigaDB-Teamliste konnte nicht geladen werden: ${err.message}`);
       return res.status(502).json({ ok: false, error: 'Teams sind momentan nicht verfügbar.' });
     }
+  });
+
+  app.get('/api/api-football/competitions', dashboardAuth, (req, res) => {
+    return res.set('Cache-Control', 'no-store').json({ ok: true, competitions: API_FOOTBALL_COMPETITIONS });
   });
 
   app.get('/api/api-usage', dashboardAuth, (req, res) => {
@@ -2786,10 +2761,8 @@ module.exports = function startWebServer({
           return res.json({ ok: false, error: 'UPDATE_INTERVAL muss eine Zahl >= 10000 sein' });
       }
       if (key === 'WEB_PORT') {
-        const n = Number(val);
-        if (!/^\d+$/.test(val) || !Number.isSafeInteger(n) || n < 1 || n > 65535)
-          return res.json({ ok: false, error: 'WEB_PORT muss zwischen 1 und 65535 liegen' });
-        updates[key] = String(n);
+        try { updates[key] = normalizeWebPort(val); }
+        catch (error) { return res.json({ ok: false, error: error.message }); }
         continue;
       }
       if (key === 'OPENAI_MAX_TOKENS') {
@@ -3450,10 +3423,7 @@ module.exports = function startWebServer({
     if (!isLoopbackHost) logger.warn(`Dashboard an ${host} gebunden; externen Zugriff nur mit HTTPS-Proxy freigeben.`);
   });
   server.on('error', error => {
-    let detail = error.message;
-    if (error.code === 'EADDRINUSE') detail = `Port ${port} ist bereits belegt.`;
-    else if (error.code === 'EADDRNOTAVAIL') detail = `Host-Adresse ${host} ist auf diesem Rechner nicht verfügbar.`;
-    logger.error(`Dashboard konnte nicht unter ${host}:${port} starten (${error.code || 'ERROR'}): ${detail}`);
+    logger.error(`${describeWebServerListenError(error, host, port)} (${error.code || 'ERROR'})`);
   });
 
   // ── WigiDash Status-API Server (optionaler separater Server) ─────────────────

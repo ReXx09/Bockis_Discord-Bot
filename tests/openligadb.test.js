@@ -18,9 +18,17 @@ const {
 } = require('../services/openligadb');
 const { createApiUsageTracker } = require('../services/api-usage');
 const {
+  API_FOOTBALL_COMPETITIONS,
   buildApiFootballTournamentPayload,
+  buildApiFootballLivePayload,
+  buildApiFootballStandingsPayload,
+  createApiFootballWatcher,
   fetchApiFootballFixtures,
+  fetchApiFootballLiveFixtures,
+  fetchApiFootballStandings,
   getApiFootballRefreshIntervalMs,
+  hasApiFootballMatchWindow,
+  normalizeApiFootballFeeds,
   shouldPollApiFootballFixtures,
 } = require('../services/api-football');
 
@@ -96,6 +104,129 @@ describe('OpenLigaDB data formatting', () => {
     expect(getApiFootballRefreshIntervalMs({})).toBe(24 * 60 * 60 * 1000);
     const embed = buildApiFootballTournamentPayload(feed, [], now).embeds[0].toJSON();
     expect(embed.description).toContain('<t:1844121600:R>');
+  });
+
+  test('limits API-Football feeds to the requested tournament set and normalizes channel targets', () => {
+    expect(API_FOOTBALL_COMPETITIONS.map(item => item.category)).toEqual([
+      'Europameisterschaft', 'Qualifikation', 'Weltmeisterschaft',
+      'Qualifikation', 'Qualifikation', 'Qualifikation', 'Qualifikation', 'Qualifikation', 'Qualifikation',
+    ]);
+    expect(normalizeApiFootballFeeds([{ leagueId: 4, season: 2028, channelId: '12345678901234567' }])).toEqual([{
+      leagueId: 4,
+      season: 2028,
+      name: 'UEFA Europameisterschaft',
+      liveChannelId: '12345678901234567',
+      tableChannelId: '',
+      startDate: '',
+      updateIntervalMinutes: 1440,
+    }]);
+    expect(() => normalizeApiFootballFeeds([{ leagueId: 9999, season: 2030, liveChannelId: '12345678901234567' }])).toThrow('unterstützten Wettbewerb');
+    expect(() => normalizeApiFootballFeeds([
+      { leagueId: 4, season: 2028, liveChannelId: '12345678901234567' },
+      { leagueId: 4, season: 2028, tableChannelId: '12345678901234568' },
+    ])).toThrow('doppelt');
+  });
+
+  test('fetches standings and shared live fixtures and formats both Discord embeds', async () => {
+    const usageTracker = { recordApiRequest: jest.fn(() => true) };
+    const http = { get: jest.fn(async (url) => ({ data: { response: url.endsWith('/standings') ? [{
+      league: { standings: [[{
+        rank: 1, team: { name: 'Germany' }, points: 9, all: { played: 3 }, goalsDiff: 6, group: 'Group A',
+      }]] },
+    }] : [{
+      fixture: { date: '2028-06-09T13:00:00Z', status: { short: '1H', elapsed: 24 } },
+      league: { id: 4, round: 'Group A' },
+      teams: { home: { name: 'Germany' }, away: { name: 'France' } },
+      goals: { home: 1, away: 0 },
+    }] } })) };
+    const feed = { leagueId: 4, season: 2028, name: 'UEFA Europameisterschaft' };
+    const standings = await fetchApiFootballStandings(http, 'test-key', feed, usageTracker);
+    const liveFixtures = await fetchApiFootballLiveFixtures(http, 'test-key', usageTracker);
+    expect(http.get.mock.calls[0][1].params).toEqual({ league: 4, season: 2028 });
+    expect(http.get.mock.calls[1][1].params).toEqual({ live: 'all' });
+    expect(usageTracker.recordApiRequest).toHaveBeenCalledTimes(2);
+    expect(buildApiFootballStandingsPayload(feed, standings).embeds[0].toJSON().fields[0].value).toContain('Germany');
+    expect(buildApiFootballLivePayload(feed, liveFixtures).embeds[0].toJSON().description).toContain('Germany 1:0 France');
+    expect(hasApiFootballMatchWindow(liveFixtures, Date.parse('2028-06-09T13:20:00Z'))).toBe(true);
+  });
+
+  test('refreshes configured standings before the distant tournament fixture window', async () => {
+    const now = Date.parse('2026-01-01T00:00:00Z');
+    const http = { get: jest.fn(async () => ({ data: { response: [] } })) };
+    const channel = {
+      isTextBased: () => true,
+      messages: { fetch: jest.fn(async () => []) },
+      send: jest.fn(async payload => ({ ...payload })),
+    };
+    const watcher = createApiFootballWatcher({
+      http,
+      client: { user: { id: 'bot' }, channels: { cache: new Map([['12345678901234567', channel]]) } },
+      logger: { warn: jest.fn(), info: jest.fn() },
+      getApiKey: () => 'test-key',
+      getFeeds: () => [{ leagueId: 4, season: 2028, name: 'UEFA Europameisterschaft', startDate: '2028-06-09', tableChannelId: '12345678901234567' }],
+      nowProvider: () => now,
+    });
+
+    await watcher.checkOnce();
+
+    expect(http.get).toHaveBeenCalledTimes(1);
+    expect(http.get.mock.calls[0][0]).toContain('/standings');
+    expect(channel.send).toHaveBeenCalledWith(expect.objectContaining({
+      embeds: [expect.objectContaining({ data: expect.objectContaining({ title: expect.stringContaining('Tabelle') }) })],
+    }));
+  });
+
+  test('uses one shared live fixture request only when matches are within three hours', async () => {
+    let now = Date.parse('2026-01-01T12:00:00Z');
+    const kickoff = now + 4 * 60 * 60_000;
+    const http = { get: jest.fn(async (_url, { params }) => {
+      if (params.live === 'all') return { data: { response: [{
+        fixture: { date: new Date(now).toISOString(), status: { short: '1H', elapsed: 10 } },
+        league: { id: 4 },
+        teams: { home: { name: 'Germany' }, away: { name: 'France' } },
+        goals: { home: 1, away: 0 },
+      }] } };
+      return { data: { response: [{
+        fixture: { date: new Date(kickoff).toISOString(), status: { short: 'NS' } },
+        league: { id: params.league },
+        teams: { home: { name: 'Home' }, away: { name: 'Away' } },
+      }] } };
+    }) };
+    const channelIds = ['12345678901234567', '12345678901234568'];
+    const channels = new Map(channelIds.map(id => [id, {
+      isTextBased: () => true,
+      messages: { fetch: jest.fn(async () => []) },
+      send: jest.fn(async payload => {
+        const message = {
+          author: { id: 'bot' },
+          embeds: payload.embeds,
+          edit: jest.fn(async updated => {
+            message.embeds = updated.embeds;
+            return message;
+          }),
+        };
+        return message;
+      }),
+    }]));
+    const watcher = createApiFootballWatcher({
+      http,
+      client: { user: { id: 'bot' }, channels: { cache: channels } },
+      logger: { warn: jest.fn(), info: jest.fn() },
+      getApiKey: () => 'test-key',
+      getFeeds: () => [
+        { leagueId: 4, season: 2028, liveChannelId: channelIds[0], updateIntervalMinutes: 60 },
+        { leagueId: 1, season: 2030, liveChannelId: channelIds[1], updateIntervalMinutes: 60 },
+      ],
+      nowProvider: () => now,
+      usageTracker: { recordApiRequest: jest.fn(() => true) },
+    });
+
+    await watcher.checkOnce();
+    expect(http.get.mock.calls.filter(([, options]) => options.params.live === 'all')).toHaveLength(0);
+
+    now += 61 * 60_000;
+    await watcher.checkOnce();
+    expect(http.get.mock.calls.filter(([, options]) => options.params.live === 'all')).toHaveLength(1);
   });
 
   test('resolves latest season for the selected league', () => {

@@ -2396,8 +2396,21 @@
             <label style="display:flex;align-items:center;gap:6px;margin:8px 0 14px"><input id="cfgApiFootballClearKey" type="checkbox"><span>Gespeicherten API-Key entfernen</span></label>
             <label class="cfg-label" for="cfgApiFootballDailyLimit">Tageslimit (UTC)</label>
             <input class="cfg-input" id="cfgApiFootballDailyLimit" type="number" min="1" max="100000" step="1">
-            <label class="cfg-label" for="cfgApiFootballFeeds" style="margin-top:14px">Turnierfeeds (JSON)</label>
-            <textarea class="cfg-input" id="cfgApiFootballFeeds" rows="7" spellcheck="false" placeholder='[{"leagueId":4,"season":2028,"name":"UEFA EURO 2028","channelId":"12345678901234567","startDate":"2028-06-09","updateIntervalMinutes":1440}]'></textarea>
+            <label class="cfg-label" style="margin-top:14px">Turnierfeeds</label>
+            <div id="cfgApiFootballFeeds" style="display:grid;gap:10px;margin:8px 0"></div>
+            <input id="cfgApiFootballFeedsValue" type="hidden" value="[]">
+            <div style="display:flex;align-items:end;gap:10px;flex-wrap:wrap">
+              <label class="cfg-label" for="cfgApiFootballCompetition">Wettbewerb
+                <select class="cfg-input" id="cfgApiFootballCompetition" aria-label="EM, WM oder Qualifikation auswählen">
+                  <option value="">Wettbewerbe werden geladen …</option>
+                </select>
+              </label>
+              <label class="cfg-label" for="cfgApiFootballSeason">Saison
+                <input class="cfg-input" id="cfgApiFootballSeason" type="number" min="2000" max="2200" step="1" value="2028" style="max-width:120px">
+              </label>
+              <button class="btn" type="button" onclick="addSelectedApiFootballFeed()">＋ Wettbewerb hinzufügen</button>
+              <span class="cfg-hint" id="cfgApiFootballFeedStatus" style="margin:0" aria-live="polite">Wettbewerbe werden geladen …</span>
+            </div>
             <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:12px">
               <button class="btn btn-green" id="btnApiFootballSave" type="button" onclick="saveApiFootballSettings()">💾 API-Football speichern</button>
               <span id="cfgApiFootballSaveStatus" class="cfg-hint" style="margin:0" aria-live="polite"></span>
@@ -7158,7 +7171,119 @@
     updateOpenLigaDbFeedVisibility();
   }
 
-  function loadApiFootballSettings(configData) {
+  let apiFootballCompetitionCatalog = [];
+
+  function serializeApiFootballFeeds() {
+    return Array.from(document.querySelectorAll('#cfgApiFootballFeeds [data-api-football-feed]')).map(row => ({
+      leagueId: Number(row.querySelector('[data-api-football-role="competition"]').value),
+      season: Number(row.querySelector('[data-api-football-role="season"]').value),
+      startDate: row.querySelector('[data-api-football-role="start-date"]').value,
+      updateIntervalMinutes: Number(row.querySelector('[data-api-football-role="interval"]').value),
+      liveChannelId: row.querySelector('[data-api-football-role="live-channel"]').value.trim(),
+      tableChannelId: row.querySelector('[data-api-football-role="table-channel"]').value.trim(),
+    }));
+  }
+
+  function syncApiFootballFeedsDirtyState() {
+    const field = document.getElementById('cfgApiFootballFeedsValue');
+    if (!field) return;
+    field.value = JSON.stringify(serializeApiFootballFeeds());
+    _setDirtyState(field, _isFieldDirty(field));
+    refreshConfigDirtyIndicator();
+    const status = document.getElementById('cfgApiFootballFeedStatus');
+    if (status) status.textContent = `${serializeApiFootballFeeds().length} Turnierfeeds`;
+  }
+
+  function updateApiFootballDefaultSeason() {
+    const select = document.getElementById('cfgApiFootballCompetition');
+    const competition = apiFootballCompetitionCatalog.find(item => Number(select.value) === item.leagueId);
+    if (competition) document.getElementById('cfgApiFootballSeason').value = competition.defaultSeason;
+  }
+
+  function addSelectedApiFootballFeed() {
+    const status = document.getElementById('cfgApiFootballFeedStatus');
+    const leagueId = Number(document.getElementById('cfgApiFootballCompetition').value);
+    const season = Number(document.getElementById('cfgApiFootballSeason').value);
+    if (!Number.isInteger(leagueId) || !Number.isInteger(season) || season < 2000 || season > 2200) {
+      status.textContent = 'Bitte Wettbewerb und gültige Saison auswählen.';
+      status.className = 'cfg-hint err';
+      return;
+    }
+    const exists = serializeApiFootballFeeds().some(feed => feed.leagueId === leagueId && feed.season === season);
+    if (exists) {
+      status.textContent = 'Dieser Wettbewerb und diese Saison sind bereits eingetragen.';
+      status.className = 'cfg-hint warn';
+      return;
+    }
+    void addApiFootballFeed({ leagueId, season });
+  }
+
+  async function addApiFootballFeed(feed = {}) {
+    const container = document.getElementById('cfgApiFootballFeeds');
+    const competition = apiFootballCompetitionCatalog.find(item => item.leagueId === Number(feed.leagueId));
+    if (!competition) return;
+    const row = document.createElement('div');
+    row.dataset.apiFootballFeed = 'true';
+    row.style.cssText = 'border:1px solid var(--border);border-radius:8px;padding:12px;background:var(--surface2);display:grid;gap:8px';
+    row.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+        <strong data-api-football-role="title"></strong>
+        <button class="btn" type="button" data-api-football-role="remove" title="Wettbewerb entfernen">Entfernen</button>
+      </div>
+      <label class="cfg-label">Wettbewerb
+        <select class="cfg-input" data-api-football-role="competition"></select>
+      </label>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px">
+        <label class="cfg-label">Saison
+          <input class="cfg-input" data-api-football-role="season" type="number" min="2000" max="2200" step="1" required>
+        </label>
+        <label class="cfg-label">Turnierbeginn (optional)
+          <input class="cfg-input" data-api-football-role="start-date" type="date">
+        </label>
+        <label class="cfg-label">Spielplan/Tabelle aktualisieren (Minuten)
+          <input class="cfg-input" data-api-football-role="interval" type="number" min="60" max="1440" step="1" required>
+        </label>
+      </div>
+      <label class="cfg-label">Kanal für Live-Spielstände (optional)
+        <input class="cfg-input" data-api-football-role="live-channel" type="text" inputmode="numeric" autocomplete="off" placeholder="Discord-Kanal-ID">
+      </label>
+      <label class="cfg-label">Kanal für Tabelle (optional)
+        <input class="cfg-input" data-api-football-role="table-channel" type="text" inputmode="numeric" autocomplete="off" placeholder="Discord-Kanal-ID">
+      </label>`;
+    const select = row.querySelector('[data-api-football-role="competition"]');
+    for (const item of apiFootballCompetitionCatalog) {
+      const option = document.createElement('option');
+      option.value = String(item.leagueId);
+      option.textContent = `${item.category} · ${item.name}`;
+      select.appendChild(option);
+    }
+    select.value = String(competition.leagueId);
+    row.querySelector('[data-api-football-role="title"]').textContent = `${competition.name} · ${feed.season || competition.defaultSeason}`;
+    row.querySelector('[data-api-football-role="season"]').value = String(feed.season || competition.defaultSeason);
+    row.querySelector('[data-api-football-role="start-date"]').value = feed.startDate || '';
+    row.querySelector('[data-api-football-role="interval"]').value = String(feed.updateIntervalMinutes || 1440);
+    row.querySelector('[data-api-football-role="live-channel"]').value = feed.liveChannelId || feed.channelId || '';
+    row.querySelector('[data-api-football-role="table-channel"]').value = feed.tableChannelId || '';
+    select.addEventListener('change', () => {
+      const selected = apiFootballCompetitionCatalog.find(item => item.leagueId === Number(select.value));
+      row.querySelector('[data-api-football-role="title"]').textContent = `${selected?.name || 'Wettbewerb'} · ${row.querySelector('[data-api-football-role="season"]').value}`;
+      syncApiFootballFeedsDirtyState();
+    });
+    row.querySelector('[data-api-football-role="season"]').addEventListener('input', event => {
+      const selected = apiFootballCompetitionCatalog.find(item => item.leagueId === Number(select.value));
+      row.querySelector('[data-api-football-role="title"]').textContent = `${selected?.name || 'Wettbewerb'} · ${event.currentTarget.value}`;
+    });
+    row.addEventListener('input', syncApiFootballFeedsDirtyState);
+    row.addEventListener('change', syncApiFootballFeedsDirtyState);
+    row.querySelector('[data-api-football-role="remove"]').addEventListener('click', () => {
+      row.remove();
+      syncApiFootballFeedsDirtyState();
+    });
+    container.appendChild(row);
+    syncApiFootballFeedsDirtyState();
+  }
+
+  async function loadApiFootballSettings(configData) {
     const keyInput = document.getElementById('cfgApiFootballKey');
     keyInput.value = '';
     keyInput.dataset.initialValue = configData.API_FOOTBALL_KEY ? '__MASKED__' : '';
@@ -7166,11 +7291,48 @@
       ? `Aktuell: ${configData.API_FOOTBALL_KEY} — leer lassen = unverändert`
       : 'API-Key eingeben';
     document.getElementById('cfgApiFootballClearKey').checked = false;
-    const feedsInput = document.getElementById('cfgApiFootballFeeds');
+    const competitionSelect = document.getElementById('cfgApiFootballCompetition');
+    const feedStatus = document.getElementById('cfgApiFootballFeedStatus');
+    try {
+      const response = await fetch('/api/api-football/competitions', { cache: 'no-store' }).then(result => result.json());
+      if (!response.ok) throw new Error(response.error || 'Wettbewerbe konnten nicht geladen werden.');
+      apiFootballCompetitionCatalog = response.competitions || [];
+      competitionSelect.replaceChildren();
+      let activeGroup = '';
+      let group = null;
+      for (const item of apiFootballCompetitionCatalog) {
+        if (item.category !== activeGroup) {
+          activeGroup = item.category;
+          group = document.createElement('optgroup');
+          group.label = activeGroup;
+          competitionSelect.appendChild(group);
+        }
+        const option = document.createElement('option');
+        option.value = String(item.leagueId);
+        option.textContent = item.name;
+        group.appendChild(option);
+      }
+      if (!competitionSelect.dataset.bound) {
+        competitionSelect.addEventListener('change', updateApiFootballDefaultSeason);
+        competitionSelect.dataset.bound = '1';
+      }
+      updateApiFootballDefaultSeason();
+      feedStatus.textContent = `${apiFootballCompetitionCatalog.length} EM-/WM-Wettbewerbe verfügbar`;
+      feedStatus.className = 'cfg-hint';
+    } catch (error) {
+      feedStatus.textContent = error.message;
+      feedStatus.className = 'cfg-hint err';
+      apiFootballCompetitionCatalog = [];
+    }
+    const container = document.getElementById('cfgApiFootballFeeds');
+    container.replaceChildren();
     let feeds = [];
     try { feeds = JSON.parse(configData.API_FOOTBALL_FEEDS || '[]'); } catch {}
-    feedsInput.value = JSON.stringify(Array.isArray(feeds) ? feeds : [], null, 2);
+    for (const feed of Array.isArray(feeds) ? feeds : []) await addApiFootballFeed(feed);
+    const feedsInput = document.getElementById('cfgApiFootballFeedsValue');
+    feedsInput.value = JSON.stringify(serializeApiFootballFeeds());
     feedsInput.dataset.initialValue = feedsInput.value;
+    _setDirtyState(feedsInput, false);
     const limitInput = document.getElementById('cfgApiFootballDailyLimit');
     limitInput.value = configData.API_FOOTBALL_DAILY_LIMIT || '100';
     limitInput.dataset.initialValue = limitInput.value;
@@ -7216,17 +7378,34 @@
     const status = document.getElementById('cfgApiFootballSaveStatus');
     const keyInput = document.getElementById('cfgApiFootballKey');
     const clearKey = document.getElementById('cfgApiFootballClearKey').checked;
-    const feedsInput = document.getElementById('cfgApiFootballFeeds');
+    const feedsInput = document.getElementById('cfgApiFootballFeedsValue');
     const limitInput = document.getElementById('cfgApiFootballDailyLimit');
     button.disabled = true;
     status.textContent = '';
     try {
-      const feeds = JSON.parse(feedsInput.value || '[]');
-      const body = { API_FOOTBALL_FEEDS: JSON.stringify(feeds) };
+      const invalidFeedInput = Array.from(document.querySelectorAll('#cfgApiFootballFeeds [data-api-football-feed] input'))
+        .find(input => !input.checkValidity());
+      if (invalidFeedInput) {
+        invalidFeedInput.reportValidity();
+        return;
+      }
+      const invalidChannelRow = Array.from(document.querySelectorAll('#cfgApiFootballFeeds [data-api-football-feed]')).find(row => {
+        const liveChannelId = row.querySelector('[data-api-football-role="live-channel"]').value.trim();
+        const tableChannelId = row.querySelector('[data-api-football-role="table-channel"]').value.trim();
+        const isValid = value => !value || /^\d{5,24}$/.test(value);
+        return (!liveChannelId && !tableChannelId) || !isValid(liveChannelId) || !isValid(tableChannelId);
+      });
+      if (invalidChannelRow) {
+        status.textContent = 'Je Feed mindestens einen Discord-Kanal angeben; Kanal-IDs müssen 5 bis 24 Ziffern haben.';
+        status.className = 'cfg-hint err';
+        return;
+      }
+      const body = {};
+      const feeds = JSON.stringify(serializeApiFootballFeeds());
+      if (feeds !== (feedsInput.dataset.initialValue || '[]')) body.API_FOOTBALL_FEEDS = feeds;
       if (clearKey) body.API_FOOTBALL_KEY = '';
       else if (keyInput.value.trim()) body.API_FOOTBALL_KEY = keyInput.value.trim();
       if (limitInput.value !== limitInput.dataset.initialValue) body.API_FOOTBALL_DAILY_LIMIT = limitInput.value;
-      if (body.API_FOOTBALL_FEEDS === feedsInput.dataset.initialValue) delete body.API_FOOTBALL_FEEDS;
       if (!Object.keys(body).length) {
         status.textContent = 'Keine Änderungen erkannt.';
         status.className = 'cfg-hint warn';
@@ -7289,7 +7468,6 @@
       document.getElementById('cfgWebhookUrl').dataset.initialValue = d.DISCORD_STATUS_WEBHOOK_URL ? '__MASKED__' : '';
       document.getElementById('cfgDashPassword').dataset.initialValue = d.DASHBOARD_PASSWORD ? '__MASKED__' : '';
       document.getElementById('cfgWigiDashApiKey').dataset.initialValue = d.WIGIDASH_API_KEY ? '__MASKED__' : '';
-      loadApiFootballSettings(d);
 
       setCfg('cfgStatusCh', d.STATUS_CHANNEL_ID || '');
       setCfg('cfgCommandsCh', d.DISCORD_COMMANDS_CHANNEL_ID || '');
@@ -7323,7 +7501,7 @@
       setCfg('cfgTranslateAllowedGuildIds', d.DISCORD_TRANSLATE_ALLOWED_GUILD_IDS || '');
       setCfg('cfgTranslateMaxTextLength', d.DISCORD_TRANSLATE_MAX_TEXT_LENGTH || '1800');
       await loadOpenLigaDbSettings(d);
-      loadApiFootballSettings(d);
+      await loadApiFootballSettings(d);
       setCfg('cfgWigiDashHost', d.WIGIDASH_API_HOST || '0.0.0.0');
       setCfg('cfgWigiDashPort', d.WIGIDASH_API_PORT || '47900');
       setCfg('cfgWigiDashPath', d.WIGIDASH_API_PATH || '/status');
