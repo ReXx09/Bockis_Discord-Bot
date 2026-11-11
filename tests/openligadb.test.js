@@ -25,6 +25,7 @@ const {
   createApiFootballWatcher,
   fetchApiFootballFixtures,
   fetchApiFootballLiveFixtures,
+  fetchApiFootballSeasonStartDate,
   fetchApiFootballStandings,
   getApiFootballRefreshIntervalMs,
   hasApiFootballMatchWindow,
@@ -148,6 +149,25 @@ describe('OpenLigaDB data formatting', () => {
     expect(buildApiFootballStandingsPayload(feed, standings).embeds[0].toJSON().fields[0].value).toContain('Germany');
     expect(buildApiFootballLivePayload(feed, liveFixtures).embeds[0].toJSON().description).toContain('Germany 1:0 France');
     expect(hasApiFootballMatchWindow(liveFixtures, Date.parse('2028-06-09T13:20:00Z'))).toBe(true);
+  });
+
+  test('fetches the tournament start date from the matching API-Football season metadata', async () => {
+    const usageTracker = { recordApiRequest: jest.fn(() => true) };
+    const http = { get: jest.fn(async () => ({ data: { response: [{
+      league: { id: 4 },
+      seasons: [
+        { year: 2024, start: '2024-06-14', end: '2024-07-14' },
+        { year: 2028, start: '2028-06-09', end: '2028-07-09' },
+      ],
+    }] } })) };
+
+    const startDate = await fetchApiFootballSeasonStartDate(http, 'test-key', { leagueId: 4, season: 2028 }, usageTracker);
+
+    expect(http.get).toHaveBeenCalledWith('https://v3.football.api-sports.io/leagues', expect.objectContaining({
+      params: { id: 4, season: 2028 },
+    }));
+    expect(startDate).toBe('2028-06-09');
+    expect(usageTracker.recordApiRequest).toHaveBeenCalledWith('apiFootball');
   });
 
   test('refreshes configured standings before the distant tournament fixture window', async () => {

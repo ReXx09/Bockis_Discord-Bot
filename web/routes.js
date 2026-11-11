@@ -23,7 +23,11 @@ const { AttachmentBuilder, ChannelType } = require('discord.js');
 const { execFile, execFileSync, execSync, spawn } = require('child_process');
 const { createDashboardAuth, timingSafeStringEqual } = require('./dashboard-auth');
 const { describeWebServerListenError, normalizeWebPort } = require('./server-config');
-const { API_FOOTBALL_COMPETITIONS, normalizeApiFootballFeeds } = require('../services/api-football');
+const {
+  API_FOOTBALL_COMPETITIONS,
+  fetchApiFootballSeasonStartDate,
+  normalizeApiFootballFeeds,
+} = require('../services/api-football');
 const { SERVER_PROFILE_ENV_PATHS, createServerProfileDefaults, setServerProfileSettings } = require('../server-profiles');
 const { getApiUsageSnapshot } = require('../services/api-usage');
 const {
@@ -38,6 +42,8 @@ const {
 // Erlaubte Werte für Service-Control (Whitelist gegen Command-Injection)
 const ALLOWED_SERVICES = ['bockis-bot', 'uptime-kuma', 'cloudflared'];
 const ALLOWED_ACTIONS  = ['start', 'stop', 'restart', 'status'];
+const apiFootballSeasonStartCache = new Map();
+const API_FOOTBALL_SEASON_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 
 function normalizeOpenLigaDbFeeds(value) {
   let feeds;
@@ -398,6 +404,37 @@ module.exports = function startWebServer({
 
   app.get('/api/api-football/competitions', dashboardAuth, (req, res) => {
     return res.set('Cache-Control', 'no-store').json({ ok: true, competitions: API_FOOTBALL_COMPETITIONS });
+  });
+
+  app.get('/api/api-football/season-start', dashboardAuth, async (req, res) => {
+    const leagueId = Number(req.query?.leagueId);
+    const season = Number(req.query?.season);
+    if (!API_FOOTBALL_COMPETITIONS.some(competition => competition.leagueId === leagueId)
+      || !Number.isInteger(season) || season < 2000 || season > 2200) {
+      return res.status(400).json({ ok: false, error: 'Ungültiger Wettbewerb oder Saison.' });
+    }
+    const apiKey = String(config.get('discord.apiFootball.apiKey') || '').trim();
+    if (!apiKey) return res.status(409).json({ ok: false, error: 'Bitte zuerst den API-Football-Schlüssel speichern.' });
+
+    const cacheKey = `${leagueId}:${season}`;
+    const cached = apiFootballSeasonStartCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      return res.set('Cache-Control', 'no-store').json({ ok: true, startDate: cached.startDate });
+    }
+    try {
+      const startDate = await fetchApiFootballSeasonStartDate(axios, apiKey, { leagueId, season });
+      apiFootballSeasonStartCache.set(cacheKey, {
+        startDate,
+        expiresAt: Date.now() + API_FOOTBALL_SEASON_CACHE_TTL_MS,
+      });
+      return res.set('Cache-Control', 'no-store').json({ ok: true, startDate });
+    } catch (error) {
+      logger.warn(`API-Football-Saisonstart ${leagueId}:${season} fehlgeschlagen: ${error.message}`);
+      if (error.code === 'API_DAILY_LIMIT') {
+        return res.status(429).json({ ok: false, error: 'API-Football-Tageslimit erreicht.' });
+      }
+      return res.status(502).json({ ok: false, error: 'Saisonstart ist momentan nicht verfügbar.' });
+    }
   });
 
   app.get('/api/api-usage', dashboardAuth, (req, res) => {

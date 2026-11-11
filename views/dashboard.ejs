@@ -7237,8 +7237,12 @@
         <label class="cfg-label">Saison
           <input class="cfg-input" data-api-football-role="season" type="number" min="2000" max="2200" step="1" required>
         </label>
-        <label class="cfg-label">Turnierbeginn (optional)
-          <input class="cfg-input" data-api-football-role="start-date" type="date">
+        <label class="cfg-label">Turnierbeginn
+          <span style="display:flex;gap:6px;align-items:center">
+            <input class="cfg-input" data-api-football-role="start-date" type="date" style="min-width:0;flex:1">
+            <button class="btn" type="button" data-api-football-role="fetch-start-date" title="Turnierbeginn erneut von API-Football abrufen">Abrufen</button>
+          </span>
+          <span class="cfg-hint" data-api-football-role="start-date-status" aria-live="polite"></span>
         </label>
         <label class="cfg-label">Spielplan/Tabelle aktualisieren (Minuten)
           <input class="cfg-input" data-api-football-role="interval" type="number" min="60" max="1440" step="1" required>
@@ -7267,14 +7271,28 @@
     select.addEventListener('change', () => {
       const selected = apiFootballCompetitionCatalog.find(item => item.leagueId === Number(select.value));
       row.querySelector('[data-api-football-role="title"]').textContent = `${selected?.name || 'Wettbewerb'} · ${row.querySelector('[data-api-football-role="season"]').value}`;
+      row.querySelector('[data-api-football-role="start-date"]').value = '';
+      void fetchApiFootballStartDate(row);
       syncApiFootballFeedsDirtyState();
     });
     row.querySelector('[data-api-football-role="season"]').addEventListener('input', event => {
       const selected = apiFootballCompetitionCatalog.find(item => item.leagueId === Number(select.value));
       row.querySelector('[data-api-football-role="title"]').textContent = `${selected?.name || 'Wettbewerb'} · ${event.currentTarget.value}`;
     });
+    row.querySelector('[data-api-football-role="season"]').addEventListener('change', () => {
+      row.querySelector('[data-api-football-role="start-date"]').value = '';
+      void fetchApiFootballStartDate(row);
+    });
     row.addEventListener('input', syncApiFootballFeedsDirtyState);
     row.addEventListener('change', syncApiFootballFeedsDirtyState);
+    row.querySelector('[data-api-football-role="start-date"]').addEventListener('input', () => {
+      const status = row.querySelector('[data-api-football-role="start-date-status"]');
+      status.textContent = 'Manuell gesetzt';
+      status.className = 'cfg-hint';
+    });
+    row.querySelector('[data-api-football-role="fetch-start-date"]').addEventListener('click', () => {
+      void fetchApiFootballStartDate(row, { force: true });
+    });
     row.querySelector('[data-api-football-role="remove"]').addEventListener('click', () => {
       row.remove();
       syncApiFootballFeedsDirtyState();

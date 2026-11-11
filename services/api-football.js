@@ -125,6 +125,25 @@ async function fetchApiFootballStandings(http, apiKey, { leagueId, season }, usa
   return Array.isArray(response) ? response : [];
 }
 
+async function fetchApiFootballSeasonStartDate(http, apiKey, { leagueId, season }, usageTracker = { recordApiRequest }) {
+  const numericLeagueId = Number(leagueId);
+  const numericSeason = Number(season);
+  if (!SUPPORTED_LEAGUE_IDS.has(numericLeagueId) || !Number.isInteger(numericSeason)) {
+    throw new Error('Ungültiger API-Football-Wettbewerb oder Saison.');
+  }
+  const response = await requestApiFootball(http, apiKey, '/leagues', {
+    id: numericLeagueId,
+    season: numericSeason,
+  }, usageTracker);
+  const competition = response.find(item => Number(item.league?.id) === numericLeagueId);
+  const seasonData = competition?.seasons?.find(item => Number(item.year) === numericSeason);
+  const startDate = String(seasonData?.start || '').slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(startDate)
+    && !Number.isNaN(Date.parse(`${startDate}T00:00:00Z`))
+    ? startDate
+    : null;
+}
+
 async function fetchApiFootballLiveFixtures(http, apiKey, usageTracker = { recordApiRequest }) {
   return requestApiFootball(http, apiKey, '/fixtures', { live: 'all' }, usageTracker);
 }
@@ -425,6 +444,7 @@ module.exports = {
   createApiFootballWatcher,
   fetchApiFootballFixtures,
   fetchApiFootballLiveFixtures,
+  fetchApiFootballSeasonStartDate,
   fetchApiFootballStandings,
   getApiFootballRefreshIntervalMs,
   hasApiFootballMatchWindow,
