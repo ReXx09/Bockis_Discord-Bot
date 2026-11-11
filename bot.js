@@ -107,7 +107,7 @@ const { createOpenLigaDbWatcher } = require('./services/openligadb');
 const { createApiFootballWatcher } = require('./services/api-football');
 const { setApiUsageDailyLimit } = require('./services/api-usage');
 installServerProfileConfig(config);
-setApiUsageDailyLimit('apiFootball', config.get('apiFootball.dailyLimit'));
+setApiUsageDailyLimit('apiFootball', config.get('discord.apiFootball.dailyLimit'));
 // #endregion
 
 // #region 4. DATENBANK-INITIALISIERUNG
@@ -5743,8 +5743,8 @@ client.once('ready', async () => {
     http: axios,
     client,
     logger,
-    getApiKey: () => config.get('apiFootball.apiKey'),
-    getFeeds: () => config.get('apiFootball.feeds'),
+    getApiKey: () => config.get('discord.apiFootball.apiKey'),
+    getFeeds: () => config.get('discord.apiFootball.feeds'),
   }).start();
   await applyConfiguredBotName();
   startPresenceRotation();
