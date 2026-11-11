@@ -4888,6 +4888,7 @@
     if (!el) return;
     const value = el.value.trim();
     const initial = (el.dataset.initialValue || '').trim();
+    if (initial === '__MASKED__' && !value) return;
     // Spezialbehandlung für Token: immer senden wenn Wert eingegeben (auch wenn initial __MASKED__)
     if (key === 'DISCORD_TOKEN' && value && value !== initial) {
       body[key] = value;
