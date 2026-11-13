@@ -656,7 +656,9 @@ describe('OpenLigaDB data formatting', () => {
     const png = await buildNextMatchCountdownPng(options);
 
     expect(payload.embeds[0].toJSON().color).toBe(0x123456);
-    expect(payload.embeds[0].toJSON().image.url).toBe('attachment://openligadb-countdown.png');
+    expect(payload.embeds[0].toJSON().image.url).toBe(
+      `attachment://openligadb-countdown-${Math.floor(options.now / 60_000)}.png`,
+    );
     expect(payload.embeds[0].toJSON().description).toBe('\u200b');
     expect(payload.files[0].attachment.subarray(0, 8)).toEqual(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
     expect(png).toEqual(payload.files[0].attachment);
@@ -1018,7 +1020,81 @@ describe('OpenLigaDB data formatting', () => {
 
     expect(initialPayload.embeds[0].toJSON().color).toBe(0x123456);
     expect(initialPayload.files[0].attachment.equals(updatedPayload.files[0].attachment)).toBe(false);
+    expect(initialPayload.embeds[0].toJSON().image.url).not.toBe(updatedPayload.embeds[0].toJSON().image.url);
+    expect(updatedPayload.attachments).toEqual([]);
     expect(http.get.mock.calls.filter(([url]) => url.endsWith('/getnextmatchbyleagueteam/4937/40'))).toHaveLength(1);
+  });
+
+  test('announces kickoff and halftime once for favorite matches', async () => {
+    let now = Date.parse('2026-11-13T17:00:00Z');
+    let changedAt = '2026-11-13T16:30:00Z';
+    let matches = [{
+      matchID: 45,
+      matchIsFinished: false,
+      matchDateTimeUTC: '2026-11-13T17:01:00Z',
+      team1: { teamId: 40, teamName: 'FC Bayern', shortName: 'Bayern' },
+      team2: { teamId: 7, teamName: 'Borussia Dortmund', shortName: 'Dortmund' },
+      matchResults: [],
+      goals: [],
+    }];
+    const http = { get: jest.fn(async url => {
+      if (url.endsWith('/getavailableleagues')) return { data: [{
+        leagueId: 4937,
+        leagueShortcut: 'bl1',
+        leagueSeason: '2026',
+        leagueName: '1. Bundesliga',
+        sport: { sportId: 1 },
+      }] };
+      if (url.endsWith('/getcurrentgroup/bl1')) return { data: { groupName: '11. Spieltag', groupOrderID: 11 } };
+      if (url.includes('/getlastchangedate/')) return { data: changedAt };
+      if (url.includes('/getmatchdata/')) return { data: matches };
+      if (url.includes('/getbltable/')) return { data: [] };
+      throw new Error(`Unexpected URL: ${url}`);
+    }) };
+    const scoreboardMessage = { edit: jest.fn(async () => scoreboardMessage) };
+    const channel = {
+      isTextBased: () => true,
+      messages: { fetch: jest.fn(async () => []) },
+      send: jest.fn(async payload => typeof payload === 'string' ? payload : scoreboardMessage),
+    };
+    const watcher = createOpenLigaDbWatcher({
+      http,
+      client: { user: { id: 'bot' }, channels: { cache: new Map([['channel', channel]]) } },
+      ServerProfile: { findAll: async () => [{ guildId: 'guild', settingsJson: JSON.stringify({
+        DISCORD_OPENLIGADB_ENABLED: true,
+        DISCORD_OPENLIGADB_FEEDS: JSON.stringify([{
+          leagueShortcut: 'bl1',
+          season: 2026,
+          updateIntervalMinutes: 1,
+          favoriteTeamIds: [40],
+          notificationChannelId: 'channel',
+          tableChannelIds: [],
+        }]),
+      }) }] },
+      logger: { warn: jest.fn(), info: jest.fn() },
+      requestIntervalMs: 0,
+      nowProvider: () => now,
+    });
+
+    await watcher.checkOnce();
+    now += 60_000;
+    await watcher.checkOnce();
+    changedAt = '2026-11-13T17:46:00Z';
+    matches = [{
+      ...matches[0],
+      matchResults: [{ resultTypeKind: 'HalfTime', pointsTeam1: 1, pointsTeam2: 0, resultOrderID: 1 }],
+      goals: [{ goalID: 900, matchMinute: 31, scoreTeam1: 1, scoreTeam2: 0, goalGetterName: 'Spieler' }],
+    }];
+    now += 45 * 60_000;
+    await watcher.checkOnce();
+    now += 60_000;
+    await watcher.checkOnce();
+
+    const sentMessages = channel.send.mock.calls.map(([payload]) => payload);
+    const eventMessages = sentMessages.filter(payload => typeof payload === 'string');
+    expect(eventMessages.filter(message => message.includes('Anpfiff!'))).toHaveLength(1);
+    expect(eventMessages.filter(message => message.includes('Halbzeit:'))).toHaveLength(1);
+    expect(sentMessages.filter(payload => payload?.content?.includes('Torereignis'))).toHaveLength(1);
   });
 
   test('announces each newly observed favorite goal only once', async () => {

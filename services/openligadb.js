@@ -541,8 +541,10 @@ async function buildNextMatchCountdownMessage(options) {
   const payload = buildNextMatchCountdownPayload(options);
   if (options.countdownStyle === 'graphic_timer') {
     const png = await buildNextMatchCountdownPng(options);
-    payload.files = [new AttachmentBuilder(png, { name: 'openligadb-countdown.png' })];
-    payload.embeds[0].setImage('attachment://openligadb-countdown.png');
+    const minuteKey = Math.floor(Number(options.now ?? Date.now()) / 60_000);
+    const filename = `openligadb-countdown-${minuteKey}.png`;
+    payload.files = [new AttachmentBuilder(png, { name: filename })];
+    payload.embeds[0].setImage(`attachment://${filename}`);
   }
   return payload;
 }
@@ -688,6 +690,12 @@ function parseLeagueFeeds(settings) {
 
 function getGoalIds(match) {
   return new Set((match.goals || []).map(goal => String(goal.goalID)).filter(id => id !== 'undefined'));
+}
+
+function getHalfTimeResult(match) {
+  return (match.matchResults || []).find(result =>
+    String(result.resultTypeKind || '').toLowerCase() === 'halftime'
+    || /halbzeit/i.test(String(result.resultTypeName || result.resultName || '')));
 }
 
 function escapeSvgText(value) {
@@ -956,7 +964,7 @@ function createOpenLigaDbWatcher({ http, client, ServerProfile, logger, requestI
     }
   }
 
-  async function sendMatchEvents(profile, feedConfig, currentFeed, favoriteTeamIds, leagueName) {
+  async function sendMatchEvents(profile, feedConfig, currentFeed, favoriteTeamIds, leagueName, now = Date.now()) {
     const channelId = String(feedConfig.notificationChannelId || '').trim();
     if (!channelId || !favoriteTeamIds.length) return;
     const channel = await getChannel(channelId);
@@ -969,10 +977,28 @@ function createOpenLigaDbWatcher({ http, client, ServerProfile, logger, requestI
       if (!matchFavorites.length) continue;
       const stateKey = `${statePrefix}:${match.matchID}`;
       const goalIds = getGoalIds(match);
+      const halfTimeResult = getHalfTimeResult(match);
+      const matchStart = Date.parse(match.matchDateTimeUTC || match.matchDateTime || '');
+      const kickoffReached = Number.isFinite(matchStart) && matchStart <= now;
       const previous = eventStates.get(stateKey);
       if (!previous) {
-        eventStates.set(stateKey, { goalIds, finished: Boolean(match.matchIsFinished) });
+        eventStates.set(stateKey, {
+          goalIds,
+          finished: Boolean(match.matchIsFinished),
+          kickoff: Boolean(match.matchIsFinished || kickoffReached),
+          halftime: Boolean(match.matchIsFinished || halfTimeResult),
+        });
         continue;
+      }
+
+      if (!previous.kickoff && kickoffReached && !match.matchIsFinished) {
+        await channel.send(`🟢 **Anpfiff!** ${match.team1?.shortName || match.team1?.teamName} gegen ${match.team2?.shortName || match.team2?.teamName} · ${leagueName}`);
+      }
+
+      if (!previous.halftime && halfTimeResult && !match.matchIsFinished) {
+        const home = Number.isInteger(halfTimeResult.pointsTeam1) ? halfTimeResult.pointsTeam1 : 0;
+        const away = Number.isInteger(halfTimeResult.pointsTeam2) ? halfTimeResult.pointsTeam2 : 0;
+        await channel.send(`⏸️ **Halbzeit:** ${match.team1?.shortName || match.team1?.teamName} **${home}:${away}** ${match.team2?.shortName || match.team2?.teamName} · ${leagueName}`);
       }
 
       for (const goal of match.goals || []) {
@@ -1011,7 +1037,12 @@ function createOpenLigaDbWatcher({ http, client, ServerProfile, logger, requestI
           await channel.send(`🏁 **Abpfiff:** ${match.team1?.shortName || match.team1?.teamName} **${home}:${away}** ${match.team2?.shortName || match.team2?.teamName}`);
         }
       }
-      eventStates.set(stateKey, { goalIds, finished: Boolean(match.matchIsFinished) });
+      eventStates.set(stateKey, {
+        goalIds,
+        finished: Boolean(match.matchIsFinished),
+        kickoff: Boolean(previous.kickoff || kickoffReached || match.matchIsFinished),
+        halftime: Boolean(previous.halftime || halfTimeResult || match.matchIsFinished),
+      });
     }
   }
 
@@ -1033,7 +1064,7 @@ function createOpenLigaDbWatcher({ http, client, ServerProfile, logger, requestI
         messages: boardMessages,
         signatures: boardSignatures,
       });
-      await sendMatchEvents(profile, feedConfig, currentFeed, favoriteTeamIds, leagueName);
+      await sendMatchEvents(profile, feedConfig, currentFeed, favoriteTeamIds, leagueName, nowProvider());
     }
 
     const countdownTeamId = Number(feedConfig.countdownTeamId);
