@@ -509,10 +509,14 @@ function buildNextMatchCountdownSvg({ leagueName, match, teamId, teamInfo, count
   const days = Math.floor(remainingMinutes / 1440);
   const hours = Math.floor((remainingMinutes % 1440) / 60);
   const minutes = remainingMinutes % 60;
+  const isLiveMatch = match && Number.isFinite(matchTime) && matchTime <= now && match.matchIsFinished !== true;
+  const [homeScore, awayScore] = getMatchScore(match);
+  const teamScore = Number(team?.teamId) === Number(match?.team1?.teamId) ? homeScore : awayScore;
+  const opponentScore = Number(team?.teamId) === Number(match?.team1?.teamId) ? awayScore : homeScore;
   const status = hasUpcomingMatch
     ? `${days} TAGE  ·  ${hours} STD.  ·  ${minutes} MIN.`
-    : match && Number.isFinite(matchTime) && matchTime <= now && match.matchIsFinished !== true
-      ? 'DAS SPIEL LÄUFT'
+    : isLiveMatch
+      ? `LIVE  ·  ${teamScore}:${opponentScore}`
       : 'DERZEIT KEIN SPIEL TERMINIERT';
   return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="520" viewBox="0 0 1200 520">
     <defs>
@@ -1122,7 +1126,16 @@ function createOpenLigaDbWatcher({ http, client, ServerProfile, logger, requestI
         await clearCountdownMessage(profile, obsoleteChannelId, countdownKey);
       }
       countdownChannelsByFeed.set(countdownStateKey, countdownChannelId);
-      const nextMatch = await loadNextMatch(metadata?.leagueId, countdownTeamId);
+      const countdownNow = nowProvider();
+      const feedMatches = [...(currentFeed.allMatches || []), ...(currentFeed.matches || [])];
+      const liveMatch = feedMatches.find(match => {
+        const matchTime = Date.parse(match.matchDateTimeUTC || match.matchDateTime || '');
+        return match.matchIsFinished !== true
+          && Number.isFinite(matchTime)
+          && matchTime <= countdownNow
+          && [match.team1?.teamId, match.team2?.teamId].some(teamId => Number(teamId) === countdownTeamId);
+      });
+      const nextMatch = liveMatch || await loadNextMatch(metadata?.leagueId, countdownTeamId);
       const teamInfo = currentFeed.table.find(team => Number(team.teamId) === countdownTeamId);
       const countdownStyle = feedConfig.countdownStyle || 'classic';
       const countdownColor = feedConfig.countdownColor || getDefaultCountdownColor(leagueShortcut);
@@ -1133,7 +1146,7 @@ function createOpenLigaDbWatcher({ http, client, ServerProfile, logger, requestI
         teamInfo,
         countdownStyle,
         countdownColor,
-        now: nowProvider(),
+        now: countdownNow,
       });
       const marker = `OpenLigaDB-Countdown:${countdownKey}`;
       const messageKey = `${profile.guildId}:countdown:${countdownKey}:${countdownChannelId}`;
@@ -1294,6 +1307,7 @@ module.exports = {
   buildScoreboardPayload,
   buildFinishedMatchPng,
   buildGoalEventPng,
+  buildNextMatchCountdownSvg,
   buildNextMatchCountdownMessage,
   buildNextMatchCountdownPng,
   buildNextMatchCountdownPayload,

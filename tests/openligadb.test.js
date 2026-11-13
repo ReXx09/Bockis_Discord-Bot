@@ -2,6 +2,7 @@ const {
   buildScoreboardPayload,
   buildFinishedMatchPng,
   buildGoalEventPng,
+  buildNextMatchCountdownSvg,
   buildNextMatchCountdownMessage,
   buildNextMatchCountdownPng,
   buildNextMatchCountdownPayload,
@@ -664,6 +665,24 @@ describe('OpenLigaDB data formatting', () => {
     expect(payload.files[0].attachment.subarray(0, 8)).toEqual(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
     expect(png).toEqual(payload.files[0].attachment);
     expect(getDefaultCountdownColor('uel')).toBe('#F1C40F');
+  });
+
+  test('shows a live score in favorite-team order on the countdown graphic', () => {
+    const svg = buildNextMatchCountdownSvg({
+      leagueName: 'DFB Nationalspiele',
+      teamId: 139,
+      match: {
+        matchIsFinished: false,
+        matchDateTimeUTC: '2026-11-13T19:45:00Z',
+        team1: { teamId: 1404, shortName: 'SRB' },
+        team2: { teamId: 139, shortName: 'GER' },
+        goals: [{ matchMinute: 14, scoreTeam1: 0, scoreTeam2: 2 }],
+      },
+      now: Date.parse('2026-11-13T20:12:00Z'),
+    });
+
+    expect(svg).toContain('LIVE  ·  2:0');
+    expect(svg).not.toContain('DAS SPIEL LÄUFT');
   });
 
   test('provides twelve distinct countdown embed variants', () => {
