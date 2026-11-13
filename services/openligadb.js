@@ -773,6 +773,45 @@ async function buildFinishedMatchAttachment({ leagueName, group, match, settings
   return new AttachmentBuilder(image, { name: 'openligadb-endergebnis.png' });
 }
 
+function buildGoalEventSvg({ leagueName, group, match, goal, color = '#D6B32A' }) {
+  const accent = /^#[\da-f]{6}$/i.test(color) ? color : '#D6B32A';
+  const [matchHome, matchAway] = getMatchScore(match);
+  const home = Number.isInteger(goal?.scoreTeam1) ? goal.scoreTeam1 : matchHome;
+  const away = Number.isInteger(goal?.scoreTeam2) ? goal.scoreTeam2 : matchAway;
+  const homeName = fitSvgText(match?.team1?.shortName || match?.team1?.teamName || 'Heimteam', 28);
+  const awayName = fitSvgText(match?.team2?.shortName || match?.team2?.teamName || 'Auswärtsteam', 28);
+  const scorer = fitSvgText(goal?.goalGetterName || 'Torschütze unbekannt', 42);
+  const minute = goal?.matchMinute == null ? '' : `${fitSvgText(goal.matchMinute, 5)}'`;
+  const competition = fitSvgText([leagueName, group?.groupName].filter(Boolean).join(' · '), 60);
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="600" viewBox="0 0 1200 600">
+    <defs>
+      <linearGradient id="background" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#10141d"/><stop offset="1" stop-color="#242b3d"/></linearGradient>
+      <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="${accent}" stop-opacity=".45"/><stop offset="1" stop-color="${accent}"/></linearGradient>
+    </defs>
+    <rect width="1200" height="600" rx="26" fill="url(#background)"/>
+    <rect x="0" y="0" width="14" height="600" rx="7" fill="url(#accent)"/>
+    <circle cx="600" cy="275" r="220" fill="none" stroke="${accent}" stroke-opacity=".08" stroke-width="2"/>
+    <text x="600" y="86" text-anchor="middle" fill="${accent}" font-family="Arial, sans-serif" font-size="30" font-weight="800" letter-spacing="8">TOR${minute ? `  ·  ${escapeSvgText(minute)}` : ''}</text>
+    <text x="600" y="142" text-anchor="middle" fill="#b9c0ce" font-family="Arial, sans-serif" font-size="22">${escapeSvgText(competition)}</text>
+    <text x="300" y="286" text-anchor="middle" fill="#f5f6fa" font-family="Arial, sans-serif" font-size="40" font-weight="700">${escapeSvgText(homeName)}</text>
+    <text x="600" y="300" text-anchor="middle" fill="${accent}" font-family="Arial, sans-serif" font-size="82" font-weight="800">${home} : ${away}</text>
+    <text x="900" y="286" text-anchor="middle" fill="#f5f6fa" font-family="Arial, sans-serif" font-size="40" font-weight="700">${escapeSvgText(awayName)}</text>
+    <path d="M170 365h860" stroke="${accent}" stroke-opacity=".45" stroke-width="2"/>
+    <text x="600" y="440" text-anchor="middle" fill="#aeb6c5" font-family="Arial, sans-serif" font-size="20" letter-spacing="3">TORSCHÜTZE</text>
+    <text x="600" y="500" text-anchor="middle" fill="#ffffff" font-family="Arial, sans-serif" font-size="38" font-weight="700">${escapeSvgText(scorer)}</text>
+    <text x="600" y="568" text-anchor="middle" fill="#929bad" font-family="Arial, sans-serif" font-size="18">OpenLigaDB · Daten unter ODbL 1.0</text>
+  </svg>`;
+}
+
+async function buildGoalEventPng(options) {
+  return sharp(Buffer.from(buildGoalEventSvg(options))).png().toBuffer();
+}
+
+async function buildGoalEventAttachment(options) {
+  const image = await buildGoalEventPng(options);
+  return new AttachmentBuilder(image, { name: 'openligadb-torereignis.png' });
+}
+
 function createOpenLigaDbWatcher({ http, client, ServerProfile, logger, requestIntervalMs = 1050, nowProvider = () => Date.now() }) {
   let timer = null;
   let inFlight = false;
@@ -941,7 +980,17 @@ function createOpenLigaDbWatcher({ http, client, ServerProfile, logger, requestI
           const home = Number.isInteger(goal.scoreTeam1) ? goal.scoreTeam1 : getMatchScore(match)[0];
           const away = Number.isInteger(goal.scoreTeam2) ? goal.scoreTeam2 : getMatchScore(match)[1];
           const minute = goal.matchMinute == null ? '' : ` (${goal.matchMinute}')`;
-          await channel.send(`⚽ **Tor${minute}!** ${match.team1?.shortName || match.team1?.teamName} **${home}:${away}** ${match.team2?.shortName || match.team2?.teamName} · ${goal.goalGetterName || 'Torschütze unbekannt'}`);
+          const attachment = await buildGoalEventAttachment({
+            leagueName,
+            group: currentFeed.group,
+            match,
+            goal,
+            color: feedConfig.countdownColor || getDefaultCountdownColor(feedConfig.leagueShortcut),
+          });
+          await channel.send({
+            content: `⚽ **Torereignis${minute}!** ${match.team1?.shortName || match.team1?.teamName} **${home}:${away}** ${match.team2?.shortName || match.team2?.teamName}`,
+            files: [attachment],
+          });
         }
       }
 
@@ -1169,6 +1218,7 @@ function createOpenLigaDbWatcher({ http, client, ServerProfile, logger, requestI
 module.exports = {
   buildScoreboardPayload,
   buildFinishedMatchPng,
+  buildGoalEventPng,
   buildNextMatchCountdownMessage,
   buildNextMatchCountdownPng,
   buildNextMatchCountdownPayload,

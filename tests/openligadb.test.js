@@ -1,6 +1,7 @@
 const {
   buildScoreboardPayload,
   buildFinishedMatchPng,
+  buildGoalEventPng,
   buildNextMatchCountdownMessage,
   buildNextMatchCountdownPng,
   buildNextMatchCountdownPayload,
@@ -579,6 +580,22 @@ describe('OpenLigaDB data formatting', () => {
     expect(png.subarray(0, 8)).toEqual(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
   });
 
+  test('renders a goal event graphic as a PNG', async () => {
+    const png = await buildGoalEventPng({
+      leagueName: '1. Bundesliga',
+      group: { groupName: '10. Spieltag' },
+      match: {
+        goals: [{ scoreTeam1: 2, scoreTeam2: 1 }],
+        team1: { shortName: 'FC Beispiel' },
+        team2: { shortName: 'SV Muster' },
+      },
+      goal: { goalGetterName: 'Max Beispiel', matchMinute: 67, scoreTeam1: 2, scoreTeam2: 1 },
+      color: '#123456',
+    });
+
+    expect(png.subarray(0, 8)).toEqual(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+  });
+
   test('builds a dynamic Discord countdown for the selected favorite team', () => {
     const payload = buildNextMatchCountdownPayload({
       leagueName: '1. Bundesliga',
@@ -1072,8 +1089,12 @@ describe('OpenLigaDB data formatting', () => {
     now += 60_000;
     await watcher.checkOnce();
 
-    expect(channel.send.mock.calls.filter(([content]) => typeof content === 'string')).toHaveLength(1);
-    expect(channel.send.mock.calls.find(([content]) => typeof content === 'string')[0]).toContain('Tor');
+    const goalEventPayload = channel.send.mock.calls
+      .map(([content]) => content)
+      .find(content => content && typeof content === 'object' && content.content?.includes('Torereignis'));
+    expect(goalEventPayload.content).toContain('Torereignis');
+    expect(goalEventPayload.files[0].name).toBe('openligadb-torereignis.png');
+    expect(Buffer.isBuffer(goalEventPayload.files[0].attachment)).toBe(true);
     expect(boardMessage.edit).toHaveBeenCalledTimes(1);
 
     changedAt = '2026-11-07T16:30:00Z';
@@ -1086,7 +1107,7 @@ describe('OpenLigaDB data formatting', () => {
     await watcher.checkOnce();
     const finishedImagePayload = channel.send.mock.calls
       .map(([content]) => content)
-      .find(content => content && typeof content === 'object' && Array.isArray(content.files));
+      .find(content => content && typeof content === 'object' && content.content?.includes('Endergebnis'));
     expect(finishedImagePayload.content).toContain('Endergebnis');
     expect(finishedImagePayload.files[0].name).toBe('openligadb-endergebnis.png');
     expect(Buffer.isBuffer(finishedImagePayload.files[0].attachment)).toBe(true);

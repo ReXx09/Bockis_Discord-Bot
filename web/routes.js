@@ -37,6 +37,7 @@ const { SERVER_PROFILE_ENV_PATHS, createServerProfileDefaults, setServerProfileS
 const { getApiUsageSnapshot, setApiUsageDailyLimit } = require('../services/api-usage');
 const {
   buildFinishedMatchPng,
+  buildGoalEventPng,
   buildNextMatchCountdownMessage,
   fetchAvailableLeagues,
   fetchLatestLeagueTeams,
@@ -808,6 +809,32 @@ module.exports = function startWebServer({
     } catch (err) {
       logger.error(`OpenLigaDB-Grafikvorschau fehlgeschlagen: ${err.message}`);
       return res.status(500).json({ ok: false, error: 'Grafikvorschau konnte nicht erstellt werden.' });
+    }
+  });
+
+  app.post('/api/openligadb/goal-event-preview.png', dashboardAuth, async (req, res) => {
+    const leagueName = String(req.body?.leagueName || '1. Bundesliga').trim().slice(0, 100);
+    const color = String(req.body?.color || '#D6B32A').trim();
+    if (!/^#[\da-f]{6}$/i.test(color)) {
+      return res.status(400).json({ ok: false, error: 'Ungültige Ereignisgrafik-Farbe.' });
+    }
+    try {
+      const png = await buildGoalEventPng({
+        leagueName,
+        group: { groupName: 'Beispiel-Spieltag' },
+        match: {
+          matchDateTimeUTC: new Date().toISOString(),
+          goals: [{ scoreTeam1: 2, scoreTeam2: 1 }],
+          team1: { shortName: 'FC Beispiel' },
+          team2: { shortName: 'SV Muster' },
+        },
+        goal: { goalGetterName: 'Max Beispiel', matchMinute: 67, scoreTeam1: 2, scoreTeam2: 1 },
+        color,
+      });
+      return res.set('Cache-Control', 'no-store').type('png').send(png);
+    } catch (error) {
+      logger.error(`OpenLigaDB-Torereignisvorschau fehlgeschlagen: ${error.message}`);
+      return res.status(500).json({ ok: false, error: 'Torereignisvorschau konnte nicht erstellt werden.' });
     }
   });
 

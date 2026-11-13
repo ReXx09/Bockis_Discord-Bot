@@ -6847,6 +6847,13 @@
         <div class="cfg-hint">Der Test nutzt die aktuellen Grafikoptionen und sendet Beispieldaten an den Meldungskanal.</div>
         <img data-openliga-role="finished-image-preview-image" alt="Vorschau der Ergebnis- und Torschützengrafik" hidden style="max-width:100%;height:auto;margin-top:10px;border:1px solid var(--border);border-radius:6px">
       </div>
+      <div class="cfg-field" style="border:1px solid var(--border);border-radius:8px;padding:12px">
+        <strong>Tor-Ereignisgrafik</strong>
+        <div class="cfg-hint">Neue Tore von Favoriten werden als Grafik mit Spielstand, Torschütze und Minute an den Meldungskanal gesendet.</div>
+        <button class="btn" type="button" data-openliga-role="goal-event-preview">Tor-Ereignisvorschau anzeigen</button>
+        <div data-openliga-role="goal-event-status" class="cfg-hint" aria-live="polite"></div>
+        <img data-openliga-role="goal-event-image" alt="Vorschau der Tor-Ereignisgrafik" hidden style="max-width:100%;height:auto;margin-top:10px;border:1px solid var(--border);border-radius:6px">
+      </div>
       <label class="cfg-label">Maximale Favoriten
         <input class="cfg-input" data-openliga-role="max-favorites" type="number" min="1" max="40" step="1" style="max-width:120px">
       </label>
@@ -6978,12 +6985,17 @@
       row.querySelector('[data-openliga-role="countdown-color"]').value = getOpenLigaDbCountdownColor(
         selected?.leagueShortcut || leagueSelect.value.split('|')[0],
       );
+      if (!row.querySelector('[data-openliga-role="goal-event-image"]').hidden) {
+        void previewOpenLigaDbGoalEvent(row);
+      }
       refreshOpenLigaDbNavigation();
       await loadOpenLigaDbTeams(row);
     });
     row.querySelector('[data-openliga-role="remove"]').addEventListener('click', () => {
       const previewImage = row.querySelector('[data-openliga-role="finished-image-preview-image"]');
       if (previewImage.dataset.objectUrl) URL.revokeObjectURL(previewImage.dataset.objectUrl);
+      const goalImage = row.querySelector('[data-openliga-role="goal-event-image"]');
+      if (goalImage.dataset.objectUrl) URL.revokeObjectURL(goalImage.dataset.objectUrl);
       row.remove();
       refreshOpenLigaDbNavigation();
       updateOpenLigaDbFeedVisibility();
@@ -7015,12 +7027,18 @@
       if (!row.querySelector('[data-openliga-role="countdown-preview"]').hidden) {
         void renderOpenLigaDbCountdownPreview(row);
       }
+      if (!row.querySelector('[data-openliga-role="goal-event-image"]').hidden) {
+        void previewOpenLigaDbGoalEvent(row);
+      }
     });
     row.querySelector('[data-openliga-role="finished-image-preview"]').addEventListener('click', () => {
       void previewOpenLigaDbFinishedImage(row);
     });
     row.querySelector('[data-openliga-role="finished-image-test"]').addEventListener('click', () => {
       void sendOpenLigaDbFinishedImageTest(row);
+    });
+    row.querySelector('[data-openliga-role="goal-event-preview"]').addEventListener('click', () => {
+      void previewOpenLigaDbGoalEvent(row);
     });
     for (const role of ['finished-image-scorers', 'finished-image-competition', 'finished-image-date', 'finished-image-template']) {
       row.querySelector(`[data-openliga-role="${role}"]`).addEventListener('change', () => {
@@ -7113,6 +7131,35 @@
       image.src = image.dataset.objectUrl;
       image.hidden = false;
       status.textContent = 'Vorschau mit Beispieldaten. Änderungen an den Grafikoptionen aktualisieren sie.';
+    } catch (error) {
+      status.textContent = error.message;
+      status.className = 'cfg-hint err';
+    }
+  }
+
+  async function previewOpenLigaDbGoalEvent(row) {
+    const status = row.querySelector('[data-openliga-role="goal-event-status"]');
+    const image = row.querySelector('[data-openliga-role="goal-event-image"]');
+    status.textContent = 'Tor-Ereignisvorschau wird erstellt …';
+    status.className = 'cfg-hint';
+    try {
+      const response = await fetch('/api/openligadb/goal-event-preview.png', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          leagueName: row.querySelector('[data-openliga-role="title"]').textContent.trim(),
+          color: row.querySelector('[data-openliga-role="countdown-color"]').value,
+        }),
+      });
+      if (!response.ok) {
+        const result = await response.json();
+        throw new Error(result.error || 'Tor-Ereignisvorschau konnte nicht erstellt werden.');
+      }
+      if (image.dataset.objectUrl) URL.revokeObjectURL(image.dataset.objectUrl);
+      image.dataset.objectUrl = URL.createObjectURL(await response.blob());
+      image.src = image.dataset.objectUrl;
+      image.hidden = false;
+      status.textContent = 'Vorschau mit Beispieldaten.';
     } catch (error) {
       status.textContent = error.message;
       status.className = 'cfg-hint err';
