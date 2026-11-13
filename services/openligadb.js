@@ -528,6 +528,7 @@ function buildNextMatchCountdownSvg({ leagueName, match, teamId, teamInfo, count
   const days = Math.floor(remainingMinutes / 1440);
   const hours = Math.floor((remainingMinutes % 1440) / 60);
   const minutes = remainingMinutes % 60;
+  const isFinishedMatch = match?.matchIsFinished === true;
   const isLiveMatch = match && Number.isFinite(matchTime) && matchTime <= now && match.matchIsFinished !== true;
   const [homeScore, awayScore] = getMatchScore(match);
   const teamScore = Number(team?.teamId) === Number(match?.team1?.teamId) ? homeScore : awayScore;
@@ -540,10 +541,10 @@ function buildNextMatchCountdownSvg({ leagueName, match, teamId, teamInfo, count
   const scorerSummary = scorerEvents.length
     ? fitSvgText(`${scorerEvents.slice(-3).join(' · ')}${scorerEvents.length > 3 ? ` · +${scorerEvents.length - 3}` : ''}`, 100)
     : '';
-  const heading = isLiveMatch ? 'LIVE-SPIEL' : 'NÄCHSTES SPIEL';
+  const heading = isFinishedMatch ? 'SPIEL BEENDET' : isLiveMatch ? 'LIVE-SPIEL' : 'NÄCHSTES SPIEL';
   const status = hasUpcomingMatch
     ? `${days} TAGE  ·  ${hours} STD.  ·  ${minutes} MIN.`
-    : isLiveMatch
+    : isLiveMatch || isFinishedMatch
       ? `${teamScore}:${opponentScore}`
       : 'DERZEIT KEIN SPIEL TERMINIERT';
   return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="600" viewBox="0 0 1200 600">
@@ -561,7 +562,7 @@ function buildNextMatchCountdownSvg({ leagueName, match, teamId, teamInfo, count
     <text x="870" y="286" text-anchor="middle" fill="#f5f6fa" font-family="Arial, sans-serif" font-size="42" font-weight="700">${escapeSvgText(opponentName)}</text>
     <path d="M170 365h860" stroke="${accent}" stroke-opacity=".45" stroke-width="2"/>
     <text x="600" y="440" text-anchor="middle" fill="#ffffff" font-family="Arial, sans-serif" font-size="56" font-weight="800" letter-spacing="2">${escapeSvgText(status)}</text>
-    ${isLiveMatch && scorerSummary ? `<text x="600" y="486" text-anchor="middle" fill="#d0d5df" font-family="Arial, sans-serif" font-size="20">${escapeSvgText(`Torschützen: ${scorerSummary}`)}</text>` : ''}
+    ${(isLiveMatch || isFinishedMatch) && scorerSummary ? `<text x="600" y="486" text-anchor="middle" fill="#d0d5df" font-family="Arial, sans-serif" font-size="20">${escapeSvgText(`Torschützen: ${scorerSummary}`)}</text>` : ''}
     <text x="600" y="568" text-anchor="middle" fill="#929bad" font-family="Arial, sans-serif" font-size="18">OpenLigaDB · Daten unter ODbL 1.0</text>
   </svg>`;
 }
@@ -916,7 +917,7 @@ function createOpenLigaDbWatcher({ http, client, ServerProfile, logger, requestI
     return leagues;
   }
 
-  async function loadFeed(leagueShortcut, season) {
+  async function loadFeed(leagueShortcut, season, includeAllSeasonMatches = false) {
     const groupResponse = await apiGet(http, `${API_BASE}/getcurrentgroup/${encodeURIComponent(leagueShortcut)}`, requestIntervalMs);
     const group = groupResponse.data;
     if (!group || !Number.isInteger(group.groupOrderID)) throw new Error('OpenLigaDB lieferte keinen aktuellen Spieltag');
@@ -928,7 +929,7 @@ function createOpenLigaDbWatcher({ http, client, ServerProfile, logger, requestI
     if (!feed || feed.changedAt !== changedAt || leagueShortcut === 'dfb') {
       const matchesResponse = await apiGet(http, `${API_BASE}/getmatchdata/${encodeURIComponent(leagueShortcut)}/${season}/${group.groupOrderID}`, requestIntervalMs);
       const tableResponse = await apiGet(http, `${API_BASE}/getbltable/${encodeURIComponent(leagueShortcut)}/${season}`, requestIntervalMs);
-      const allMatchesResponse = leagueShortcut === 'dfb'
+      const allMatchesResponse = leagueShortcut === 'dfb' || includeAllSeasonMatches
         ? await apiGet(http, `${API_BASE}/getmatchdata/${encodeURIComponent(leagueShortcut)}/${season}`, requestIntervalMs)
         : matchesResponse;
       feed = {
@@ -1187,7 +1188,7 @@ function createOpenLigaDbWatcher({ http, client, ServerProfile, logger, requestI
   async function updateLeague(profile, feedConfig, metadata, season) {
     const leagueShortcut = feedConfig.leagueShortcut;
     const leagueName = metadata?.leagueName || leagueShortcut;
-    const currentFeed = await loadFeed(leagueShortcut, season);
+    const currentFeed = await loadFeed(leagueShortcut, season, Boolean(getDfbNationalTeamCategory(metadata)));
     const favoriteTeamIds = getFavoriteTeamIds(feedConfig);
     const feedKey = `${leagueShortcut}:${season}`;
 
@@ -1221,7 +1222,7 @@ function createOpenLigaDbWatcher({ http, client, ServerProfile, logger, requestI
       }
       countdownChannelsByFeed.set(countdownStateKey, countdownChannelId);
       const countdownNow = nowProvider();
-      const feedMatches = [...(currentFeed.allMatches || []), ...(currentFeed.matches || [])];
+      const feedMatches = [...(currentFeed.matches || []), ...(currentFeed.allMatches || [])];
       const liveMatch = feedMatches.find(match => {
         const matchTime = Date.parse(match.matchDateTimeUTC || match.matchDateTime || '');
         return match.matchIsFinished !== true
@@ -1229,7 +1230,22 @@ function createOpenLigaDbWatcher({ http, client, ServerProfile, logger, requestI
           && matchTime <= countdownNow
           && [match.team1?.teamId, match.team2?.teamId].some(teamId => Number(teamId) === countdownTeamId);
       });
-      const nextMatch = liveMatch || await loadNextMatch(metadata?.leagueId, countdownTeamId);
+      const nextScheduledMatch = feedMatches
+        .filter(match => {
+          const matchTime = Date.parse(match.matchDateTimeUTC || match.matchDateTime || '');
+          return match.matchIsFinished !== true
+            && Number.isFinite(matchTime)
+            && matchTime > countdownNow
+            && [match.team1?.teamId, match.team2?.teamId].some(teamId => Number(teamId) === countdownTeamId);
+        })
+        .sort((a, b) => Date.parse(a.matchDateTimeUTC || a.matchDateTime || '')
+          - Date.parse(b.matchDateTimeUTC || b.matchDateTime || ''))[0];
+      const apiNextMatch = liveMatch || nextScheduledMatch
+        ? null
+        : await loadNextMatch(metadata?.leagueId, countdownTeamId);
+      const completedMatch = apiNextMatch && feedMatches.find(match =>
+        match.matchIsFinished === true && String(match.matchID) === String(apiNextMatch.matchID));
+      const nextMatch = liveMatch || nextScheduledMatch || completedMatch || apiNextMatch;
       const teamInfo = currentFeed.table.find(team => Number(team.teamId) === countdownTeamId);
       const countdownStyle = feedConfig.countdownStyle || 'classic';
       const countdownColor = feedConfig.countdownColor || getDefaultCountdownColor(leagueShortcut);

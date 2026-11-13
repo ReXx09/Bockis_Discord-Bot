@@ -695,6 +695,27 @@ describe('OpenLigaDB data formatting', () => {
     expect(svg).not.toContain('NÄCHSTES SPIEL');
   });
 
+  test('shows the final result and scorers after a match is finished', () => {
+    const svg = buildNextMatchCountdownSvg({
+      leagueName: 'DFB Nationalspiele',
+      teamId: 139,
+      match: {
+        matchIsFinished: true,
+        matchDateTimeUTC: '2026-11-13T19:45:00Z',
+        team1: { teamId: 1404, shortName: 'SRB' },
+        team2: { teamId: 139, shortName: 'GER' },
+        matchResults: [{ resultTypeKind: 'After90Minutes', pointsTeam1: 1, pointsTeam2: 3 }],
+        goals: [{ matchMinute: 56, scoreTeam1: 1, scoreTeam2: 3, goalGetterName: 'S. Babic' }],
+      },
+      now: Date.parse('2026-11-13T22:00:00Z'),
+    });
+
+    expect(svg).toContain('SPIEL BEENDET');
+    expect(svg).toContain('>3:1</text>');
+    expect(svg).toContain('Torschützen: 56&apos; S. Babic');
+    expect(svg).not.toContain('LIVE-SPIEL');
+  });
+
   test('provides twelve distinct countdown embed variants', () => {
     const payloads = OPENLIGADB_COUNTDOWN_STYLES.map(countdownStyle => buildNextMatchCountdownPayload({
       leagueName: '1. Bundesliga',
@@ -1099,6 +1120,105 @@ describe('OpenLigaDB data formatting', () => {
     expect(updatedPayload.embeds).toEqual([]);
     expect(updatedPayload.attachments).toEqual([]);
     expect(http.get.mock.calls.filter(([url]) => url.endsWith('/getnextmatchbyleagueteam/4937/40'))).toHaveLength(1);
+  });
+
+  test('prefers the scheduled Netherlands match over a stale completed next-match fixture', async () => {
+    const now = Date.parse('2026-11-13T22:00:00Z');
+    const completedMatch = {
+      matchID: 85296,
+      matchIsFinished: true,
+      matchDateTimeUTC: '2026-11-13T19:45:00Z',
+      team1: { teamId: 1404, teamName: 'Serbien', shortName: 'SRB' },
+      team2: { teamId: 139, teamName: 'Deutschland', shortName: 'GER' },
+      matchResults: [
+        { resultTypeKind: 'HalfTime', pointsTeam1: 0, pointsTeam2: 2, resultOrderID: 1 },
+        { resultTypeKind: 'After90Minutes', pointsTeam1: 1, pointsTeam2: 3, resultOrderID: 2 },
+      ],
+      goals: [
+        { matchMinute: 3, scoreTeam1: 0, scoreTeam2: 1, goalGetterName: 'S. Babic' },
+        { matchMinute: 14, scoreTeam1: 0, scoreTeam2: 2, goalGetterName: 'F. Wirtz' },
+        { matchMinute: 50, scoreTeam1: 0, scoreTeam2: 3, goalGetterName: 'B. Gruda' },
+        { matchMinute: 56, scoreTeam1: 1, scoreTeam2: 3, goalGetterName: 'S. Babic' },
+      ],
+    };
+    const upcomingMatch = {
+      matchID: 85297,
+      matchIsFinished: false,
+      matchDateTimeUTC: '2026-11-16T19:45:00Z',
+      team1: { teamId: 139, teamName: 'Deutschland', shortName: 'GER' },
+      team2: { teamId: 147, teamName: 'Niederlande', shortName: 'NED' },
+    };
+    const staleNextMatch = {
+      ...completedMatch,
+      matchIsFinished: false,
+      matchResults: [],
+      goals: [],
+    };
+    const http = { get: jest.fn(async url => {
+      if (url.endsWith('/getavailableleagues')) return { data: [{
+        leagueId: 5981,
+        leagueShortcut: 'DFBN',
+        leagueSeason: '2026',
+        leagueName: 'DFB Nationalspiele',
+        sport: { sportId: 1 },
+      }] };
+      if (url.endsWith('/getcurrentgroup/DFBN')) return { data: { groupName: '5. Spieltag', groupOrderID: 5 } };
+      if (url.includes('/getlastchangedate/')) return { data: '2026-11-13T21:59:00Z' };
+      if (url.endsWith('/getmatchdata/DFBN/2026/5')) return { data: [completedMatch] };
+      if (url.endsWith('/getmatchdata/DFBN/2026')) return { data: [completedMatch, upcomingMatch] };
+      if (url.includes('/getbltable/')) return { data: [] };
+      if (url.endsWith('/getnextmatchbyleagueteam/5981/139')) return { data: staleNextMatch };
+      throw new Error(`Unexpected URL: ${url}`);
+    }) };
+    const countdownMessage = { edit: jest.fn(async () => countdownMessage) };
+    const channel = {
+      isTextBased: () => true,
+      messages: { fetch: jest.fn(async () => []) },
+      send: jest.fn(async () => countdownMessage),
+    };
+    const watcher = createOpenLigaDbWatcher({
+      http,
+      client: { user: { id: 'bot' }, channels: { cache: new Map([['channel', channel]]) } },
+      ServerProfile: { findAll: async () => [{ guildId: 'guild', settingsJson: JSON.stringify({
+        DISCORD_OPENLIGADB_ENABLED: true,
+        DISCORD_OPENLIGADB_FEEDS: JSON.stringify([{
+          leagueShortcut: 'DFBN',
+          season: 2026,
+          favoriteTeamIds: [139],
+          countdownTeamId: 139,
+          countdownStyle: 'graphic_timer',
+          countdownChannelId: 'channel',
+        }]),
+      }) }] },
+      logger: { warn: jest.fn(), info: jest.fn() },
+      requestIntervalMs: 0,
+      nowProvider: () => now,
+    });
+
+    await watcher.checkOnce();
+    const actualPayload = channel.send.mock.calls[0][0];
+    const expectedPng = await buildNextMatchCountdownPng({
+      leagueName: 'DFB Nationalspiele',
+      match: upcomingMatch,
+      teamId: 139,
+      countdownStyle: 'graphic_timer',
+      countdownColor: getDefaultCountdownColor('DFBN'),
+      now,
+    });
+
+    expect(actualPayload.files[0].attachment).toEqual(expectedPng);
+    expect(http.get).not.toHaveBeenCalledWith(
+      'https://api.openligadb.de/getnextmatchbyleagueteam/5981/139',
+      expect.any(Object),
+    );
+    expect(actualPayload.files[0].attachment).not.toEqual(await buildNextMatchCountdownPng({
+      leagueName: 'DFB Nationalspiele',
+      match: staleNextMatch,
+      teamId: 139,
+      countdownStyle: 'graphic_timer',
+      countdownColor: getDefaultCountdownColor('DFBN'),
+      now,
+    }));
   });
 
   test('announces kickoff and halftime once for favorite matches', async () => {
