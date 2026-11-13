@@ -1235,6 +1235,73 @@ describe('OpenLigaDB data formatting', () => {
     expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining('scoreboard send failed'));
   });
 
+  test('updates a goal card when OpenLigaDB provides the scorer later', async () => {
+    let changedAt = '2026-11-07T14:00:00Z';
+    let goal = null;
+    const matches = [{
+      matchID: 1,
+      matchIsFinished: false,
+      matchDateTimeUTC: '2026-11-07T14:00:00Z',
+      team1: { teamId: 40, teamName: 'FC Bayern München', shortName: 'Bayern' },
+      team2: { teamId: 7, teamName: 'Borussia Dortmund', shortName: 'Dortmund' },
+      matchResults: [],
+      get goals() { return goal ? [goal] : []; },
+    }];
+    const http = { get: jest.fn(async url => {
+      if (url.endsWith('/getavailableleagues')) return { data: [{ leagueShortcut: 'bl1', leagueSeason: '2026', leagueName: '1. Bundesliga', sport: { sportId: 1 } }] };
+      if (url.endsWith('/getcurrentgroup/bl1')) return { data: { groupName: '9. Spieltag', groupOrderID: 9 } };
+      if (url.includes('/getlastchangedate/')) return { data: changedAt };
+      if (url.includes('/getmatchdata/')) return { data: matches };
+      if (url.includes('/getbltable/')) return { data: [] };
+      throw new Error(`Unexpected URL: ${url}`);
+    }) };
+    const scoreboardMessage = { edit: jest.fn(async () => scoreboardMessage) };
+    const goalMessage = { edit: jest.fn(async () => goalMessage) };
+    const channel = {
+      isTextBased: () => true,
+      messages: { fetch: jest.fn(async () => []) },
+      send: jest.fn(async payload => payload?.content?.includes('Torereignis') ? goalMessage : scoreboardMessage),
+    };
+    let now = Date.parse('2026-11-07T14:35:00Z');
+    const watcher = createOpenLigaDbWatcher({
+      http,
+      client: { user: { id: 'bot' }, channels: { cache: new Map([['channel', channel]]) } },
+      ServerProfile: { findAll: async () => [{ guildId: 'guild', settingsJson: JSON.stringify({
+        DISCORD_OPENLIGADB_ENABLED: true,
+        DISCORD_OPENLIGADB_FEEDS: JSON.stringify([{
+          leagueShortcut: 'bl1',
+          season: 2026,
+          favoriteTeamIds: [40],
+          notificationChannelId: 'channel',
+          tableChannelIds: [],
+        }]),
+      }) }] },
+      logger: { warn: jest.fn(), info: jest.fn() },
+      requestIntervalMs: 0,
+      nowProvider: () => now,
+    });
+
+    await watcher.checkOnce();
+    changedAt = '2026-11-07T14:31:00Z';
+    goal = { goalID: 123, matchMinute: 31, scoreTeam1: 1, scoreTeam2: 0, goalGetterName: '' };
+    now += 60_000;
+    await watcher.checkOnce();
+    const initialGoalPayload = channel.send.mock.calls
+      .map(([payload]) => payload)
+      .find(payload => payload?.content?.includes('Torereignis'));
+
+    changedAt = '2026-11-07T14:32:00Z';
+    goal = { ...goal, goalGetterName: 'B. Gruda' };
+    now += 60_000;
+    await watcher.checkOnce();
+
+    expect(channel.send.mock.calls.filter(([payload]) => payload?.content?.includes('Torereignis'))).toHaveLength(1);
+    expect(goalMessage.edit).toHaveBeenCalledTimes(1);
+    const updatedGoalPayload = goalMessage.edit.mock.calls[0][0];
+    expect(updatedGoalPayload.embeds[0].toJSON().footer.text).toContain('OpenLigaDB-Goal:bl1:2026:9:1:123');
+    expect(updatedGoalPayload.files[0].attachment.equals(initialGoalPayload.files[0].attachment)).toBe(false);
+  });
+
   test('announces each newly observed favorite goal only once', async () => {
     let changedAt = '2026-11-07T14:00:00Z';
     let channelId = 'channel';

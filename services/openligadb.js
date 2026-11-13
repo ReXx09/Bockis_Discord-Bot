@@ -888,6 +888,9 @@ function createOpenLigaDbWatcher({ http, client, ServerProfile, logger, requestI
   let leagueCache = null;
   const feeds = new Map();
   const eventStates = new Map();
+  const goalMessages = new Map();
+  const goalSignatures = new Map();
+  const goalEventSignatures = new Map();
   const boardMessages = new Map();
   const boardSignatures = new Map();
   const tableMessages = new Map();
@@ -970,11 +973,11 @@ function createOpenLigaDbWatcher({ http, client, ServerProfile, logger, requestI
       }));
   }
 
-  async function upsertEmbedMessage({ profile, channelId, key, marker, payload, messages, signatures }) {
+  async function upsertEmbedMessage({ profile, channelId, key, marker, payload, messages, signatures, createIfMissing = true }) {
     channelId = String(channelId || '').trim();
     if (!channelId) return;
     const channel = await getChannel(channelId);
-    if (!channel) return;
+    if (!channel) return false;
     const boardKey = `${profile.guildId}:${key}:${channelId}`;
     const footerText = payload.embeds[0].toJSON().footer?.text || 'OpenLigaDB · ODbL 1.0';
     payload.embeds[0].setFooter({ text: `${footerText} · ${marker}` });
@@ -984,7 +987,7 @@ function createOpenLigaDbWatcher({ http, client, ServerProfile, logger, requestI
       return createHash('sha256').update(data).digest('hex');
     });
     const signature = JSON.stringify({ embed: payload.embeds[0].toJSON(), files: fileSignatures });
-    if (signatures.get(boardKey) === signature && messages.has(boardKey)) return;
+    if (signatures.get(boardKey) === signature && messages.has(boardKey)) return true;
 
     let message = messages.get(boardKey);
     let duplicateMessages = [];
@@ -992,6 +995,7 @@ function createOpenLigaDbWatcher({ http, client, ServerProfile, logger, requestI
       const existingMessages = await findMarkedMessages(channel, marker);
       [message, ...duplicateMessages] = existingMessages;
     }
+    if (!message && !createIfMissing) return true;
     if (message) message = await message.edit({ ...payload, attachments: [] });
     else message = await channel.send(payload);
     messages.set(boardKey, message);
@@ -1002,6 +1006,7 @@ function createOpenLigaDbWatcher({ http, client, ServerProfile, logger, requestI
         logger.warn(`OpenLigaDB-Duplikat ${marker} konnte in Kanal ${channelId} nicht entfernt werden: ${result.reason.message}`);
       }
     }
+    return true;
   }
 
   async function clearCountdownMessage(profile, channelId, feedKey) {
@@ -1026,24 +1031,57 @@ function createOpenLigaDbWatcher({ http, client, ServerProfile, logger, requestI
     }
   }
 
-  async function sendGoalEvent(channel, leagueName, group, match, goal, feedConfig) {
+  async function sendGoalEvent(profile, leagueName, group, match, goal, feedConfig, feedKey, createIfMissing) {
     const [matchHome, matchAway] = getMatchScore(match);
     const home = Number.isInteger(goal.scoreTeam1) ? goal.scoreTeam1 : matchHome;
     const away = Number.isInteger(goal.scoreTeam2) ? goal.scoreTeam2 : matchAway;
     const homeName = match.team1?.shortName || match.team1?.teamName || 'Heimteam';
     const awayName = match.team2?.shortName || match.team2?.teamName || 'Auswärtsteam';
     const minute = goal.matchMinute == null ? '' : ` (${goal.matchMinute}')`;
+    const channelId = String(feedConfig.notificationChannelId || '').trim();
+    const key = `goal:${feedKey}:${match.matchID}:${goal.goalID}`;
+    const eventKey = `${profile.guildId}:${key}:${channelId}`;
+    const color = feedConfig.countdownColor || getDefaultCountdownColor(feedConfig.leagueShortcut);
+    const signature = JSON.stringify({
+      leagueName,
+      groupName: group?.groupName || '',
+      homeName,
+      awayName,
+      home,
+      away,
+      minute,
+      scorer: String(goal.goalGetterName || '').trim(),
+      color,
+    });
+    if (goalEventSignatures.get(eventKey) === signature) return;
+
     const attachment = await buildGoalEventAttachment({
       leagueName,
       group,
       match,
       goal,
-      color: feedConfig.countdownColor || getDefaultCountdownColor(feedConfig.leagueShortcut),
+      color,
     });
-    await channel.send({
+    const marker = `OpenLigaDB-Goal:${feedKey}:${match.matchID}:${goal.goalID}`;
+    const payload = {
       content: `⚽ **Torereignis${minute}!** ${homeName} **${home}:${away}** ${awayName}`,
+      embeds: [new EmbedBuilder()
+        .setColor(color)
+        .setImage('attachment://openligadb-torereignis.png')
+        .setFooter({ text: 'OpenLigaDB · Daten unter ODbL 1.0' })],
       files: [attachment],
+    };
+    const updated = await upsertEmbedMessage({
+      profile,
+      channelId,
+      key,
+      marker,
+      payload,
+      messages: goalMessages,
+      signatures: goalSignatures,
+      createIfMissing,
     });
+    if (updated) goalEventSignatures.set(eventKey, signature);
   }
 
   async function sendMatchEvents(profile, feedConfig, currentFeed, favoriteTeamIds, leagueName, now = Date.now()) {
@@ -1068,12 +1106,20 @@ function createOpenLigaDbWatcher({ http, client, ServerProfile, logger, requestI
       const kickoffReached = Number.isFinite(matchStart) && matchStart <= now;
       const previous = eventStates.get(stateKey);
       if (!previous) {
-        if (!match.matchIsFinished) {
-          for (const goal of match.goals || []) {
-            if (goal.goalID != null && isRecentGoal(match, goal, now, recoveryWindowMs)) {
-              await sendGoalEvent(channel, leagueName, currentFeed.group, match, goal, feedConfig);
-            }
-          }
+        for (const goal of match.goals || []) {
+          if (goal.goalID == null) continue;
+          const isRecent = isRecentGoal(match, goal, now, recoveryWindowMs);
+          if (match.matchIsFinished && !isRecent) continue;
+          await sendGoalEvent(
+            profile,
+            leagueName,
+            currentFeed.group,
+            match,
+            goal,
+            feedConfig,
+            currentFeed.key,
+            !match.matchIsFinished && isRecent,
+          );
         }
         eventStates.set(stateKey, {
           goalIds,
@@ -1095,9 +1141,9 @@ function createOpenLigaDbWatcher({ http, client, ServerProfile, logger, requestI
       }
 
       for (const goal of match.goals || []) {
-        if (goalIds.has(String(goal.goalID)) && !previous.goalIds.has(String(goal.goalID))) {
-          await sendGoalEvent(channel, leagueName, currentFeed.group, match, goal, feedConfig);
-        }
+        if (goal.goalID == null) continue;
+        const isNewGoal = goalIds.has(String(goal.goalID)) && !previous.goalIds.has(String(goal.goalID));
+        await sendGoalEvent(profile, leagueName, currentFeed.group, match, goal, feedConfig, currentFeed.key, isNewGoal);
       }
 
       if (!previous.finished && match.matchIsFinished) {
