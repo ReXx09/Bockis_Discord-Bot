@@ -926,7 +926,7 @@ function createOpenLigaDbWatcher({ http, client, ServerProfile, logger, requestI
     const [markerType, ...markerParts] = marker.split(':');
     const feedKey = markerParts.slice(-2).join(':');
     const messages = await channel.messages.fetch({ limit: 50 });
-    return messages.filter(message => message.author.id === client.user.id
+    return [...messages.values()].filter(message => message.author.id === client.user.id
       && message.embeds.some(embed => {
         const footer = embed.footer?.text || '';
         return footer.includes(marker)

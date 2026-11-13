@@ -943,7 +943,10 @@ describe('OpenLigaDB data formatting', () => {
     };
     const countdownChannel = {
       isTextBased: () => true,
-      messages: { fetch: jest.fn(async () => [countdownMessage, duplicateCountdownMessage]) },
+      messages: { fetch: jest.fn(async () => new Map([
+        ['countdown-message', countdownMessage],
+        ['duplicate-countdown-message', duplicateCountdownMessage],
+      ])) },
       send: jest.fn(async () => countdownMessage),
     };
     const watcher = createOpenLigaDbWatcher({
