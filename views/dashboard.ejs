@@ -6784,7 +6784,7 @@
       updateOpenLigaDbFavoriteSelection(row, true);
       if (!availableTeams.length) {
         status.textContent = leagueShortcut === 'unl'
-          ? `OpenLigaDB liefert für die Nations League ${season} derzeit keine Teilnehmer. Für Deutschlands Nations-League-Spiele bitte „DFB Nationalspiele“ auswählen.`
+          ? `OpenLigaDB liefert für die allgemeine Nations League ${season} derzeit keine Teilnehmer. Für die Nations-League-A-Tabelle bitte „Nations League A“ auswählen.`
           : `OpenLigaDB liefert für ${leagueShortcut} ${season} derzeit keine Teilnehmer.`;
         status.className = 'cfg-hint warn';
       }

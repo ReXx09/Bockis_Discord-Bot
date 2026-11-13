@@ -514,11 +514,12 @@ describe('OpenLigaDB data formatting', () => {
       { leagueShortcut: 'unl2024', leagueSeason: '2024', leagueName: 'Nations League 2024/25 (DE)', sport: { sportId: 1 } },
       { leagueShortcut: 'unl', leagueSeason: '2026', leagueName: 'Nations League 2026/27', sport: { sportId: 1 } },
       { leagueShortcut: 'nla', leagueSeason: '2026', leagueName: 'Nations League A 2026', sport: { sportId: 1 } },
+      { leagueShortcut: 'nlb', leagueSeason: '2026', leagueName: 'Nations League B 2026', sport: { sportId: 1 } },
     ], new Date('2026-11-09T12:00:00Z'));
     const shortcuts = leagues.map(league => league.leagueShortcut);
 
-    expect(shortcuts.sort()).toEqual(['uecl2026', 'uel2026', 'unl']);
-    for (const excludedShortcut of ['uel2024', 'uel', 'uel-test', 'uecl2023', 'uecl', 'unl2024', 'nla']) {
+    expect(shortcuts.sort()).toEqual(['nla', 'uecl2026', 'uel2026', 'unl']);
+    for (const excludedShortcut of ['uel2024', 'uel', 'uel-test', 'uecl2023', 'uecl', 'unl2024', 'nlb']) {
       expect(shortcuts).not.toContain(excludedShortcut);
     }
   });
@@ -667,7 +668,7 @@ describe('OpenLigaDB data formatting', () => {
     expect(getDefaultCountdownColor('uel')).toBe('#F1C40F');
   });
 
-  test('shows a live score in favorite-team order on the countdown graphic', () => {
+  test('shows the live match label, score, and scorers on the countdown graphic', () => {
     const svg = buildNextMatchCountdownSvg({
       leagueName: 'DFB Nationalspiele',
       teamId: 139,
@@ -676,13 +677,18 @@ describe('OpenLigaDB data formatting', () => {
         matchDateTimeUTC: '2026-11-13T19:45:00Z',
         team1: { teamId: 1404, shortName: 'SRB' },
         team2: { teamId: 139, shortName: 'GER' },
-        goals: [{ matchMinute: 14, scoreTeam1: 0, scoreTeam2: 2 }],
+        goals: [
+          { matchMinute: 3, scoreTeam1: 0, scoreTeam2: 1, goalGetterName: 'S. Babic (Eigentor)' },
+          { matchMinute: 14, scoreTeam1: 0, scoreTeam2: 2, goalGetterName: 'F. Wirtz' },
+        ],
       },
       now: Date.parse('2026-11-13T20:12:00Z'),
     });
 
+    expect(svg).toContain('LIVE-SPIEL');
     expect(svg).toContain('LIVE  ·  2:0');
-    expect(svg).not.toContain('DAS SPIEL LÄUFT');
+    expect(svg).toContain('Torschützen: 3&apos; S. Babic (Eigentor) · 14&apos; F. Wirtz');
+    expect(svg).not.toContain('NÄCHSTES SPIEL');
   });
 
   test('provides twelve distinct countdown embed variants', () => {
@@ -723,6 +729,44 @@ describe('OpenLigaDB data formatting', () => {
 
     expect(description).toContain('Bayern · 13 P · 11:5');
     expect(description).toContain('Dortmund · 9 P · 8:6');
+  });
+
+  test('keeps Nations League A standings within the current group', () => {
+    const payload = buildLiveTablePayload({
+      leagueShortcut: 'nla',
+      leagueName: 'Nations League A 2026',
+      group: { groupName: 'Gruppe B' },
+      now: Date.parse('2026-11-13T20:00:00Z'),
+      table: [
+        { teamId: 5566, teamName: 'Niederlande', shortName: 'NED', points: 11, goals: 12, opponentGoals: 5, matches: 5 },
+        { teamId: 142, teamName: 'Griechenland', shortName: 'GRE', points: 8, goals: 5, opponentGoals: 8, matches: 5 },
+        { teamId: 5592, teamName: 'Serbien', shortName: 'SRB', points: 0, goals: 3, opponentGoals: 11, matches: 5 },
+        { teamId: 725, teamName: 'Deutschland', shortName: 'GER', points: 8, goals: 10, opponentGoals: 5, matches: 5 },
+        { teamId: 999, teamName: 'Spanien', shortName: 'ESP', points: 15, goals: 14, opponentGoals: 2, matches: 5 },
+      ],
+      matches: [
+        {
+          matchIsFinished: false,
+          matchDateTimeUTC: '2026-11-13T19:45:00Z',
+          team1: { teamId: 5566 },
+          team2: { teamId: 142 },
+          goals: [{ matchMinute: 70, scoreTeam1: 5, scoreTeam2: 0 }],
+        },
+        {
+          matchIsFinished: false,
+          matchDateTimeUTC: '2026-11-13T21:00:00Z',
+          team1: { teamId: 5592 },
+          team2: { teamId: 725 },
+          goals: [],
+        },
+      ],
+    });
+    const embed = payload.embeds[0].toJSON();
+
+    expect(embed.title).toContain('Gruppe B');
+    expect(embed.description).toContain('NED · 14 P · 17:5');
+    expect(embed.description).toContain('GRE · 8 P · 5:13');
+    expect(embed.description).not.toContain('ESP');
   });
 
   test('shows only teams still in the DFB Pokal instead of league standings', () => {

@@ -230,8 +230,27 @@ function getAvailableFootballLeagues(leagues, now = new Date()) {
   for (const [category, entries] of europeanCompetitions) {
     const seasons = [...new Set(entries.map(league => Number(league.leagueSeason)))].sort((a, b) => a - b);
     for (const season of seasons.filter(year => year >= currentYear)) {
-      const candidates = entries.filter(league => Number(league.leagueSeason) === season
-        && !(category === 'nations-league' && /\bnations league\s+[abcd]\b/i.test(String(league.leagueName || ''))));
+      const seasonEntries = entries.filter(league => Number(league.leagueSeason) === season);
+      if (category === 'nations-league') {
+        const generalCandidates = seasonEntries.filter(league =>
+          !/\bnations league\s+[abcd]\b/i.test(String(league.leagueName || '')));
+        const leagueACandidates = seasonEntries.filter(league =>
+          String(league.leagueShortcut).toLowerCase() === 'nla'
+          || /\bnations league\s+a\b/i.test(String(league.leagueName || '')));
+        for (const league of [
+          generalCandidates.sort((a, b) => getEuropeanCompetitionEntryPriority(a, category, season) - getEuropeanCompetitionEntryPriority(b, category, season))[0],
+          leagueACandidates.sort((a, b) => getEuropeanCompetitionEntryPriority(a, category, season) - getEuropeanCompetitionEntryPriority(b, category, season))[0],
+        ].filter(Boolean)) {
+          latest.set(league.leagueShortcut, {
+            leagueShortcut: league.leagueShortcut,
+            leagueSeason: season,
+            leagueName: league.leagueName || league.leagueShortcut,
+            leagueId: Number(league.leagueId) || undefined,
+          });
+        }
+        continue;
+      }
+      const candidates = seasonEntries;
       if (!candidates.length) continue;
       candidates.sort((a, b) => getEuropeanCompetitionEntryPriority(a, category, season)
         - getEuropeanCompetitionEntryPriority(b, category, season));
@@ -513,6 +532,15 @@ function buildNextMatchCountdownSvg({ leagueName, match, teamId, teamInfo, count
   const [homeScore, awayScore] = getMatchScore(match);
   const teamScore = Number(team?.teamId) === Number(match?.team1?.teamId) ? homeScore : awayScore;
   const opponentScore = Number(team?.teamId) === Number(match?.team1?.teamId) ? awayScore : homeScore;
+  const scorerEvents = (Array.isArray(match?.goals) ? match.goals : []).map(goal => {
+    const scorer = String(goal.goalGetterName || '').trim() || 'Torschütze unbekannt';
+    const minute = goal.matchMinute == null ? '' : `${goal.matchMinute}' `;
+    return `${minute}${scorer}`;
+  });
+  const scorerSummary = scorerEvents.length
+    ? fitSvgText(`${scorerEvents.slice(-3).join(' · ')}${scorerEvents.length > 3 ? ` · +${scorerEvents.length - 3}` : ''}`, 100)
+    : '';
+  const heading = isLiveMatch ? 'LIVE-SPIEL' : 'NÄCHSTES SPIEL';
   const status = hasUpcomingMatch
     ? `${days} TAGE  ·  ${hours} STD.  ·  ${minutes} MIN.`
     : isLiveMatch
@@ -526,13 +554,14 @@ function buildNextMatchCountdownSvg({ leagueName, match, teamId, teamInfo, count
     <rect width="1200" height="520" rx="26" fill="url(#background)"/>
     <rect x="0" y="0" width="14" height="520" rx="7" fill="url(#accent)"/>
     <circle cx="600" cy="210" r="205" fill="none" stroke="${accent}" stroke-opacity=".08" stroke-width="2"/>
-    <text x="600" y="76" text-anchor="middle" fill="${accent}" font-family="Arial, sans-serif" font-size="24" font-weight="700" letter-spacing="5">NÄCHSTES SPIEL</text>
+    <text x="600" y="76" text-anchor="middle" fill="${accent}" font-family="Arial, sans-serif" font-size="24" font-weight="700" letter-spacing="5">${escapeSvgText(heading)}</text>
     <text x="600" y="126" text-anchor="middle" fill="#b9c0ce" font-family="Arial, sans-serif" font-size="22">${escapeSvgText(competition)}</text>
     <text x="330" y="232" text-anchor="middle" fill="#f5f6fa" font-family="Arial, sans-serif" font-size="42" font-weight="700">${escapeSvgText(teamName)}</text>
     <text x="600" y="232" text-anchor="middle" fill="${accent}" font-family="Arial, sans-serif" font-size="28" font-weight="700">VS</text>
     <text x="870" y="232" text-anchor="middle" fill="#f5f6fa" font-family="Arial, sans-serif" font-size="42" font-weight="700">${escapeSvgText(opponentName)}</text>
     <path d="M170 284h860" stroke="${accent}" stroke-opacity=".45" stroke-width="2"/>
     <text x="600" y="380" text-anchor="middle" fill="#ffffff" font-family="Arial, sans-serif" font-size="56" font-weight="800" letter-spacing="2">${escapeSvgText(status)}</text>
+    ${isLiveMatch && scorerSummary ? `<text x="600" y="432" text-anchor="middle" fill="#d0d5df" font-family="Arial, sans-serif" font-size="20">${escapeSvgText(`Torschützen: ${scorerSummary}`)}</text>` : ''}
     <text x="600" y="468" text-anchor="middle" fill="#929bad" font-family="Arial, sans-serif" font-size="18">OpenLigaDB · Daten unter ODbL 1.0</text>
   </svg>`;
 }
@@ -610,7 +639,14 @@ function buildLiveTablePayload({ leagueShortcut, leagueName, group, table, match
     return buildDfbPokalPayload({ leagueName, group, table, matches });
   }
 
-  const standings = new Map((table || []).map(row => [Number(row.teamId), {
+  const isNationsLeagueA = String(leagueShortcut || '').toLowerCase() === 'nla';
+  const groupTeamIds = isNationsLeagueA
+    ? new Set((matches || []).flatMap(match => [Number(match.team1?.teamId), Number(match.team2?.teamId)]).filter(Number.isFinite))
+    : null;
+  const relevantTable = isNationsLeagueA
+    ? (table || []).filter(row => groupTeamIds.has(Number(row.teamId)))
+    : table || [];
+  const standings = new Map(relevantTable.map(row => [Number(row.teamId), {
     ...row,
     matches: Number(row.matches) || 0,
     points: Number(row.points) || 0,
@@ -664,7 +700,7 @@ function buildLiveTablePayload({ leagueShortcut, leagueName, group, table, match
 
   const embed = new EmbedBuilder()
     .setColor(0xD6B32A)
-    .setTitle(`📊 Live-Tabelle · ${leagueName || 'Bundesliga'}`)
+    .setTitle(`📊 Live-Tabelle · ${leagueName || 'Bundesliga'}${isNationsLeagueA && group?.groupName ? ` · ${group.groupName}` : ''}`)
     .setDescription(description || 'Noch keine Tabellendaten verfügbar.')
     .setFooter({ text: 'OpenLigaDB · Live-Hochrechnung laufender Spiele · ODbL 1.0' });
   return { embeds: [embed] };
