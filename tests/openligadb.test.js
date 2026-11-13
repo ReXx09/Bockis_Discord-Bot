@@ -223,6 +223,7 @@ describe('OpenLigaDB data formatting', () => {
   test('sends one result graphic for a finished API-Football favorite match', async () => {
     const now = Date.parse('2028-06-10T12:00:00Z');
     const channelId = '12345678901234567';
+    const logger = { warn: jest.fn(), info: jest.fn() };
     const channel = {
       isTextBased: () => true,
       messages: { fetch: jest.fn(async () => []) },
@@ -237,7 +238,7 @@ describe('OpenLigaDB data formatting', () => {
     const watcher = createApiFootballWatcher({
       http,
       client: { user: { id: 'bot' }, channels: { cache: new Map([[channelId, channel]]) } },
-      logger: { warn: jest.fn(), info: jest.fn() },
+      logger,
       getApiKey: () => 'test-key',
       getFeeds: () => [{
         leagueId: 4,
@@ -781,10 +782,14 @@ describe('OpenLigaDB data formatting', () => {
       ] };
       throw new Error(`Unexpected URL: ${url}`);
     }) };
+    const logger = { warn: jest.fn(), info: jest.fn() };
     const channel = {
       isTextBased: () => true,
       messages: { fetch: jest.fn(async () => []) },
-      send: jest.fn(async payload => payload),
+      send: jest.fn(async payload => {
+        if (payload?.embeds?.length && !payload.content) throw new Error('scoreboard send failed');
+        return payload;
+      }),
     };
     const watcher = createOpenLigaDbWatcher({
       http,
@@ -798,7 +803,7 @@ describe('OpenLigaDB data formatting', () => {
           tableChannelIds: ['table-channel'],
         }]),
       }) }] },
-      logger: { warn: jest.fn(), info: jest.fn() },
+      logger,
       requestIntervalMs: 0,
     });
 
@@ -1098,17 +1103,17 @@ describe('OpenLigaDB data formatting', () => {
   });
 
   test('recovers a recent live goal on first observation after startup', async () => {
-    let now = Date.parse('2026-11-13T19:51:46Z');
+    let now = Date.parse('2026-11-13T20:05:45Z');
     const matches = [{
       matchID: 85296,
       matchIsFinished: false,
       matchDateTime: '2026-11-13T20:45:00',
       matchDateTimeUTC: '2026-11-13T19:45:00Z',
-      lastUpdateDateTime: '2026-11-13T20:49:08.84',
+      lastUpdateDateTime: '2026-11-13T21:01:04.777',
       team1: { teamId: 1404, teamName: 'Serbien', shortName: 'SRB' },
       team2: { teamId: 139, teamName: 'Deutschland', shortName: 'GER' },
       matchResults: [],
-      goals: [{ goalID: 152663, matchMinute: null, scoreTeam1: 0, scoreTeam2: 1, goalGetterName: '' }],
+      goals: [{ goalID: 152666, matchMinute: 14, scoreTeam1: 0, scoreTeam2: 2, goalGetterName: 'F. Wirtz' }],
     }];
     const http = { get: jest.fn(async url => {
       if (url.endsWith('/getavailableleagues')) return { data: [{
@@ -1119,15 +1124,19 @@ describe('OpenLigaDB data formatting', () => {
         sport: { sportId: 1 },
       }] };
       if (url.endsWith('/getcurrentgroup/DFBN')) return { data: { groupName: '5. Spieltag', groupOrderID: 5 } };
-      if (url.includes('/getlastchangedate/')) return { data: '2026-11-13T20:49:08.84' };
+      if (url.includes('/getlastchangedate/')) return { data: '2026-11-13T21:01:04.777' };
       if (url.includes('/getmatchdata/')) return { data: matches };
       if (url.includes('/getbltable/')) return { data: [] };
       throw new Error(`Unexpected URL: ${url}`);
     }) };
+    const logger = { warn: jest.fn(), info: jest.fn() };
     const channel = {
       isTextBased: () => true,
       messages: { fetch: jest.fn(async () => []) },
-      send: jest.fn(async payload => payload),
+      send: jest.fn(async payload => {
+        if (payload?.embeds?.length && !payload.content) throw new Error('scoreboard send failed');
+        return payload;
+      }),
     };
     const watcher = createOpenLigaDbWatcher({
       http,
@@ -1143,7 +1152,7 @@ describe('OpenLigaDB data formatting', () => {
           tableChannelIds: [],
         }]),
       }) }] },
-      logger: { warn: jest.fn(), info: jest.fn() },
+      logger,
       requestIntervalMs: 0,
       nowProvider: () => now,
     });
@@ -1156,7 +1165,8 @@ describe('OpenLigaDB data formatting', () => {
       .map(([payload]) => payload)
       .filter(payload => payload?.content?.includes('Torereignis'));
     expect(goalEvents).toHaveLength(1);
-    expect(goalEvents[0].content).toContain('SRB **0:1** GER');
+    expect(goalEvents[0].content).toContain('SRB **0:2** GER');
+    expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining('scoreboard send failed'));
   });
 
   test('announces each newly observed favorite goal only once', async () => {
