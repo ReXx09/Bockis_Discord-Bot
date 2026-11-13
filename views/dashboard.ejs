@@ -6910,7 +6910,8 @@
       </label>
       <label class="cfg-label">Kanäle für die Live-Tabelle
         <input class="cfg-input" data-openliga-role="tables" type="text" autocomplete="off" placeholder="Kanal-IDs mit Komma oder Semikolon trennen">
-      </label>`;
+      </label>
+      <div data-openliga-role="table-feed-warning" class="cfg-hint warn" hidden>„DFB Nationalspiele“ enthält nur Spiele der deutschen Nationalmannschaft und keine vollständige Nations-League-Gruppentabelle. Für die komplette Tabelle den Feed „Nations League A“ hinzufügen und den Tabellenkanal dort eintragen.</div>`;
     container.appendChild(row);
     if (container.dataset.dirtyBound !== '1') {
       container.addEventListener('input', syncOpenLigaDbFeedsDirtyState);
@@ -6943,6 +6944,11 @@
       leagueSelect.appendChild(option);
       leagueSelect.value = option.value;
     }
+    const updateTableFeedWarning = () => {
+      row.querySelector('[data-openliga-role="table-feed-warning"]').hidden =
+        leagueSelect.value.split('|')[0].toLowerCase() !== 'dfbn';
+    };
+    updateTableFeedWarning();
     row.querySelector('[data-openliga-role="notification"]').value = feed.notificationChannelId || '';
     row.querySelector('[data-openliga-role="countdown-channel"]').value = feed.countdownChannelId || '';
     row.querySelector('[data-openliga-role="tables"]').value = (feed.tableChannelIds || []).join(',');
@@ -6982,6 +6988,7 @@
     leagueSelect.addEventListener('change', async () => {
       const selected = leagues.find(league => `${league.leagueShortcut}|${league.leagueSeason}` === leagueSelect.value);
       row.querySelector('[data-openliga-role="title"]').textContent = selected?.leagueName || leagueSelect.value;
+      updateTableFeedWarning();
       row.querySelector('[data-openliga-role="countdown-color"]').value = getOpenLigaDbCountdownColor(
         selected?.leagueShortcut || leagueSelect.value.split('|')[0],
       );
