@@ -642,12 +642,13 @@ describe('OpenLigaDB data formatting', () => {
     expect(afterMinute.embeds[0].toJSON().description).toContain('Noch 10 Tage · 7 Std. · 29 Min.');
   });
 
-  test('renders the SVG-based countdown graphic as a colored Discord PNG embed', async () => {
+  test('renders the SVG-based countdown graphic as a full-size PNG attachment', async () => {
     const options = {
       leagueName: '1. Bundesliga',
       teamId: 40,
       countdownStyle: 'graphic_timer',
       countdownColor: '#123456',
+      attachmentPrefix: 'openligadb-countdown-bl1-2026',
       match: {
         matchDateTimeUTC: '2026-11-20T19:30:00Z',
         team1: { teamId: 40, shortName: 'Bayern' },
@@ -658,13 +659,15 @@ describe('OpenLigaDB data formatting', () => {
     const payload = await buildNextMatchCountdownMessage(options);
     const png = await buildNextMatchCountdownPng(options);
 
-    expect(payload.embeds[0].toJSON().color).toBe(0x123456);
-    expect(payload.embeds[0].toJSON().image.url).toBe(
-      `attachment://openligadb-countdown-${Math.floor(options.now / 60_000)}.png`,
+    expect(payload.embeds).toBeUndefined();
+    expect(payload.files[0].name).toBe(
+      `openligadb-countdown-bl1-2026-${Math.floor(options.now / 60_000)}.png`,
     );
-    expect(payload.embeds[0].toJSON().description).toBe('\u200b');
     expect(payload.files[0].attachment.subarray(0, 8)).toEqual(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
     expect(png).toEqual(payload.files[0].attachment);
+    const svg = buildNextMatchCountdownSvg(options);
+    expect(svg).toContain('width="1200" height="600" viewBox="0 0 1200 600"');
+    expect(svg).toContain('#123456');
     expect(getDefaultCountdownColor('uel')).toBe('#F1C40F');
   });
 
@@ -686,7 +689,8 @@ describe('OpenLigaDB data formatting', () => {
     });
 
     expect(svg).toContain('LIVE-SPIEL');
-    expect(svg).toContain('LIVE  ·  2:0');
+    expect(svg).toContain('>2:0</text>');
+    expect(svg).not.toContain('LIVE  ·  2:0');
     expect(svg).toContain('Torschützen: 3&apos; S. Babic (Eigentor) · 14&apos; F. Wirtz');
     expect(svg).not.toContain('NÄCHSTES SPIEL');
   });
@@ -1089,9 +1093,10 @@ describe('OpenLigaDB data formatting', () => {
     await watcher.checkOnce();
     const updatedPayload = countdownMessage.edit.mock.calls[0][0];
 
-    expect(initialPayload.embeds[0].toJSON().color).toBe(0x123456);
+    expect(initialPayload.embeds).toBeUndefined();
+    expect(initialPayload.files[0].name).toMatch(/^openligadb-countdown-bl1-2026-/);
     expect(initialPayload.files[0].attachment.equals(updatedPayload.files[0].attachment)).toBe(false);
-    expect(initialPayload.embeds[0].toJSON().image.url).not.toBe(updatedPayload.embeds[0].toJSON().image.url);
+    expect(updatedPayload.embeds).toEqual([]);
     expect(updatedPayload.attachments).toEqual([]);
     expect(http.get.mock.calls.filter(([url]) => url.endsWith('/getnextmatchbyleagueteam/4937/40'))).toHaveLength(1);
   });
@@ -1256,14 +1261,25 @@ describe('OpenLigaDB data formatting', () => {
       throw new Error(`Unexpected URL: ${url}`);
     }) };
     const scoreboardMessage = { edit: jest.fn(async () => scoreboardMessage) };
-    const goalMessage = { edit: jest.fn(async () => goalMessage) };
+    const goalMessage = {
+      author: { id: 'bot' },
+      attachments: new Map(),
+      edit: jest.fn(async payload => {
+        goalMessage.attachments = new Map([['goal', { name: payload.files[0].name }]]);
+        return goalMessage;
+      }),
+    };
     const channel = {
       isTextBased: () => true,
-      messages: { fetch: jest.fn(async () => []) },
-      send: jest.fn(async payload => payload?.content?.includes('Torereignis') ? goalMessage : scoreboardMessage),
+      messages: { fetch: jest.fn(async () => goalMessage.attachments.size ? new Map([['goal', goalMessage]]) : new Map()) },
+      send: jest.fn(async payload => {
+        if (!payload?.content?.includes('Torereignis')) return scoreboardMessage;
+        goalMessage.attachments = new Map([['goal', { name: payload.files[0].name }]]);
+        return goalMessage;
+      }),
     };
     let now = Date.parse('2026-11-07T14:35:00Z');
-    const watcher = createOpenLigaDbWatcher({
+    const watcherOptions = {
       http,
       client: { user: { id: 'bot' }, channels: { cache: new Map([['channel', channel]]) } },
       ServerProfile: { findAll: async () => [{ guildId: 'guild', settingsJson: JSON.stringify({
@@ -1279,7 +1295,8 @@ describe('OpenLigaDB data formatting', () => {
       logger: { warn: jest.fn(), info: jest.fn() },
       requestIntervalMs: 0,
       nowProvider: () => now,
-    });
+    };
+    let watcher = createOpenLigaDbWatcher(watcherOptions);
 
     await watcher.checkOnce();
     changedAt = '2026-11-07T14:31:00Z';
@@ -1293,12 +1310,13 @@ describe('OpenLigaDB data formatting', () => {
     changedAt = '2026-11-07T14:32:00Z';
     goal = { ...goal, goalGetterName: 'B. Gruda' };
     now += 60_000;
+    watcher = createOpenLigaDbWatcher(watcherOptions);
     await watcher.checkOnce();
 
     expect(channel.send.mock.calls.filter(([payload]) => payload?.content?.includes('Torereignis'))).toHaveLength(1);
     expect(goalMessage.edit).toHaveBeenCalledTimes(1);
     const updatedGoalPayload = goalMessage.edit.mock.calls[0][0];
-    expect(updatedGoalPayload.embeds[0].toJSON().footer.text).toContain('OpenLigaDB-Goal:bl1:2026:9:1:123');
+    expect(updatedGoalPayload.files[0].name).toBe('openligadb-goal-bl1-2026-9-1-123.png');
     expect(updatedGoalPayload.files[0].attachment.equals(initialGoalPayload.files[0].attachment)).toBe(false);
   });
 
@@ -1374,7 +1392,7 @@ describe('OpenLigaDB data formatting', () => {
       .map(([content]) => content)
       .find(content => content && typeof content === 'object' && content.content?.includes('Torereignis'));
     expect(goalEventPayload.content).toContain('Torereignis');
-    expect(goalEventPayload.files[0].name).toBe('openligadb-torereignis.png');
+    expect(goalEventPayload.files[0].name).toMatch(/^openligadb-goal-/);
     expect(Buffer.isBuffer(goalEventPayload.files[0].attachment)).toBe(true);
     expect(boardMessage.edit).toHaveBeenCalledTimes(1);
 

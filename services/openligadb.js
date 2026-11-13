@@ -544,25 +544,25 @@ function buildNextMatchCountdownSvg({ leagueName, match, teamId, teamInfo, count
   const status = hasUpcomingMatch
     ? `${days} TAGE  ·  ${hours} STD.  ·  ${minutes} MIN.`
     : isLiveMatch
-      ? `LIVE  ·  ${teamScore}:${opponentScore}`
+      ? `${teamScore}:${opponentScore}`
       : 'DERZEIT KEIN SPIEL TERMINIERT';
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="520" viewBox="0 0 1200 520">
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="600" viewBox="0 0 1200 600">
     <defs>
       <linearGradient id="background" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#10141d"/><stop offset="1" stop-color="#242b3d"/></linearGradient>
       <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="${accent}" stop-opacity=".45"/><stop offset="1" stop-color="${accent}"/></linearGradient>
     </defs>
-    <rect width="1200" height="520" rx="26" fill="url(#background)"/>
-    <rect x="0" y="0" width="14" height="520" rx="7" fill="url(#accent)"/>
-    <circle cx="600" cy="210" r="205" fill="none" stroke="${accent}" stroke-opacity=".08" stroke-width="2"/>
-    <text x="600" y="76" text-anchor="middle" fill="${accent}" font-family="Arial, sans-serif" font-size="24" font-weight="700" letter-spacing="5">${escapeSvgText(heading)}</text>
-    <text x="600" y="126" text-anchor="middle" fill="#b9c0ce" font-family="Arial, sans-serif" font-size="22">${escapeSvgText(competition)}</text>
-    <text x="330" y="232" text-anchor="middle" fill="#f5f6fa" font-family="Arial, sans-serif" font-size="42" font-weight="700">${escapeSvgText(teamName)}</text>
-    <text x="600" y="232" text-anchor="middle" fill="${accent}" font-family="Arial, sans-serif" font-size="28" font-weight="700">VS</text>
-    <text x="870" y="232" text-anchor="middle" fill="#f5f6fa" font-family="Arial, sans-serif" font-size="42" font-weight="700">${escapeSvgText(opponentName)}</text>
-    <path d="M170 284h860" stroke="${accent}" stroke-opacity=".45" stroke-width="2"/>
-    <text x="600" y="380" text-anchor="middle" fill="#ffffff" font-family="Arial, sans-serif" font-size="56" font-weight="800" letter-spacing="2">${escapeSvgText(status)}</text>
-    ${isLiveMatch && scorerSummary ? `<text x="600" y="432" text-anchor="middle" fill="#d0d5df" font-family="Arial, sans-serif" font-size="20">${escapeSvgText(`Torschützen: ${scorerSummary}`)}</text>` : ''}
-    <text x="600" y="468" text-anchor="middle" fill="#929bad" font-family="Arial, sans-serif" font-size="18">OpenLigaDB · Daten unter ODbL 1.0</text>
+    <rect width="1200" height="600" rx="26" fill="url(#background)"/>
+    <rect x="0" y="0" width="14" height="600" rx="7" fill="url(#accent)"/>
+    <circle cx="600" cy="275" r="220" fill="none" stroke="${accent}" stroke-opacity=".08" stroke-width="2"/>
+    <text x="600" y="86" text-anchor="middle" fill="${accent}" font-family="Arial, sans-serif" font-size="30" font-weight="700" letter-spacing="5">${escapeSvgText(heading)}</text>
+    <text x="600" y="142" text-anchor="middle" fill="#b9c0ce" font-family="Arial, sans-serif" font-size="22">${escapeSvgText(competition)}</text>
+    <text x="330" y="286" text-anchor="middle" fill="#f5f6fa" font-family="Arial, sans-serif" font-size="42" font-weight="700">${escapeSvgText(teamName)}</text>
+    <text x="600" y="286" text-anchor="middle" fill="${accent}" font-family="Arial, sans-serif" font-size="28" font-weight="700">VS</text>
+    <text x="870" y="286" text-anchor="middle" fill="#f5f6fa" font-family="Arial, sans-serif" font-size="42" font-weight="700">${escapeSvgText(opponentName)}</text>
+    <path d="M170 365h860" stroke="${accent}" stroke-opacity=".45" stroke-width="2"/>
+    <text x="600" y="440" text-anchor="middle" fill="#ffffff" font-family="Arial, sans-serif" font-size="56" font-weight="800" letter-spacing="2">${escapeSvgText(status)}</text>
+    ${isLiveMatch && scorerSummary ? `<text x="600" y="486" text-anchor="middle" fill="#d0d5df" font-family="Arial, sans-serif" font-size="20">${escapeSvgText(`Torschützen: ${scorerSummary}`)}</text>` : ''}
+    <text x="600" y="568" text-anchor="middle" fill="#929bad" font-family="Arial, sans-serif" font-size="18">OpenLigaDB · Daten unter ODbL 1.0</text>
   </svg>`;
 }
 
@@ -575,9 +575,12 @@ async function buildNextMatchCountdownMessage(options) {
   if (options.countdownStyle === 'graphic_timer') {
     const png = await buildNextMatchCountdownPng(options);
     const minuteKey = Math.floor(Number(options.now ?? Date.now()) / 60_000);
-    const filename = `openligadb-countdown-${minuteKey}.png`;
-    payload.files = [new AttachmentBuilder(png, { name: filename })];
-    payload.embeds[0].setImage(`attachment://${filename}`);
+    const filenamePrefix = String(options.attachmentPrefix || 'openligadb-countdown')
+      .toLowerCase()
+      .replace(/[^a-z0-9-]/g, '-')
+      .replace(/-+/g, '-');
+    const filename = `${filenamePrefix}-${minuteKey}.png`;
+    return { files: [new AttachmentBuilder(png, { name: filename })] };
   }
   return payload;
 }
@@ -877,9 +880,13 @@ async function buildGoalEventPng(options) {
   return sharp(Buffer.from(buildGoalEventSvg(options))).png().toBuffer();
 }
 
-async function buildGoalEventAttachment(options) {
+function getMarkerAttachmentPrefix(marker) {
+  return String(marker || '').toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-');
+}
+
+async function buildGoalEventAttachment(options, filename = 'openligadb-torereignis.png') {
   const image = await buildGoalEventPng(options);
-  return new AttachmentBuilder(image, { name: 'openligadb-torereignis.png' });
+  return new AttachmentBuilder(image, { name: filename });
 }
 
 function createOpenLigaDbWatcher({ http, client, ServerProfile, logger, requestIntervalMs = 1050, nowProvider = () => Date.now() }) {
@@ -964,13 +971,15 @@ function createOpenLigaDbWatcher({ http, client, ServerProfile, logger, requestI
   async function findMarkedMessages(channel, marker) {
     const [markerType, ...markerParts] = marker.split(':');
     const feedKey = markerParts.slice(-2).join(':');
+    const attachmentMarker = getMarkerAttachmentPrefix(marker);
     const messages = await channel.messages.fetch({ limit: 50 });
     return [...messages.values()].filter(message => message.author.id === client.user.id
-      && message.embeds.some(embed => {
+      && ((message.embeds || []).some(embed => {
         const footer = embed.footer?.text || '';
         return footer.includes(marker)
           || (footer.includes(`${markerType}:`) && footer.endsWith(`:${feedKey}`));
-      }));
+      }) || Array.from(message.attachments?.values?.() || []).some(attachment =>
+        String(attachment.name || '').toLowerCase().startsWith(attachmentMarker))));
   }
 
   async function upsertEmbedMessage({ profile, channelId, key, marker, payload, messages, signatures, createIfMissing = true }) {
@@ -979,14 +988,21 @@ function createOpenLigaDbWatcher({ http, client, ServerProfile, logger, requestI
     const channel = await getChannel(channelId);
     if (!channel) return false;
     const boardKey = `${profile.guildId}:${key}:${channelId}`;
-    const footerText = payload.embeds[0].toJSON().footer?.text || 'OpenLigaDB · ODbL 1.0';
-    payload.embeds[0].setFooter({ text: `${footerText} · ${marker}` });
+    const embed = payload.embeds?.[0];
+    if (embed) {
+      const footerText = embed.toJSON().footer?.text || 'OpenLigaDB · ODbL 1.0';
+      embed.setFooter({ text: `${footerText} · ${marker}` });
+    }
     const fileSignatures = (payload.files || []).map(file => {
       const attachment = file.attachment;
       const data = Buffer.isBuffer(attachment) ? attachment : Buffer.from(String(attachment || ''));
       return createHash('sha256').update(data).digest('hex');
     });
-    const signature = JSON.stringify({ embed: payload.embeds[0].toJSON(), files: fileSignatures });
+    const signature = JSON.stringify({
+      content: payload.content || '',
+      embeds: (payload.embeds || []).map(item => item.toJSON()),
+      files: fileSignatures,
+    });
     if (signatures.get(boardKey) === signature && messages.has(boardKey)) return true;
 
     let message = messages.get(boardKey);
@@ -996,7 +1012,7 @@ function createOpenLigaDbWatcher({ http, client, ServerProfile, logger, requestI
       [message, ...duplicateMessages] = existingMessages;
     }
     if (!message && !createIfMissing) return true;
-    if (message) message = await message.edit({ ...payload, attachments: [] });
+    if (message) message = await message.edit({ ...payload, embeds: payload.embeds || [], attachments: [] });
     else message = await channel.send(payload);
     messages.set(boardKey, message);
     signatures.set(boardKey, signature);
@@ -1055,20 +1071,16 @@ function createOpenLigaDbWatcher({ http, client, ServerProfile, logger, requestI
     });
     if (goalEventSignatures.get(eventKey) === signature) return;
 
+    const marker = `OpenLigaDB-Goal:${feedKey}:${match.matchID}:${goal.goalID}`;
     const attachment = await buildGoalEventAttachment({
       leagueName,
       group,
       match,
       goal,
       color,
-    });
-    const marker = `OpenLigaDB-Goal:${feedKey}:${match.matchID}:${goal.goalID}`;
+    }, `${getMarkerAttachmentPrefix(marker)}.png`);
     const payload = {
       content: `⚽ **Torereignis${minute}!** ${homeName} **${home}:${away}** ${awayName}`,
-      embeds: [new EmbedBuilder()
-        .setColor(color)
-        .setImage('attachment://openligadb-torereignis.png')
-        .setFooter({ text: 'OpenLigaDB · Daten unter ODbL 1.0' })],
       files: [attachment],
     };
     const updated = await upsertEmbedMessage({
@@ -1228,6 +1240,7 @@ function createOpenLigaDbWatcher({ http, client, ServerProfile, logger, requestI
         teamInfo,
         countdownStyle,
         countdownColor,
+        attachmentPrefix: getMarkerAttachmentPrefix(`OpenLigaDB-Countdown:${countdownKey}`),
         now: countdownNow,
       });
       const marker = `OpenLigaDB-Countdown:${countdownKey}`;
@@ -1304,6 +1317,7 @@ function createOpenLigaDbWatcher({ http, client, ServerProfile, logger, requestI
           teamInfo: countdown.teamInfo,
           countdownStyle: countdown.countdownStyle,
           countdownColor: countdown.countdownColor,
+          attachmentPrefix: getMarkerAttachmentPrefix(`OpenLigaDB-Countdown:${countdown.countdownKey}`),
           now: nowProvider(),
         });
         await upsertEmbedMessage({
