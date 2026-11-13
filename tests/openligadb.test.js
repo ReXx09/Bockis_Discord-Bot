@@ -1097,6 +1097,68 @@ describe('OpenLigaDB data formatting', () => {
     expect(sentMessages.filter(payload => payload?.content?.includes('Torereignis'))).toHaveLength(1);
   });
 
+  test('recovers a recent live goal on first observation after startup', async () => {
+    let now = Date.parse('2026-11-13T19:51:46Z');
+    const matches = [{
+      matchID: 85296,
+      matchIsFinished: false,
+      matchDateTime: '2026-11-13T20:45:00',
+      matchDateTimeUTC: '2026-11-13T19:45:00Z',
+      lastUpdateDateTime: '2026-11-13T20:49:08.84',
+      team1: { teamId: 1404, teamName: 'Serbien', shortName: 'SRB' },
+      team2: { teamId: 139, teamName: 'Deutschland', shortName: 'GER' },
+      matchResults: [],
+      goals: [{ goalID: 152663, matchMinute: null, scoreTeam1: 0, scoreTeam2: 1, goalGetterName: '' }],
+    }];
+    const http = { get: jest.fn(async url => {
+      if (url.endsWith('/getavailableleagues')) return { data: [{
+        leagueId: 5981,
+        leagueShortcut: 'DFBN',
+        leagueSeason: '2026',
+        leagueName: 'DFB Nationalspiele',
+        sport: { sportId: 1 },
+      }] };
+      if (url.endsWith('/getcurrentgroup/DFBN')) return { data: { groupName: '5. Spieltag', groupOrderID: 5 } };
+      if (url.includes('/getlastchangedate/')) return { data: '2026-11-13T20:49:08.84' };
+      if (url.includes('/getmatchdata/')) return { data: matches };
+      if (url.includes('/getbltable/')) return { data: [] };
+      throw new Error(`Unexpected URL: ${url}`);
+    }) };
+    const channel = {
+      isTextBased: () => true,
+      messages: { fetch: jest.fn(async () => []) },
+      send: jest.fn(async payload => payload),
+    };
+    const watcher = createOpenLigaDbWatcher({
+      http,
+      client: { user: { id: 'bot' }, channels: { cache: new Map([['channel', channel]]) } },
+      ServerProfile: { findAll: async () => [{ guildId: 'guild', settingsJson: JSON.stringify({
+        DISCORD_OPENLIGADB_ENABLED: true,
+        DISCORD_OPENLIGADB_FEEDS: JSON.stringify([{
+          leagueShortcut: 'DFBN',
+          season: 2026,
+          updateIntervalMinutes: 1,
+          favoriteTeamIds: [139],
+          notificationChannelId: 'channel',
+          tableChannelIds: [],
+        }]),
+      }) }] },
+      logger: { warn: jest.fn(), info: jest.fn() },
+      requestIntervalMs: 0,
+      nowProvider: () => now,
+    });
+
+    await watcher.checkOnce();
+    now += 60_000;
+    await watcher.checkOnce();
+
+    const goalEvents = channel.send.mock.calls
+      .map(([payload]) => payload)
+      .filter(payload => payload?.content?.includes('Torereignis'));
+    expect(goalEvents).toHaveLength(1);
+    expect(goalEvents[0].content).toContain('SRB **0:1** GER');
+  });
+
   test('announces each newly observed favorite goal only once', async () => {
     let changedAt = '2026-11-07T14:00:00Z';
     let channelId = 'channel';

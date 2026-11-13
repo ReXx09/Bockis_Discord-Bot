@@ -692,6 +692,28 @@ function getGoalIds(match) {
   return new Set((match.goals || []).map(goal => String(goal.goalID)).filter(id => id !== 'undefined'));
 }
 
+function getMatchLastUpdateTimestamp(match) {
+  const updatedAt = String(match?.lastUpdateDateTime || '');
+  if (!updatedAt) return NaN;
+  if (/(?:Z|[+-]\d{2}:\d{2})$/i.test(updatedAt)) return Date.parse(updatedAt);
+
+  const updatedAsUtc = Date.parse(`${updatedAt}Z`);
+  const localStartAsUtc = Date.parse(`${match.matchDateTime || ''}Z`);
+  const utcStart = Date.parse(match.matchDateTimeUTC || '');
+  if (![updatedAsUtc, localStartAsUtc, utcStart].every(Number.isFinite)) return NaN;
+  return updatedAsUtc - (localStartAsUtc - utcStart);
+}
+
+function isRecentGoal(match, goal, now, freshnessWindowMs) {
+  const matchStart = Date.parse(match?.matchDateTimeUTC || '');
+  const minute = goal?.matchMinute == null || goal.matchMinute === '' ? NaN : Number(goal.matchMinute);
+  const eventTime = Number.isFinite(matchStart) && Number.isFinite(minute) && minute >= 0
+    ? matchStart + minute * 60_000
+    : getMatchLastUpdateTimestamp(match);
+  const age = now - eventTime;
+  return Number.isFinite(eventTime) && age >= -60_000 && age <= freshnessWindowMs;
+}
+
 function getHalfTimeResult(match) {
   return (match.matchResults || []).find(result =>
     String(result.resultTypeKind || '').toLowerCase() === 'halftime'
@@ -964,6 +986,26 @@ function createOpenLigaDbWatcher({ http, client, ServerProfile, logger, requestI
     }
   }
 
+  async function sendGoalEvent(channel, leagueName, group, match, goal, feedConfig) {
+    const [matchHome, matchAway] = getMatchScore(match);
+    const home = Number.isInteger(goal.scoreTeam1) ? goal.scoreTeam1 : matchHome;
+    const away = Number.isInteger(goal.scoreTeam2) ? goal.scoreTeam2 : matchAway;
+    const homeName = match.team1?.shortName || match.team1?.teamName || 'Heimteam';
+    const awayName = match.team2?.shortName || match.team2?.teamName || 'Auswärtsteam';
+    const minute = goal.matchMinute == null ? '' : ` (${goal.matchMinute}')`;
+    const attachment = await buildGoalEventAttachment({
+      leagueName,
+      group,
+      match,
+      goal,
+      color: feedConfig.countdownColor || getDefaultCountdownColor(feedConfig.leagueShortcut),
+    });
+    await channel.send({
+      content: `⚽ **Torereignis${minute}!** ${homeName} **${home}:${away}** ${awayName}`,
+      files: [attachment],
+    });
+  }
+
   async function sendMatchEvents(profile, feedConfig, currentFeed, favoriteTeamIds, leagueName, now = Date.now()) {
     const channelId = String(feedConfig.notificationChannelId || '').trim();
     if (!channelId || !favoriteTeamIds.length) return;
@@ -971,6 +1013,10 @@ function createOpenLigaDbWatcher({ http, client, ServerProfile, logger, requestI
     if (!channel) return;
     const favoriteSet = new Set(favoriteTeamIds);
     const statePrefix = `${profile.guildId}:${feedConfig.leagueShortcut}:${currentFeed.key}`;
+    const recoveryWindowMs = Math.min(
+      15 * 60_000,
+      getOpenLigaDbUpdateIntervalMs(feedConfig) + 3 * 60_000,
+    );
 
     for (const match of currentFeed.matches) {
       const matchFavorites = [match.team1, match.team2].filter(team => favoriteSet.has(team?.teamId));
@@ -982,6 +1028,13 @@ function createOpenLigaDbWatcher({ http, client, ServerProfile, logger, requestI
       const kickoffReached = Number.isFinite(matchStart) && matchStart <= now;
       const previous = eventStates.get(stateKey);
       if (!previous) {
+        if (!match.matchIsFinished) {
+          for (const goal of match.goals || []) {
+            if (goal.goalID != null && isRecentGoal(match, goal, now, recoveryWindowMs)) {
+              await sendGoalEvent(channel, leagueName, currentFeed.group, match, goal, feedConfig);
+            }
+          }
+        }
         eventStates.set(stateKey, {
           goalIds,
           finished: Boolean(match.matchIsFinished),
@@ -1003,20 +1056,7 @@ function createOpenLigaDbWatcher({ http, client, ServerProfile, logger, requestI
 
       for (const goal of match.goals || []) {
         if (goalIds.has(String(goal.goalID)) && !previous.goalIds.has(String(goal.goalID))) {
-          const home = Number.isInteger(goal.scoreTeam1) ? goal.scoreTeam1 : getMatchScore(match)[0];
-          const away = Number.isInteger(goal.scoreTeam2) ? goal.scoreTeam2 : getMatchScore(match)[1];
-          const minute = goal.matchMinute == null ? '' : ` (${goal.matchMinute}')`;
-          const attachment = await buildGoalEventAttachment({
-            leagueName,
-            group: currentFeed.group,
-            match,
-            goal,
-            color: feedConfig.countdownColor || getDefaultCountdownColor(feedConfig.leagueShortcut),
-          });
-          await channel.send({
-            content: `⚽ **Torereignis${minute}!** ${match.team1?.shortName || match.team1?.teamName} **${home}:${away}** ${match.team2?.shortName || match.team2?.teamName}`,
-            files: [attachment],
-          });
+          await sendGoalEvent(channel, leagueName, currentFeed.group, match, goal, feedConfig);
         }
       }
 
