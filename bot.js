@@ -5831,10 +5831,12 @@ function initializeUpdateCycle() {
 // Damit ist das Dashboard auch erreichbar wenn der Token noch nicht stimmt
 const _webDeps = { config, logger, client, sequelize, ServerProfile, prom, getMonitorData, updateStatusMessage, getWigiDashStatus, getCommandTilePreviewText, ensureCommandTile, getGitHubReleasePreviewPng, getGitHubReleasePreviewData, getGitHubReleaseGraphicPreviewPng, sendGitHubReleasePreview, runGitHubReleaseCheck, rootDir: __dirname };
 let _httpServer = null;
-initializeDatabase().then(() => { _httpServer = startWebServer(_webDeps); }).catch(err => {
-  logger.error(`DB/Webserver-Startfehler: ${err.message}`);
-  _httpServer = startWebServer(_webDeps); // Webserver trotzdem starten (ohne DB)
-});
+if (process.env.NODE_ENV !== 'test') {
+  initializeDatabase().then(() => { _httpServer = startWebServer(_webDeps); }).catch(err => {
+    logger.error(`DB/Webserver-Startfehler: ${err.message}`);
+    _httpServer = startWebServer(_webDeps); // Webserver trotzdem starten (ohne DB)
+  });
+}
 
 client.once('ready', async () => {
   logger.info(`Bot eingeloggt als ${client.user.tag}`);
@@ -5907,10 +5909,12 @@ client.on('error', (err) => {
 });
 
 // Discord-Login (Fehler werden geloggt, Webserver läuft weiter)
-client.login(config.get('discord.token')).catch(err => {
-  logger.error(`Discord Login fehlgeschlagen: ${err.message}`);
-  logger.warn('Bot läuft im eingeschränkten Modus — Dashboard unter http://localhost:' + config.get('webPort'));
-});
+if (process.env.NODE_ENV !== 'test') {
+  client.login(config.get('discord.token')).catch(err => {
+    logger.error(`Discord Login fehlgeschlagen: ${err.message}`);
+    logger.warn('Bot läuft im eingeschränkten Modus — Dashboard unter http://localhost:' + config.get('webPort'));
+  });
+}
 
 async function initializeDatabase() {
   // sync() = create-if-not-exists, kein ALTER — SQLite unterstützt kein ALTER COLUMN
@@ -5967,6 +5971,9 @@ if (process.env.NODE_ENV === 'test') {
     async simulateStatusCheck() {
       const monitors = await getMonitorData();
       return { checksPerformed: monitors?.length ?? 0 };
+    },
+    async close() {
+      await sequelize.close();
     },
     buildReleaseBannerPayload
   };

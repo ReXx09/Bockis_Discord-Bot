@@ -1406,6 +1406,11 @@ describe('OpenLigaDB data formatting', () => {
       throw new Error(`Unexpected URL: ${url}`);
     }) };
     const scoreboardMessage = { edit: jest.fn(async () => scoreboardMessage) };
+    const scoreboardChannel = {
+      isTextBased: () => true,
+      messages: { fetch: jest.fn(async () => []) },
+      send: jest.fn(async () => scoreboardMessage),
+    };
     const channel = {
       isTextBased: () => true,
       messages: { fetch: jest.fn(async () => []) },
@@ -1413,7 +1418,7 @@ describe('OpenLigaDB data formatting', () => {
     };
     const watcher = createOpenLigaDbWatcher({
       http,
-      client: { user: { id: 'bot' }, channels: { cache: new Map([['channel', channel]]) } },
+      client: { user: { id: 'bot' }, channels: { cache: new Map([['channel', channel], ['scoreboard-channel', scoreboardChannel]]) } },
       ServerProfile: { findAll: async () => [{ guildId: 'guild', settingsJson: JSON.stringify({
         DISCORD_OPENLIGADB_ENABLED: true,
         DISCORD_OPENLIGADB_FEEDS: JSON.stringify([{
@@ -1422,6 +1427,7 @@ describe('OpenLigaDB data formatting', () => {
           updateIntervalMinutes: 1,
           favoriteTeamIds: [40],
           notificationChannelId: 'channel',
+          scoreboardChannelId: 'scoreboard-channel',
           tableChannelIds: [],
         }]),
       }) }] },
@@ -1446,6 +1452,8 @@ describe('OpenLigaDB data formatting', () => {
 
     const sentMessages = channel.send.mock.calls.map(([payload]) => payload);
     const eventMessages = sentMessages.filter(payload => typeof payload === 'string');
+    expect(scoreboardChannel.send.mock.calls.some(([payload]) => payload?.embeds?.[0]?.toJSON().title?.includes('1. Bundesliga'))).toBe(true);
+    expect(channel.send.mock.calls.some(([payload]) => payload?.embeds?.length)).toBe(false);
     expect(eventMessages.filter(message => message.includes('Anpfiff!'))).toHaveLength(1);
     expect(eventMessages.filter(message => message.includes('Halbzeit:'))).toHaveLength(1);
     expect(sentMessages.filter(payload => payload?.content?.includes('Torereignis'))).toHaveLength(1);

@@ -5,6 +5,10 @@ describe('Status Bot', () => {
     await testSuite.initialize();
   });
 
+  afterAll(async () => {
+    await testSuite.close();
+  });
+
   test('Database connection', async () => {
     await expect(testSuite.checkDatabase()).resolves.toBe(true);
   });

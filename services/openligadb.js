@@ -1358,20 +1358,23 @@ function createOpenLigaDbWatcher({ http, client, ServerProfile, logger, requestI
     const favoriteTeamIds = getFavoriteTeamIds(feedConfig);
     const feedKey = `${leagueShortcut}:${season}`;
 
-    if (favoriteTeamIds.length && feedConfig.notificationChannelId) {
+    if (favoriteTeamIds.length) {
       const payload = buildScoreboardPayload({ leagueName, group: currentFeed.group, matches: currentFeed.matches, favoriteTeamIds });
-      try {
-        await upsertEmbedMessage({
-          profile,
-          channelId: feedConfig.notificationChannelId,
-          key: `scoreboard:${feedKey}`,
-          marker: `OpenLigaDB-Scoreboard:${feedKey}`,
-          payload,
-          messages: boardMessages,
-          signatures: boardSignatures,
-        });
-      } catch (error) {
-        logger.warn(`OpenLigaDB-Spielstand für ${feedKey} in Guild ${profile.guildId} konnte nicht aktualisiert werden: ${error.message}`);
+      const scoreboardChannelId = String(feedConfig.scoreboardChannelId || feedConfig.notificationChannelId || '').trim();
+      if (scoreboardChannelId) {
+        try {
+          await upsertEmbedMessage({
+            profile,
+            channelId: scoreboardChannelId,
+            key: `scoreboard:${feedKey}`,
+            marker: `OpenLigaDB-Scoreboard:${feedKey}`,
+            payload,
+            messages: boardMessages,
+            signatures: boardSignatures,
+          });
+        } catch (error) {
+          logger.warn(`OpenLigaDB-Spielstand für ${feedKey} in Guild ${profile.guildId} konnte nicht aktualisiert werden: ${error.message}`);
+        }
       }
       await sendMatchEvents(profile, feedConfig, currentFeed, favoriteTeamIds, leagueName, nowProvider());
     }

@@ -6915,6 +6915,10 @@
       <label class="cfg-label">Kanal für Tor- und Spielmeldungen
         <input class="cfg-input" data-openliga-role="notification" type="text" autocomplete="off" placeholder="Discord-Kanal-ID">
       </label>
+      <label class="cfg-label">Kanal für Spieltags-/Gruppenübersicht (optional)
+        <input class="cfg-input" data-openliga-role="scoreboard-channel" type="text" autocomplete="off" placeholder="Discord-Kanal-ID · leer = Meldungskanal">
+      </label>
+      <div class="cfg-hint">Die Übersicht mit den Spielen und Ergebnissen des aktuellen Spieltags kann hier getrennt von Tor- und Spielmeldungen gepostet werden.</div>
       <label class="cfg-label">Kanäle für die Live-Tabelle
         <input class="cfg-input" data-openliga-role="tables" type="text" autocomplete="off" placeholder="Kanal-IDs mit Komma oder Semikolon trennen">
       </label>
@@ -6957,6 +6961,7 @@
     };
     updateTableFeedWarning();
     row.querySelector('[data-openliga-role="notification"]').value = feed.notificationChannelId || '';
+    row.querySelector('[data-openliga-role="scoreboard-channel"]').value = feed.scoreboardChannelId || '';
     row.querySelector('[data-openliga-role="countdown-channel"]').value = feed.countdownChannelId || '';
     row.querySelector('[data-openliga-role="tables"]').value = (feed.tableChannelIds || []).join(',');
     row.querySelector('[data-openliga-role="countdown-team"]').dataset.savedValue = feed.countdownTeamId == null
@@ -7235,6 +7240,7 @@
         countdownColor: row.querySelector('[data-openliga-role="countdown-color"]').value,
         countdownChannelId: row.querySelector('[data-openliga-role="countdown-channel"]').value.trim(),
         notificationChannelId: row.querySelector('[data-openliga-role="notification"]').value.trim(),
+        scoreboardChannelId: row.querySelector('[data-openliga-role="scoreboard-channel"]').value.trim(),
         tableChannelIds: [...new Set(row.querySelector('[data-openliga-role="tables"]').value.split(/[;,]/).map(id => id.trim()).filter(Boolean))],
       };
     }).filter(feed => feed.leagueShortcut);

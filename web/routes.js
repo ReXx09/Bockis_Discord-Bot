@@ -175,6 +175,10 @@ function normalizeOpenLigaDbFeeds(value) {
     if (notificationChannelId && !/^\d{1,24}$/.test(notificationChannelId)) {
       throw new Error(`Ungültiger Meldungskanal für ${leagueShortcut}.`);
     }
+    const scoreboardChannelId = String(feed.scoreboardChannelId || '').trim();
+    if (scoreboardChannelId && !/^\d{1,24}$/.test(scoreboardChannelId)) {
+      throw new Error(`Ungültiger Übersichtskanal für ${leagueShortcut}.`);
+    }
     const countdownChannelId = String(feed.countdownChannelId || '').trim();
     if (countdownChannelId && !/^\d{1,24}$/.test(countdownChannelId)) {
       throw new Error(`Ungültiger Countdown-Kanal für ${leagueShortcut}.`);
@@ -196,6 +200,7 @@ function normalizeOpenLigaDbFeeds(value) {
         template: imageTemplate,
       },
       notificationChannelId,
+      scoreboardChannelId,
       countdownChannelId,
       tableChannelIds: [...new Set(tableChannelIds.map(String))],
     };
