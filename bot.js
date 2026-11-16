@@ -118,7 +118,10 @@ const {
   runWithServerProfile,
   withServerProfile,
 } = require('./server-profiles');
-const { createOpenLigaDbWatcher } = require('./services/openligadb');
+const {
+  createOpenLigaDbWatcher,
+  getOpenLigaDbMessageType,
+} = require('./services/openligadb');
 const { createApiFootballWatcher } = require('./services/api-football');
 const { setApiUsageDailyLimit } = require('./services/api-usage');
 installServerProfileConfig(config);
@@ -1139,9 +1142,12 @@ async function cleanupMessagesInChannel(channel, options = {}) {
       if (msg.pinned) continue;
       if (cleanupInfoMessageIds[channel.id] === msg.id) continue;
       if (onlyBotMessages && !msg.author?.bot) continue;
+      const managedMessageType = getOpenLigaDbMessageType(msg);
+      if (managedMessageType === 'countdown') continue;
 
-      eligible++;
-      const overCount = maxMessages > 0 && eligible > maxMessages;
+      const countsTowardMessageLimit = managedMessageType !== 'goal';
+      if (countsTowardMessageLimit) eligible++;
+      const overCount = countsTowardMessageLimit && maxMessages > 0 && eligible > maxMessages;
       const overAge = cutoffTs > 0 && msg.createdTimestamp < cutoffTs;
       if (!overCount && !overAge) continue;
 

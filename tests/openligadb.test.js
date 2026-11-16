@@ -1,6 +1,8 @@
 const {
   buildScoreboardPayload,
+  buildFinishedMatchSvg,
   buildFinishedMatchPng,
+  buildGoalEventSvg,
   buildGoalEventPng,
   buildNextMatchCountdownSvg,
   buildNextMatchCountdownMessage,
@@ -16,6 +18,7 @@ const {
   getMatchScore,
   getMatchStatus,
   getSeasonForLeague,
+  getOpenLigaDbMessageType,
   OPENLIGADB_COUNTDOWN_STYLES,
 } = require('../services/openligadb');
 const { createApiUsageTracker } = require('../services/api-usage');
@@ -40,6 +43,19 @@ const {
 } = require('../services/api-football');
 
 describe('OpenLigaDB data formatting', () => {
+  test('identifies managed countdown and goal-event messages for cleanup retention', () => {
+    expect(getOpenLigaDbMessageType({
+      attachments: new Map([['image', { name: 'openligadb-countdown-bvb-2026-123.png' }]]),
+    })).toBe('countdown');
+    expect(getOpenLigaDbMessageType({
+      attachments: new Map([['image', { name: 'openligadb-goal-bundesliga-456.png' }]]),
+    })).toBe('goal');
+    expect(getOpenLigaDbMessageType({
+      embeds: [{ footer: { text: 'OpenLigaDB · OpenLigaDB-Countdown:bl1:2026' } }],
+    })).toBe('countdown');
+    expect(getOpenLigaDbMessageType({ content: 'Unrelated message' })).toBeNull();
+  });
+
   test('persists daily request counts for both providers and resets them on UTC day change', () => {
     const fs = require('fs');
     const os = require('os');
@@ -583,6 +599,23 @@ describe('OpenLigaDB data formatting', () => {
     expect(png.subarray(0, 8)).toEqual(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
   });
 
+  test('colors finished-match scorers by team and identifies penalty and own goals', () => {
+    const svg = buildFinishedMatchSvg({
+      leagueName: '1. Bundesliga',
+      match: {
+        team1: { teamId: 1, shortName: 'BVB' },
+        team2: { teamId: 2, shortName: 'FCB' },
+        goals: [
+          { matchMinute: 12, scoreTeam1: 0, scoreTeam2: 1, scoringTeamId: 2, isOwnGoal: true, goalGetterName: 'Spieler A' },
+          { matchMinute: 36, scoreTeam1: 0, scoreTeam2: 2, scoringTeamId: 2, isPenalty: true, goalGetterName: 'Spieler B' },
+        ],
+      },
+    });
+
+    expect(svg).toContain('<tspan fill="#75B9FF">12&apos; Spieler A (Eigentor für FCB)</tspan>');
+    expect(svg).toContain('<tspan fill="#FF9B80">36&apos; Spieler B (Elfmeter)</tspan>');
+  });
+
   test('renders a goal event graphic as a PNG', async () => {
     const png = await buildGoalEventPng({
       leagueName: '1. Bundesliga',
@@ -597,6 +630,49 @@ describe('OpenLigaDB data formatting', () => {
     });
 
     expect(png.subarray(0, 8)).toEqual(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+  });
+
+  test('shows scorer team colors and goal types on the event tile', () => {
+    const ownGoal = {
+      matchMinute: 67,
+      scoreTeam1: 0,
+      scoreTeam2: 1,
+      scoringTeamId: 2,
+      isOwnGoal: true,
+      goalGetterName: 'Spieler A',
+    };
+    const ownGoalSvg = buildGoalEventSvg({
+      leagueName: '1. Bundesliga',
+      match: {
+        team1: { teamId: 1, shortName: 'BVB' },
+        team2: { teamId: 2, shortName: 'FCB' },
+        goals: [ownGoal],
+      },
+      goal: ownGoal,
+    });
+    const penalty = {
+      matchMinute: 88,
+      scoreTeam1: 0,
+      scoreTeam2: 2,
+      scoringTeamId: 2,
+      isPenalty: true,
+      goalGetterName: 'Spieler B',
+    };
+    const penaltySvg = buildGoalEventSvg({
+      leagueName: '1. Bundesliga',
+      match: {
+        team1: { teamId: 1, shortName: 'BVB' },
+        team2: { teamId: 2, shortName: 'FCB' },
+        goals: [ownGoal, penalty],
+      },
+      goal: penalty,
+    });
+
+    expect(ownGoalSvg).toContain('EIGENTOR FÜR FCB');
+    expect(ownGoalSvg).toContain('fill="#75B9FF"');
+    expect(ownGoalSvg).toContain('Spieler A (Eigentor für FCB)');
+    expect(penaltySvg).toContain('ELFMETER');
+    expect(penaltySvg).toContain('Spieler B (Elfmeter)');
   });
 
   test('builds a dynamic Discord countdown for the selected favorite team', () => {
@@ -694,7 +770,10 @@ describe('OpenLigaDB data formatting', () => {
     expect(svg).toContain('LIVE-SPIEL');
     expect(svg).toContain('>2:0</text>');
     expect(svg).not.toContain('LIVE  ·  2:0');
-    expect(svg).toContain('Torschützen: 3&apos; S. Babic (Eigentor) · 14&apos; F. Wirtz');
+    expect(svg).toContain('<tspan fill="#75B9FF">3&apos; S. Babic (Eigentor für GER)</tspan>');
+    expect(svg).toContain('<tspan fill="#FF9B80">14&apos; F. Wirtz</tspan>');
+    expect(svg).toContain('fill="#75B9FF" font-family="Arial, sans-serif" font-size="42" font-weight="700">SRB</text>');
+    expect(svg).toContain('fill="#FF9B80" font-family="Arial, sans-serif" font-size="42" font-weight="700">GER</text>');
     expect(svg).not.toContain('NÄCHSTES SPIEL');
   });
 
@@ -715,7 +794,7 @@ describe('OpenLigaDB data formatting', () => {
 
     expect(svg).toContain('SPIEL BEENDET');
     expect(svg).toContain('>3:1</text>');
-    expect(svg).toContain('Torschützen: 56&apos; S. Babic');
+    expect(svg).toContain('<tspan fill="#D0D5DF">56&apos; S. Babic</tspan>');
     expect(svg).not.toContain('LIVE-SPIEL');
   });
 
@@ -1060,6 +1139,80 @@ describe('OpenLigaDB data formatting', () => {
     await watcher.checkOnce();
     expect(countdownMessage.edit).toHaveBeenCalledTimes(2);
     expect(countdownChannel.send).not.toHaveBeenCalled();
+  });
+
+  test('recreates a countdown tile after cleanup deleted its cached Discord message', async () => {
+    let now = Date.parse('2026-11-10T12:00:00Z');
+    let deleted = false;
+    const oldMessage = {
+      id: 'deleted-countdown',
+      edit: jest.fn(async () => oldMessage),
+    };
+    const replacementMessage = { id: 'replacement-countdown', edit: jest.fn(async () => replacementMessage) };
+    const nextMatch = {
+      matchDateTimeUTC: '2026-11-20T19:30:00Z',
+      group: { groupName: '10. Spieltag' },
+      team1: { teamId: 40, teamName: 'Bayern', shortName: 'Bayern' },
+      team2: { teamId: 65, teamName: 'Köln', shortName: 'Köln' },
+    };
+    const http = { get: jest.fn(async url => {
+      if (url.endsWith('/getavailableleagues')) return { data: [{
+        leagueId: 4937,
+        leagueShortcut: 'bl1',
+        leagueSeason: '2026',
+        leagueName: '1. Bundesliga',
+        sport: { sportId: 1 },
+      }] };
+      if (url.endsWith('/getcurrentgroup/bl1')) return { data: { groupName: '10. Spieltag', groupOrderID: 10 } };
+      if (url.includes('/getlastchangedate/')) return { data: '2026-11-10T11:00:00Z' };
+      if (url.includes('/getmatchdata/')) return { data: [] };
+      if (url.includes('/getbltable/')) return { data: [{ teamId: 40, teamName: 'Bayern', shortName: 'Bayern' }] };
+      if (url.endsWith('/getnextmatchbyleagueteam/4937/40')) return { data: nextMatch };
+      throw new Error(`Unexpected URL: ${url}`);
+    }) };
+    const channel = {
+      isTextBased: () => true,
+      messages: {
+        fetch: jest.fn(async options => {
+          if (options?.message === oldMessage.id && deleted) {
+            const error = new Error('Unknown Message');
+            error.code = 10008;
+            throw error;
+          }
+          return new Map();
+        }),
+      },
+      send: jest.fn()
+        .mockResolvedValueOnce(oldMessage)
+        .mockResolvedValueOnce(replacementMessage),
+    };
+    const watcher = createOpenLigaDbWatcher({
+      http,
+      client: { user: { id: 'bot' }, channels: { cache: new Map([['countdown-channel', channel]]) } },
+      ServerProfile: { findAll: async () => [{ guildId: 'guild', settingsJson: JSON.stringify({
+        DISCORD_OPENLIGADB_ENABLED: true,
+        DISCORD_OPENLIGADB_FEEDS: JSON.stringify([{
+          leagueShortcut: 'bl1',
+          season: 2026,
+          updateIntervalMinutes: 1,
+          favoriteTeamIds: [40],
+          countdownTeamId: 40,
+          countdownChannelId: 'countdown-channel',
+        }]),
+      }) }] },
+      logger: { warn: jest.fn(), info: jest.fn() },
+      requestIntervalMs: 0,
+      nowProvider: () => now,
+    });
+
+    await watcher.checkOnce();
+    expect(channel.send).toHaveBeenCalledTimes(1);
+    deleted = true;
+    now += 60_000;
+    await watcher.checkOnce();
+
+    expect(channel.send).toHaveBeenCalledTimes(2);
+    expect(channel.send.mock.calls[1][0].embeds[0].toJSON().title).toContain('Nächstes Spiel');
   });
 
   test('refreshes the live countdown every minute without polling the league again', async () => {

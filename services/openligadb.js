@@ -356,6 +356,108 @@ function getMatchStatus(match, now = Date.now()) {
   return 'Anstoß ausstehend';
 }
 
+const HOME_GOAL_COLOR = '#75B9FF';
+const AWAY_GOAL_COLOR = '#FF9B80';
+const UNKNOWN_GOAL_COLOR = '#D0D5DF';
+
+function getGoalScore(value) {
+  if (value == null || value === '') return null;
+  const score = Number(value);
+  return Number.isInteger(score) ? score : null;
+}
+
+function getScoringTeamId(match, goal) {
+  const team1Id = Number(match?.team1?.teamId);
+  const team2Id = Number(match?.team2?.teamId);
+  const explicitTeamId = Number(goal?.scoringTeamId);
+  if (explicitTeamId === team1Id || explicitTeamId === team2Id) return explicitTeamId;
+
+  const goals = Array.isArray(match?.goals) ? match.goals : [];
+  let goalIndex = goals.indexOf(goal);
+  if (goalIndex < 0 && goal?.goalID != null) {
+    goalIndex = goals.findIndex(candidate => String(candidate.goalID) === String(goal.goalID));
+  }
+  const previousGoal = goalIndex > 0
+    ? goals.slice(0, goalIndex).reverse().find(candidate =>
+      getGoalScore(candidate.scoreTeam1) != null && getGoalScore(candidate.scoreTeam2) != null)
+    : null;
+  const previousTeam1Score = previousGoal ? getGoalScore(previousGoal.scoreTeam1) : 0;
+  const previousTeam2Score = previousGoal ? getGoalScore(previousGoal.scoreTeam2) : 0;
+  const currentTeam1Score = getGoalScore(goal?.scoreTeam1);
+  const currentTeam2Score = getGoalScore(goal?.scoreTeam2);
+  if (currentTeam1Score == null || currentTeam2Score == null) return null;
+
+  const team1Delta = currentTeam1Score - previousTeam1Score;
+  const team2Delta = currentTeam2Score - previousTeam2Score;
+  if (team1Delta > 0 && team2Delta === 0 && Number.isFinite(team1Id)) return team1Id;
+  if (team2Delta > 0 && team1Delta === 0 && Number.isFinite(team2Id)) return team2Id;
+  return null;
+}
+
+function getGoalPresentation(match, goal) {
+  const sourceText = [goal?.goalGetterName, goal?.comment].filter(Boolean).join(' ');
+  const isOwnGoal = goal?.isOwnGoal === true
+    || String(goal?.isOwnGoal).toLowerCase() === 'true'
+    || /eigentor|own goal/i.test(sourceText);
+  const isPenalty = goal?.isPenalty === true
+    || String(goal?.isPenalty).toLowerCase() === 'true'
+    || /elfmeter|strafstoß|penalt/i.test(sourceText);
+  const scoringTeamId = getScoringTeamId(match, goal);
+  const team1Id = Number(match?.team1?.teamId);
+  const team2Id = Number(match?.team2?.teamId);
+  const scoringTeam = scoringTeamId === team1Id ? match?.team1
+    : scoringTeamId === team2Id ? match?.team2
+      : null;
+  const scorerTeamId = isOwnGoal
+    ? scoringTeamId === team1Id ? team2Id : scoringTeamId === team2Id ? team1Id : null
+    : scoringTeamId;
+  const scorerTeam = scorerTeamId === team1Id ? match?.team1
+    : scorerTeamId === team2Id ? match?.team2
+      : null;
+  const rawScorer = String(goal?.goalGetterName || '').replace(
+    /\s*\((?:eigentor|own goal|elfmeter|penalty)\)\s*/gi,
+    ' ',
+  ).trim();
+  const scorer = rawScorer || 'Torschütze unbekannt';
+  const scoringTeamName = scoringTeam?.shortName || scoringTeam?.teamName || '';
+  const qualifiers = [];
+  if (isOwnGoal) qualifiers.push(`Eigentor${scoringTeamName ? ` für ${scoringTeamName}` : ''}`);
+  if (isPenalty) qualifiers.push('Elfmeter');
+  const color = scorerTeamId === team1Id ? HOME_GOAL_COLOR
+    : scorerTeamId === team2Id ? AWAY_GOAL_COLOR
+      : UNKNOWN_GOAL_COLOR;
+  const eventLabels = [];
+  if (isOwnGoal) eventLabels.push(`EIGENTOR${scoringTeamName ? ` FÜR ${scoringTeamName.toLocaleUpperCase('de-DE')}` : ''}`);
+  if (isPenalty) eventLabels.push('ELFMETER');
+
+  return {
+    scorer,
+    scorerTeamId,
+    scoringTeamId,
+    scoringTeamName,
+    color,
+    isOwnGoal,
+    isPenalty,
+    displayName: `${scorer}${qualifiers.length ? ` (${qualifiers.join(', ')})` : ''}`,
+    eventLabel: eventLabels.length ? eventLabels.join(' · ') : 'TOR',
+  };
+}
+
+function buildScorerMarkup(match, goals, limit = 3, maxLength = 34) {
+  const allGoals = Array.isArray(goals) ? goals : [];
+  const visibleGoals = allGoals.slice(-limit);
+  const events = visibleGoals.map(goal => {
+    const presentation = getGoalPresentation(match, goal);
+    const minute = goal?.matchMinute == null ? '' : `${goal.matchMinute}' `;
+    const label = fitSvgText(`${minute}${presentation.displayName}`, maxLength);
+    return `<tspan fill="${presentation.color}">${escapeSvgText(label)}</tspan>`;
+  });
+  if (allGoals.length > limit) {
+    events.push(`<tspan fill="${UNKNOWN_GOAL_COLOR}">+${allGoals.length - limit}</tspan>`);
+  }
+  return events.join(`<tspan fill="${UNKNOWN_GOAL_COLOR}"> · </tspan>`);
+}
+
 function buildScoreboardPayload({ leagueName, group, matches, favoriteTeamIds, now = Date.now() }) {
   const favorites = new Set((favoriteTeamIds || []).map(Number));
   const favoriteMatches = (matches || [])
@@ -377,7 +479,7 @@ function buildScoreboardPayload({ leagueName, group, matches, favoriteTeamIds, n
       const status = getMatchStatus(match, now);
       const goals = (match.goals || []).slice(-4).map(goal => {
         const minute = goal.matchMinute == null ? '' : ` ${goal.matchMinute}'`;
-        return `${minute} ${goal.goalGetterName || 'Tor'}`.trim();
+        return `${minute} ${getGoalPresentation(match, goal).displayName}`.trim();
       }).join(' · ');
       return {
         name: `${homeName}  ${home} : ${away}  ${awayName}`.slice(0, 256),
@@ -531,16 +633,12 @@ function buildNextMatchCountdownSvg({ leagueName, match, teamId, teamInfo, count
   const isFinishedMatch = match?.matchIsFinished === true;
   const isLiveMatch = match && Number.isFinite(matchTime) && matchTime <= now && match.matchIsFinished !== true;
   const [homeScore, awayScore] = getMatchScore(match);
-  const teamScore = Number(team?.teamId) === Number(match?.team1?.teamId) ? homeScore : awayScore;
-  const opponentScore = Number(team?.teamId) === Number(match?.team1?.teamId) ? awayScore : homeScore;
-  const scorerEvents = (Array.isArray(match?.goals) ? match.goals : []).map(goal => {
-    const scorer = String(goal.goalGetterName || '').trim() || 'Torschütze unbekannt';
-    const minute = goal.matchMinute == null ? '' : `${goal.matchMinute}' `;
-    return `${minute}${scorer}`;
-  });
-  const scorerSummary = scorerEvents.length
-    ? fitSvgText(`${scorerEvents.slice(-3).join(' · ')}${scorerEvents.length > 3 ? ` · +${scorerEvents.length - 3}` : ''}`, 100)
-    : '';
+  const favoriteIsHome = Number(team?.teamId) === Number(match?.team1?.teamId);
+  const teamScore = favoriteIsHome ? homeScore : awayScore;
+  const opponentScore = favoriteIsHome ? awayScore : homeScore;
+  const scorerSummary = buildScorerMarkup(match, match?.goals, 3, 34);
+  const favoriteColor = favoriteIsHome ? HOME_GOAL_COLOR : AWAY_GOAL_COLOR;
+  const opponentColor = favoriteIsHome ? AWAY_GOAL_COLOR : HOME_GOAL_COLOR;
   const heading = isFinishedMatch ? 'SPIEL BEENDET' : isLiveMatch ? 'LIVE-SPIEL' : 'NÄCHSTES SPIEL';
   const status = hasUpcomingMatch
     ? `${days} TAGE  ·  ${hours} STD.  ·  ${minutes} MIN.`
@@ -557,12 +655,12 @@ function buildNextMatchCountdownSvg({ leagueName, match, teamId, teamInfo, count
     <circle cx="600" cy="275" r="220" fill="none" stroke="${accent}" stroke-opacity=".08" stroke-width="2"/>
     <text x="600" y="86" text-anchor="middle" fill="${accent}" font-family="Arial, sans-serif" font-size="30" font-weight="700" letter-spacing="5">${escapeSvgText(heading)}</text>
     <text x="600" y="142" text-anchor="middle" fill="#b9c0ce" font-family="Arial, sans-serif" font-size="22">${escapeSvgText(competition)}</text>
-    <text x="330" y="286" text-anchor="middle" fill="#f5f6fa" font-family="Arial, sans-serif" font-size="42" font-weight="700">${escapeSvgText(teamName)}</text>
+    <text x="330" y="286" text-anchor="middle" fill="${favoriteColor}" font-family="Arial, sans-serif" font-size="42" font-weight="700">${escapeSvgText(teamName)}</text>
     <text x="600" y="286" text-anchor="middle" fill="${accent}" font-family="Arial, sans-serif" font-size="28" font-weight="700">VS</text>
-    <text x="870" y="286" text-anchor="middle" fill="#f5f6fa" font-family="Arial, sans-serif" font-size="42" font-weight="700">${escapeSvgText(opponentName)}</text>
+    <text x="870" y="286" text-anchor="middle" fill="${opponentColor}" font-family="Arial, sans-serif" font-size="42" font-weight="700">${escapeSvgText(opponentName)}</text>
     <path d="M170 365h860" stroke="${accent}" stroke-opacity=".45" stroke-width="2"/>
     <text x="600" y="440" text-anchor="middle" fill="#ffffff" font-family="Arial, sans-serif" font-size="56" font-weight="800" letter-spacing="2">${escapeSvgText(status)}</text>
-    ${(isLiveMatch || isFinishedMatch) && scorerSummary ? `<text x="600" y="486" text-anchor="middle" fill="#d0d5df" font-family="Arial, sans-serif" font-size="20">${escapeSvgText(`Torschützen: ${scorerSummary}`)}</text>` : ''}
+    ${(isLiveMatch || isFinishedMatch) && scorerSummary ? `<text x="600" y="486" text-anchor="middle" font-family="Arial, sans-serif" font-size="18"><tspan fill="#d0d5df">Torschützen: </tspan>${scorerSummary}</text>` : ''}
     <text x="600" y="568" text-anchor="middle" fill="#929bad" font-family="Arial, sans-serif" font-size="18">OpenLigaDB · Daten unter ODbL 1.0</text>
   </svg>`;
 }
@@ -813,15 +911,7 @@ function buildFinishedMatchSvg({ leagueName, group, match, settings = {}, source
   const [home, away] = getMatchScore(match);
   const team1 = fitSvgText(match.team1?.shortName || match.team1?.teamName || 'Heimteam');
   const team2 = fitSvgText(match.team2?.shortName || match.team2?.teamName || 'Auswärtsteam');
-  const goals = (Array.isArray(match.goals) ? match.goals : [])
-    .map(goal => {
-      const scorer = String(goal.goalGetterName || '').trim();
-      if (!scorer) return '';
-      const minute = goal.matchMinute == null ? '' : ` ${goal.matchMinute}'`;
-      return `${scorer}${minute}`;
-    })
-    .filter(Boolean);
-  const scorerText = fitSvgText(goals.length > 4 ? `${goals.slice(0, 4).join(' · ')} · +${goals.length - 4}` : goals.join(' · '), 90);
+  const scorerMarkup = buildScorerMarkup(match, match.goals, 4, 36);
   const matchDate = Date.parse(match.matchDateTimeUTC || match.matchDateTime || '');
   const dateText = Number.isFinite(matchDate)
     ? new Intl.DateTimeFormat('de-DE', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Europe/Berlin' }).format(matchDate)
@@ -831,7 +921,7 @@ function buildFinishedMatchSvg({ leagueName, group, match, settings = {}, source
     70,
   );
   const showCompetition = settings.showCompetition !== false && competition;
-  const showScorers = settings.showScorers !== false && scorerText;
+  const showScorers = settings.showScorers !== false && scorerMarkup;
   const showDate = settings.showDate === true && dateText;
   const decorativeShapes = settings.template === 'minimal'
     ? '<rect x="0" y="0" width="1200" height="14" fill="#176b53"/><circle cx="600" cy="330" r="220" fill="#f1f3f5"/>'
@@ -841,7 +931,7 @@ function buildFinishedMatchSvg({ leagueName, group, match, settings = {}, source
   const infoLines = [
     showCompetition ? `<text x="600" y="108" text-anchor="middle" fill="${palette.muted}" font-size="25">${escapeSvgText(competition)}</text>` : '',
     `<text x="600" y="610" text-anchor="middle" fill="${palette.muted}" font-size="17">${escapeSvgText(sourceLabel)}</text>`,
-    showScorers ? `<text x="600" y="500" text-anchor="middle" fill="${palette.text}" font-size="21">${escapeSvgText(`Torschützen: ${scorerText}`)}</text>` : '',
+    showScorers ? `<text x="600" y="500" text-anchor="middle" fill="${palette.text}" font-size="17"><tspan fill="${palette.muted}">Torschützen: </tspan>${scorerMarkup}</text>` : '',
     showDate ? `<text x="600" y="548" text-anchor="middle" fill="${palette.muted}" font-size="20">${escapeSvgText(dateText)}</text>` : '',
   ].filter(Boolean).join('');
   return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="675" viewBox="0 0 1200 675">
@@ -876,9 +966,11 @@ function buildGoalEventSvg({ leagueName, group, match, goal, color = '#D6B32A' }
   const away = Number.isInteger(goal?.scoreTeam2) ? goal.scoreTeam2 : matchAway;
   const homeName = fitSvgText(match?.team1?.shortName || match?.team1?.teamName || 'Heimteam', 28);
   const awayName = fitSvgText(match?.team2?.shortName || match?.team2?.teamName || 'Auswärtsteam', 28);
-  const scorer = fitSvgText(goal?.goalGetterName || 'Torschütze unbekannt', 42);
+  const presentation = getGoalPresentation(match, goal);
+  const scorer = fitSvgText(presentation.displayName, 50);
   const minute = goal?.matchMinute == null ? '' : `${fitSvgText(goal.matchMinute, 5)}'`;
   const competition = fitSvgText([leagueName, group?.groupName].filter(Boolean).join(' · '), 60);
+  const heading = `${presentation.eventLabel}${minute ? `  ·  ${minute}` : ''}`;
   return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="600" viewBox="0 0 1200 600">
     <defs>
       <linearGradient id="background" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#10141d"/><stop offset="1" stop-color="#242b3d"/></linearGradient>
@@ -887,14 +979,14 @@ function buildGoalEventSvg({ leagueName, group, match, goal, color = '#D6B32A' }
     <rect width="1200" height="600" rx="26" fill="url(#background)"/>
     <rect x="0" y="0" width="14" height="600" rx="7" fill="url(#accent)"/>
     <circle cx="600" cy="275" r="220" fill="none" stroke="${accent}" stroke-opacity=".08" stroke-width="2"/>
-    <text x="600" y="86" text-anchor="middle" fill="${accent}" font-family="Arial, sans-serif" font-size="30" font-weight="800" letter-spacing="8">TOR${minute ? `  ·  ${escapeSvgText(minute)}` : ''}</text>
+    <text x="600" y="86" text-anchor="middle" fill="${accent}" font-family="Arial, sans-serif" font-size="30" font-weight="800" letter-spacing="5">${escapeSvgText(heading)}</text>
     <text x="600" y="142" text-anchor="middle" fill="#b9c0ce" font-family="Arial, sans-serif" font-size="22">${escapeSvgText(competition)}</text>
-    <text x="300" y="286" text-anchor="middle" fill="#f5f6fa" font-family="Arial, sans-serif" font-size="40" font-weight="700">${escapeSvgText(homeName)}</text>
+    <text x="300" y="286" text-anchor="middle" fill="${HOME_GOAL_COLOR}" font-family="Arial, sans-serif" font-size="40" font-weight="700">${escapeSvgText(homeName)}</text>
     <text x="600" y="300" text-anchor="middle" fill="${accent}" font-family="Arial, sans-serif" font-size="82" font-weight="800">${home} : ${away}</text>
-    <text x="900" y="286" text-anchor="middle" fill="#f5f6fa" font-family="Arial, sans-serif" font-size="40" font-weight="700">${escapeSvgText(awayName)}</text>
+    <text x="900" y="286" text-anchor="middle" fill="${AWAY_GOAL_COLOR}" font-family="Arial, sans-serif" font-size="40" font-weight="700">${escapeSvgText(awayName)}</text>
     <path d="M170 365h860" stroke="${accent}" stroke-opacity=".45" stroke-width="2"/>
     <text x="600" y="440" text-anchor="middle" fill="#aeb6c5" font-family="Arial, sans-serif" font-size="20" letter-spacing="3">TORSCHÜTZE</text>
-    <text x="600" y="500" text-anchor="middle" fill="#ffffff" font-family="Arial, sans-serif" font-size="38" font-weight="700">${escapeSvgText(scorer)}</text>
+    <text x="600" y="500" text-anchor="middle" fill="${presentation.color}" font-family="Arial, sans-serif" font-size="38" font-weight="700">${escapeSvgText(scorer)}</text>
     <text x="600" y="568" text-anchor="middle" fill="#929bad" font-family="Arial, sans-serif" font-size="18">OpenLigaDB · Daten unter ODbL 1.0</text>
   </svg>`;
 }
@@ -905,6 +997,21 @@ async function buildGoalEventPng(options) {
 
 function getMarkerAttachmentPrefix(marker) {
   return String(marker || '').toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-');
+}
+
+function getOpenLigaDbMessageType(message) {
+  const footerTexts = (message?.embeds || []).map(embed => String(embed.footer?.text || '').toLowerCase());
+  const attachmentNames = Array.from(message?.attachments?.values?.() || [])
+    .map(attachment => String(attachment.name || '').toLowerCase());
+  if (footerTexts.some(text => text.includes('openligadb-countdown:'))
+    || attachmentNames.some(name => name.startsWith('openligadb-countdown-'))) {
+    return 'countdown';
+  }
+  if (footerTexts.some(text => text.includes('openligadb-goal:'))
+    || attachmentNames.some(name => name.startsWith('openligadb-goal-'))) {
+    return 'goal';
+  }
+  return null;
 }
 
 async function buildGoalEventAttachment(options, filename = 'openligadb-torereignis.png') {
@@ -1026,17 +1133,42 @@ function createOpenLigaDbWatcher({ http, client, ServerProfile, logger, requestI
       embeds: (payload.embeds || []).map(item => item.toJSON()),
       files: fileSignatures,
     });
-    if (signatures.get(boardKey) === signature && messages.has(boardKey)) return true;
-
     let message = messages.get(boardKey);
     let duplicateMessages = [];
+    if (signatures.get(boardKey) === signature && message) {
+      if (!key.startsWith('countdown:')) return true;
+      try {
+        await channel.messages.fetch({ message: message.id, force: true });
+        return true;
+      } catch (error) {
+        if (!isUnknownMessageError(error)) throw error;
+        messages.delete(boardKey);
+        signatures.delete(boardKey);
+        message = null;
+      }
+    }
+
     if (!message) {
       const existingMessages = await findMarkedMessages(channel, marker);
       [message, ...duplicateMessages] = existingMessages;
     }
     if (!message && !createIfMissing) return true;
-    if (message) message = await message.edit({ ...payload, embeds: payload.embeds || [], attachments: [] });
-    else message = await channel.send(payload);
+    if (message) {
+      try {
+        message = await message.edit({ ...payload, embeds: payload.embeds || [], attachments: [] });
+      } catch (error) {
+        if (!isUnknownMessageError(error)) throw error;
+        messages.delete(boardKey);
+        signatures.delete(boardKey);
+        const existingMessages = await findMarkedMessages(channel, marker);
+        [message, ...duplicateMessages] = existingMessages;
+        if (message) message = await message.edit({ ...payload, embeds: payload.embeds || [], attachments: [] });
+        else if (createIfMissing) message = await channel.send(payload);
+        else return true;
+      }
+    } else {
+      message = await channel.send(payload);
+    }
     messages.set(boardKey, message);
     signatures.set(boardKey, signature);
     const deleteResults = await Promise.allSettled(duplicateMessages.map(duplicate => duplicate.delete()));
@@ -1046,6 +1178,10 @@ function createOpenLigaDbWatcher({ http, client, ServerProfile, logger, requestI
       }
     }
     return true;
+  }
+
+  function isUnknownMessageError(error) {
+    return Number(error?.code) === 10008 || error?.status === 404 || error?.statusCode === 404;
   }
 
   async function clearCountdownMessage(profile, channelId, feedKey) {
@@ -1077,6 +1213,10 @@ function createOpenLigaDbWatcher({ http, client, ServerProfile, logger, requestI
     const homeName = match.team1?.shortName || match.team1?.teamName || 'Heimteam';
     const awayName = match.team2?.shortName || match.team2?.teamName || 'Auswärtsteam';
     const minute = goal.matchMinute == null ? '' : ` (${goal.matchMinute}')`;
+    const presentation = getGoalPresentation(match, goal);
+    const eventName = presentation.isOwnGoal
+      ? `Eigentor${presentation.scoringTeamName ? ` für ${presentation.scoringTeamName}` : ''}`
+      : presentation.isPenalty ? 'Elfmetertor' : 'Torereignis';
     const channelId = String(feedConfig.notificationChannelId || '').trim();
     const key = `goal:${feedKey}:${match.matchID}:${goal.goalID}`;
     const eventKey = `${profile.guildId}:${key}:${channelId}`;
@@ -1090,6 +1230,10 @@ function createOpenLigaDbWatcher({ http, client, ServerProfile, logger, requestI
       away,
       minute,
       scorer: String(goal.goalGetterName || '').trim(),
+      comment: String(goal.comment || ''),
+      scoringTeamId: goal.scoringTeamId ?? null,
+      isOwnGoal: presentation.isOwnGoal,
+      isPenalty: presentation.isPenalty,
       color,
     });
     if (goalEventSignatures.get(eventKey) === signature) return;
@@ -1103,7 +1247,7 @@ function createOpenLigaDbWatcher({ http, client, ServerProfile, logger, requestI
       color,
     }, `${getMarkerAttachmentPrefix(marker)}.png`);
     const payload = {
-      content: `⚽ **Torereignis${minute}!** ${homeName} **${home}:${away}** ${awayName}`,
+      content: `⚽ **${eventName}${minute}!** ${homeName} **${home}:${away}** ${awayName}`,
       files: [attachment],
     };
     const updated = await upsertEmbedMessage({
@@ -1439,7 +1583,9 @@ function createOpenLigaDbWatcher({ http, client, ServerProfile, logger, requestI
 
 module.exports = {
   buildScoreboardPayload,
+  buildFinishedMatchSvg,
   buildFinishedMatchPng,
+  buildGoalEventSvg,
   buildGoalEventPng,
   buildNextMatchCountdownSvg,
   buildNextMatchCountdownMessage,
@@ -1456,5 +1602,6 @@ module.exports = {
   getMatchScore,
   getMatchStatus,
   getSeasonForLeague,
+  getOpenLigaDbMessageType,
   OPENLIGADB_COUNTDOWN_STYLES,
 };
