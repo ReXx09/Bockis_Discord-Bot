@@ -3,8 +3,10 @@
 ## Unreleased
 
 - Live-Kachel höher und dynamisch erweitert, damit alle Torschützen unter den jeweiligen Teams angezeigt werden.
+- Die Live-Kachel zeigt das letzte beendete Spiel noch 24 Stunden, bevor sie zum nächsten anstehenden Spiel wechselt.
 - Live-Kachel zeigt das Stadion an, sofern OpenLigaDB für die Partie einen Spielort liefert.
 - OpenLigaDB-Kachelvorschau startet mit einer Live-Torschützenansicht; per Klick kann zwischen Live-Spiel, Countdown und Endstand gewechselt werden.
+- Live-Spieldaten und Tabellenstand werden während laufender sowie kürzlich beendeter Partien regelmäßig neu geladen, auch wenn OpenLigaDBs Änderungszeitpunkt unverändert bleibt.
 - Vorschauen und Grafikvorlagen-Aktionen im OpenLigaDB-Dashboard verbessert.
 
 ## [1.2.0] - 2026-10-26

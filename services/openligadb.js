@@ -10,6 +10,7 @@ const LEAGUE_SHORTCUT = 'bl1';
 const POLL_INTERVAL_MS = 60_000;
 const MIN_UPDATE_INTERVAL_MINUTES = 1;
 const MAX_UPDATE_INTERVAL_MINUTES = 60;
+const FINISHED_MATCH_DISPLAY_MS = 24 * 60 * 60_000;
 const REQUEST_TIMEOUT_MS = 10_000;
 const OPENLIGADB_COUNTDOWN_STYLES = Object.freeze([
   'classic',
@@ -918,6 +919,48 @@ function getHalfTimeResult(match) {
     || /halbzeit/i.test(String(result.resultTypeName || result.resultName || '')));
 }
 
+function getRecentFinishedMatch(matches, teamId, now, retentionMs = FINISHED_MATCH_DISPLAY_MS) {
+  return (Array.isArray(matches) ? matches : [])
+    .filter(match => match?.matchIsFinished === true
+      && [match.team1?.teamId, match.team2?.teamId].some(id => Number(id) === Number(teamId)))
+    .map(match => {
+      const matchStart = Date.parse(match.matchDateTimeUTC || match.matchDateTime || '');
+      const lastUpdate = getMatchLastUpdateTimestamp(match);
+      const finishedAt = Number.isFinite(matchStart)
+        && Number.isFinite(lastUpdate)
+        && lastUpdate >= matchStart
+        && lastUpdate <= now
+        ? lastUpdate
+        : matchStart;
+      return { match, finishedAt };
+    })
+    .filter(({ finishedAt }) => Number.isFinite(finishedAt)
+      && finishedAt <= now
+      && now - finishedAt < retentionMs)
+    .sort((a, b) => b.finishedAt - a.finishedAt)[0]?.match || null;
+}
+
+function selectCountdownMatch(matches, teamId, now) {
+  const teamMatches = (Array.isArray(matches) ? matches : []).filter(match =>
+    [match?.team1?.teamId, match?.team2?.teamId].some(id => Number(id) === Number(teamId)));
+  const liveMatch = teamMatches.find(match => {
+    const matchStart = Date.parse(match.matchDateTimeUTC || match.matchDateTime || '');
+    return match.matchIsFinished !== true && Number.isFinite(matchStart) && matchStart <= now;
+  });
+  if (liveMatch) return liveMatch;
+
+  const recentFinishedMatch = getRecentFinishedMatch(teamMatches, teamId, now);
+  if (recentFinishedMatch) return recentFinishedMatch;
+
+  return teamMatches
+    .filter(match => {
+      const matchStart = Date.parse(match.matchDateTimeUTC || match.matchDateTime || '');
+      return match.matchIsFinished !== true && Number.isFinite(matchStart) && matchStart > now;
+    })
+    .sort((a, b) => Date.parse(a.matchDateTimeUTC || a.matchDateTime || '')
+      - Date.parse(b.matchDateTimeUTC || b.matchDateTime || ''))[0] || null;
+}
+
 function escapeSvgText(value) {
   return String(value ?? '')
     .replace(/&/g, '&amp;')
@@ -1080,7 +1123,7 @@ function createOpenLigaDbWatcher({ http, client, ServerProfile, logger, requestI
     return leagues;
   }
 
-  async function loadFeed(leagueShortcut, season, includeAllSeasonMatches = false) {
+  async function loadFeed(leagueShortcut, season, includeAllSeasonMatches = false, now = Date.now()) {
     const groupResponse = await apiGet(http, `${API_BASE}/getcurrentgroup/${encodeURIComponent(leagueShortcut)}`, requestIntervalMs);
     const group = groupResponse.data;
     if (!group || !Number.isInteger(group.groupOrderID)) throw new Error('OpenLigaDB lieferte keinen aktuellen Spieltag');
@@ -1089,7 +1132,16 @@ function createOpenLigaDbWatcher({ http, client, ServerProfile, logger, requestI
     const changedAt = String(changedResponse.data || '');
     const feedKey = `${leagueShortcut}:${season}:${group.groupOrderID}`;
     let feed = feeds.get(feedKey);
-    if (!feed || feed.changedAt !== changedAt || leagueShortcut === 'dfb') {
+    const hasRecentStartedMatch = (feed?.matches || []).some(match => {
+      const matchStart = Date.parse(match?.matchDateTimeUTC || match?.matchDateTime || '');
+      return Number.isFinite(matchStart)
+        && matchStart <= now
+        && now - matchStart < 6 * 60 * 60_000;
+    });
+    const matchesFetchedAt = Number(feed?.matchesFetchedAt);
+    const refreshRecentMatch = hasRecentStartedMatch
+      && (!Number.isFinite(matchesFetchedAt) || now - matchesFetchedAt >= POLL_INTERVAL_MS);
+    if (!feed || feed.changedAt !== changedAt || leagueShortcut === 'dfb' || refreshRecentMatch) {
       const matchesResponse = await apiGet(http, `${API_BASE}/getmatchdata/${encodeURIComponent(leagueShortcut)}/${season}/${group.groupOrderID}`, requestIntervalMs);
       const tableResponse = await apiGet(http, `${API_BASE}/getbltable/${encodeURIComponent(leagueShortcut)}/${season}`, requestIntervalMs);
       const allMatchesResponse = leagueShortcut === 'dfb' || includeAllSeasonMatches
@@ -1100,6 +1152,7 @@ function createOpenLigaDbWatcher({ http, client, ServerProfile, logger, requestI
         changedAt,
         group,
         matches: Array.isArray(matchesResponse.data) ? matchesResponse.data : [],
+        matchesFetchedAt: now,
         allMatches: Array.isArray(allMatchesResponse.data) ? allMatchesResponse.data : [],
         table: Array.isArray(tableResponse.data) ? tableResponse.data : [],
       };
@@ -1388,7 +1441,9 @@ function createOpenLigaDbWatcher({ http, client, ServerProfile, logger, requestI
   async function updateLeague(profile, feedConfig, metadata, season) {
     const leagueShortcut = feedConfig.leagueShortcut;
     const leagueName = metadata?.leagueName || leagueShortcut;
-    const currentFeed = await loadFeed(leagueShortcut, season, Boolean(getDfbNationalTeamCategory(metadata)));
+    const includeAllSeasonMatches = String(leagueShortcut).toLowerCase() === 'nla'
+      || Boolean(getDfbNationalTeamCategory(metadata));
+    const currentFeed = await loadFeed(leagueShortcut, season, includeAllSeasonMatches, nowProvider());
     const favoriteTeamIds = getFavoriteTeamIds(feedConfig);
     const feedKey = `${leagueShortcut}:${season}`;
 
@@ -1426,29 +1481,14 @@ function createOpenLigaDbWatcher({ http, client, ServerProfile, logger, requestI
       countdownChannelsByFeed.set(countdownStateKey, countdownChannelId);
       const countdownNow = nowProvider();
       const feedMatches = [...(currentFeed.matches || []), ...(currentFeed.allMatches || [])];
-      const liveMatch = feedMatches.find(match => {
-        const matchTime = Date.parse(match.matchDateTimeUTC || match.matchDateTime || '');
-        return match.matchIsFinished !== true
-          && Number.isFinite(matchTime)
-          && matchTime <= countdownNow
-          && [match.team1?.teamId, match.team2?.teamId].some(teamId => Number(teamId) === countdownTeamId);
-      });
-      const nextScheduledMatch = feedMatches
-        .filter(match => {
-          const matchTime = Date.parse(match.matchDateTimeUTC || match.matchDateTime || '');
-          return match.matchIsFinished !== true
-            && Number.isFinite(matchTime)
-            && matchTime > countdownNow
-            && [match.team1?.teamId, match.team2?.teamId].some(teamId => Number(teamId) === countdownTeamId);
-        })
-        .sort((a, b) => Date.parse(a.matchDateTimeUTC || a.matchDateTime || '')
-          - Date.parse(b.matchDateTimeUTC || b.matchDateTime || ''))[0];
-      const apiNextMatch = liveMatch || nextScheduledMatch
+      const feedMatch = selectCountdownMatch(feedMatches, countdownTeamId, countdownNow);
+      const apiNextMatch = feedMatch
         ? null
         : await loadNextMatch(metadata?.leagueId, countdownTeamId);
-      const completedMatch = apiNextMatch && feedMatches.find(match =>
-        match.matchIsFinished === true && String(match.matchID) === String(apiNextMatch.matchID));
-      const nextMatch = liveMatch || nextScheduledMatch || completedMatch || apiNextMatch;
+      const completedApiMatch = apiNextMatch?.matchIsFinished === true
+        ? getRecentFinishedMatch([apiNextMatch], countdownTeamId, countdownNow)
+        : null;
+      const nextMatch = feedMatch || completedApiMatch || (apiNextMatch?.matchIsFinished === true ? null : apiNextMatch);
       const teamInfo = currentFeed.table.find(team => Number(team.teamId) === countdownTeamId);
       const countdownStyle = feedConfig.countdownStyle || 'classic';
       const countdownColor = feedConfig.countdownColor || getDefaultCountdownColor(leagueShortcut);
@@ -1638,6 +1678,7 @@ module.exports = {
   getOpenLigaDbUpdateIntervalMs,
   getMatchScore,
   getMatchStatus,
+  selectCountdownMatch,
   getSeasonForLeague,
   getOpenLigaDbMessageType,
   OPENLIGADB_COUNTDOWN_STYLES,

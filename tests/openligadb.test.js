@@ -17,6 +17,7 @@ const {
   getOpenLigaDbUpdateIntervalMs,
   getMatchScore,
   getMatchStatus,
+  selectCountdownMatch,
   getSeasonForLeague,
   getOpenLigaDbMessageType,
   OPENLIGADB_COUNTDOWN_STYLES,
@@ -880,6 +881,33 @@ describe('OpenLigaDB data formatting', () => {
     expect(svg).not.toContain('LIVE-SPIEL');
   });
 
+  test('keeps a recently finished match on the countdown tile for 24 hours', () => {
+    const now = Date.parse('2026-11-16T22:00:00Z');
+    const finishedMatch = {
+      matchIsFinished: true,
+      matchDateTimeUTC: '2026-11-16T19:45:00Z',
+      lastUpdateDateTime: '2026-11-16T21:59:00Z',
+      team1: { teamId: 139, shortName: 'GER' },
+      team2: { teamId: 147, shortName: 'NED' },
+    };
+    const upcomingMatch = {
+      matchIsFinished: false,
+      matchDateTimeUTC: '2026-11-20T19:45:00Z',
+      team1: { teamId: 139, shortName: 'GER' },
+      team2: { teamId: 65, shortName: 'Köln' },
+    };
+    const liveMatch = {
+      matchIsFinished: false,
+      matchDateTimeUTC: '2026-11-16T20:45:00Z',
+      team1: { teamId: 139, shortName: 'GER' },
+      team2: { teamId: 40, shortName: 'Bayern' },
+    };
+
+    expect(selectCountdownMatch([finishedMatch, upcomingMatch], 139, now)).toBe(finishedMatch);
+    expect(selectCountdownMatch([finishedMatch, liveMatch, upcomingMatch], 139, now)).toBe(liveMatch);
+    expect(selectCountdownMatch([finishedMatch, upcomingMatch], 139, now + 24 * 60 * 60_000)).toBe(upcomingMatch);
+  });
+
   test('provides twelve distinct countdown embed variants', () => {
     const payloads = OPENLIGADB_COUNTDOWN_STYLES.map(countdownStyle => buildNextMatchCountdownPayload({
       leagueName: '1. Bundesliga',
@@ -1361,7 +1389,7 @@ describe('OpenLigaDB data formatting', () => {
   });
 
   test('prefers the scheduled Netherlands match over a stale completed next-match fixture', async () => {
-    const now = Date.parse('2026-11-13T22:00:00Z');
+    const now = Date.parse('2026-11-15T22:00:00Z');
     const completedMatch = {
       matchID: 85296,
       matchIsFinished: true,
@@ -1688,7 +1716,7 @@ describe('OpenLigaDB data formatting', () => {
     expect(updatedGoalPayload.files[0].attachment.equals(initialGoalPayload.files[0].attachment)).toBe(false);
   });
 
-  test('announces each newly observed favorite goal only once', async () => {
+  test('refreshes live and newly finished match data when the OpenLigaDB timestamp is unchanged', async () => {
     let changedAt = '2026-11-07T14:00:00Z';
     let channelId = 'channel';
     let matches = [{
@@ -1722,7 +1750,7 @@ describe('OpenLigaDB data formatting', () => {
       messages: { fetch: jest.fn(async () => []) },
       send: jest.fn(async content => content),
     };
-    let now = Date.now();
+    let now = Date.parse('2026-11-07T14:30:00Z');
     const watcher = createOpenLigaDbWatcher({
       http,
       client: { user: { id: 'bot' }, channels: { cache: new Map([['channel', channel], ['channel-2', newChannel]]) } },
@@ -1749,8 +1777,14 @@ describe('OpenLigaDB data formatting', () => {
     });
 
     await watcher.checkOnce();
-    changedAt = '2026-11-07T14:31:00Z';
-    matches = [{ ...matches[0], goals: [{ goalID: 123, matchMinute: 31, scoreTeam1: 1, scoreTeam2: 0, goalGetterName: 'Spieler' }] }];
+    matches = [{
+      ...matches[0],
+      goals: [
+        { goalID: 123, matchMinute: 10, scoreTeam1: 1, scoreTeam2: 0, goalGetterName: 'Spieler 1' },
+        { goalID: 124, matchMinute: 20, scoreTeam1: 2, scoreTeam2: 0, goalGetterName: 'Spieler 2' },
+        { goalID: 125, matchMinute: 30, scoreTeam1: 3, scoreTeam2: 0, goalGetterName: 'Spieler 3' },
+      ],
+    }];
     now += 60_000;
     await watcher.checkOnce();
     now += 60_000;
@@ -1763,8 +1797,8 @@ describe('OpenLigaDB data formatting', () => {
     expect(goalEventPayload.files[0].name).toMatch(/^openligadb-goal-/);
     expect(Buffer.isBuffer(goalEventPayload.files[0].attachment)).toBe(true);
     expect(boardMessage.edit).toHaveBeenCalledTimes(1);
+    expect(boardMessage.edit.mock.calls[0][0].embeds[0].toJSON().fields[0].name).toContain('3 : 0');
 
-    changedAt = '2026-11-07T16:30:00Z';
     matches = [{
       ...matches[0],
       matchIsFinished: true,
