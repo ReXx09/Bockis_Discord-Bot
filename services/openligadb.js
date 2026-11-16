@@ -636,7 +636,6 @@ function buildNextMatchCountdownSvg({ leagueName, match, teamId, teamInfo, count
   const favoriteIsHome = Number(team?.teamId) === Number(match?.team1?.teamId);
   const teamScore = favoriteIsHome ? homeScore : awayScore;
   const opponentScore = favoriteIsHome ? awayScore : homeScore;
-  const scorerSummary = buildScorerMarkup(match, match?.goals, 3, 34);
   const favoriteColor = favoriteIsHome ? HOME_GOAL_COLOR : AWAY_GOAL_COLOR;
   const opponentColor = favoriteIsHome ? AWAY_GOAL_COLOR : HOME_GOAL_COLOR;
   const heading = isFinishedMatch ? 'SPIEL BEENDET' : isLiveMatch ? 'LIVE-SPIEL' : 'NÄCHSTES SPIEL';
@@ -645,13 +644,22 @@ function buildNextMatchCountdownSvg({ leagueName, match, teamId, teamInfo, count
     : isLiveMatch || isFinishedMatch
       ? `${teamScore}:${opponentScore}`
       : 'DERZEIT KEIN SPIEL TERMINIERT';
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="600" viewBox="0 0 1200 600">
+  const scorerGoals = isLiveMatch || isFinishedMatch ? (Array.isArray(match?.goals) ? match.goals : []) : [];
+  const scorerRows = [];
+  for (let index = 0; index < scorerGoals.length; index += 2) {
+    scorerRows.push(buildScorerMarkup(match, scorerGoals.slice(index, index + 2), 2, 34));
+  }
+  const height = 640 + Math.max(0, scorerRows.length - 1) * 28;
+  const scorerMarkup = scorerRows.map((row, index) =>
+    `<text x="600" y="${486 + index * 28}" text-anchor="middle" font-family="Arial, sans-serif" font-size="18">${index === 0 ? '<tspan fill="#d0d5df">Torschützen: </tspan>' : ''}${row}</text>`
+  ).join('');
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="${height}" viewBox="0 0 1200 ${height}">
     <defs>
       <linearGradient id="background" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#10141d"/><stop offset="1" stop-color="#242b3d"/></linearGradient>
       <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="${accent}" stop-opacity=".45"/><stop offset="1" stop-color="${accent}"/></linearGradient>
     </defs>
-    <rect width="1200" height="600" rx="26" fill="url(#background)"/>
-    <rect x="0" y="0" width="14" height="600" rx="7" fill="url(#accent)"/>
+    <rect width="1200" height="${height}" rx="26" fill="url(#background)"/>
+    <rect x="0" y="0" width="14" height="${height}" rx="7" fill="url(#accent)"/>
     <circle cx="600" cy="275" r="220" fill="none" stroke="${accent}" stroke-opacity=".08" stroke-width="2"/>
     <text x="600" y="86" text-anchor="middle" fill="${accent}" font-family="Arial, sans-serif" font-size="30" font-weight="700" letter-spacing="5">${escapeSvgText(heading)}</text>
     <text x="600" y="142" text-anchor="middle" fill="#b9c0ce" font-family="Arial, sans-serif" font-size="22">${escapeSvgText(competition)}</text>
@@ -660,8 +668,8 @@ function buildNextMatchCountdownSvg({ leagueName, match, teamId, teamInfo, count
     <text x="870" y="286" text-anchor="middle" fill="${opponentColor}" font-family="Arial, sans-serif" font-size="42" font-weight="700">${escapeSvgText(opponentName)}</text>
     <path d="M170 365h860" stroke="${accent}" stroke-opacity=".45" stroke-width="2"/>
     <text x="600" y="440" text-anchor="middle" fill="#ffffff" font-family="Arial, sans-serif" font-size="56" font-weight="800" letter-spacing="2">${escapeSvgText(status)}</text>
-    ${(isLiveMatch || isFinishedMatch) && scorerSummary ? `<text x="600" y="486" text-anchor="middle" font-family="Arial, sans-serif" font-size="18"><tspan fill="#d0d5df">Torschützen: </tspan>${scorerSummary}</text>` : ''}
-    <text x="600" y="568" text-anchor="middle" fill="#929bad" font-family="Arial, sans-serif" font-size="18">OpenLigaDB · Daten unter ODbL 1.0</text>
+    ${scorerMarkup}
+    <text x="600" y="${height - 32}" text-anchor="middle" fill="#929bad" font-family="Arial, sans-serif" font-size="18">OpenLigaDB · Daten unter ODbL 1.0</text>
   </svg>`;
 }
 

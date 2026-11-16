@@ -7063,6 +7063,14 @@
       }
     });
     row.querySelector('[data-openliga-role="finished-image-preview"]').addEventListener('click', () => {
+      const image = row.querySelector('[data-openliga-role="finished-image-preview-image"]');
+      const button = row.querySelector('[data-openliga-role="finished-image-preview"]');
+      if (!image.hidden) {
+        image.hidden = true;
+        button.textContent = 'Vorschau anzeigen';
+        row.querySelector('[data-openliga-role="finished-image-status"]').textContent = '';
+        return;
+      }
       void previewOpenLigaDbFinishedImage(row);
     });
     row.querySelector('[data-openliga-role="finished-image-test"]').addEventListener('click', () => {
@@ -7153,6 +7161,9 @@
   async function previewOpenLigaDbFinishedImage(row) {
     const status = row.querySelector('[data-openliga-role="finished-image-status"]');
     const image = row.querySelector('[data-openliga-role="finished-image-preview-image"]');
+    const button = row.querySelector('[data-openliga-role="finished-image-preview"]');
+    if (button.disabled) return;
+    button.disabled = true;
     status.textContent = 'Vorschau wird erstellt …';
     status.className = 'cfg-hint';
     try {
@@ -7169,10 +7180,14 @@
       image.dataset.objectUrl = URL.createObjectURL(await response.blob());
       image.src = image.dataset.objectUrl;
       image.hidden = false;
+      button.textContent = 'Vorschau ausblenden';
       status.textContent = 'Vorschau mit Beispieldaten. Änderungen an den Grafikoptionen aktualisieren sie.';
     } catch (error) {
       status.textContent = error.message;
       status.className = 'cfg-hint err';
+    } finally {
+      button.disabled = false;
+      button.textContent = image.hidden ? 'Vorschau anzeigen' : 'Vorschau ausblenden';
     }
   }
 

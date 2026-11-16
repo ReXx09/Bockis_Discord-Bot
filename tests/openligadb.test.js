@@ -21,6 +21,7 @@ const {
   getOpenLigaDbMessageType,
   OPENLIGADB_COUNTDOWN_STYLES,
 } = require('../services/openligadb');
+const { getOpenLigaDbCountdownPreviewEmbed } = require('../web/routes');
 const { createApiUsageTracker } = require('../services/api-usage');
 const {
   API_FOOTBALL_COMPETITIONS,
@@ -745,9 +746,31 @@ describe('OpenLigaDB data formatting', () => {
     expect(payload.files[0].attachment.subarray(0, 8)).toEqual(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
     expect(png).toEqual(payload.files[0].attachment);
     const svg = buildNextMatchCountdownSvg(options);
-    expect(svg).toContain('width="1200" height="600" viewBox="0 0 1200 600"');
+    expect(svg).toContain('width="1200" height="640" viewBox="0 0 1200 640"');
     expect(svg).toContain('#123456');
     expect(getDefaultCountdownColor('uel')).toBe('#F1C40F');
+  });
+
+  test('formats SVG countdown messages for the dashboard preview', async () => {
+    const payload = await buildNextMatchCountdownMessage({
+      leagueName: 'Nations League A 2026',
+      teamId: 40,
+      countdownStyle: 'graphic_timer',
+      countdownColor: '#123456',
+      match: {
+        matchDateTimeUTC: '2026-11-20T19:30:00Z',
+        team1: { teamId: 40, shortName: 'Deutschland' },
+        team2: { teamId: 65, shortName: 'Niederlande' },
+      },
+      now: Date.parse('2026-11-16T18:00:00Z'),
+    });
+
+    const embed = getOpenLigaDbCountdownPreviewEmbed(payload, '#123456');
+    expect(embed.title).toBe('Live-Countdown');
+    expect(embed.description).toContain('Nächstes Spiel');
+    expect(embed.description).toContain('Deutschland – Niederlande');
+    expect(embed.color).toBe(0x123456);
+    expect(embed.footer.text).toContain('Beispieldaten');
   });
 
   test('shows the live match label, score, and scorers on the countdown graphic', () => {
@@ -775,6 +798,34 @@ describe('OpenLigaDB data formatting', () => {
     expect(svg).toContain('fill="#75B9FF" font-family="Arial, sans-serif" font-size="42" font-weight="700">SRB</text>');
     expect(svg).toContain('fill="#FF9B80" font-family="Arial, sans-serif" font-size="42" font-weight="700">GER</text>');
     expect(svg).not.toContain('NÄCHSTES SPIEL');
+  });
+
+  test('expands the live tile to show every scorer on separate rows', () => {
+    const scorers = ['A. Spieler', 'B. Spieler', 'C. Spieler', 'D. Spieler', 'E. Spieler'];
+    const svg = buildNextMatchCountdownSvg({
+      leagueName: 'Nations League A 2026',
+      teamId: 40,
+      match: {
+        matchIsFinished: false,
+        matchDateTimeUTC: '2026-11-16T17:00:00Z',
+        team1: { teamId: 40, shortName: 'GER' },
+        team2: { teamId: 65, shortName: 'NED' },
+        goals: scorers.map((goalGetterName, index) => ({
+          matchMinute: index + 1,
+          scoreTeam1: index + 1,
+          scoreTeam2: 0,
+          goalGetterName,
+        })),
+      },
+      now: Date.parse('2026-11-16T18:00:00Z'),
+    });
+
+    expect(svg).toContain('height="696" viewBox="0 0 1200 696"');
+    for (const scorer of scorers) expect(svg).toContain(scorer);
+    expect(svg.match(/Torschützen:/g)).toHaveLength(1);
+    expect(svg).toContain('y="486"');
+    expect(svg).toContain('y="514"');
+    expect(svg).toContain('y="542"');
   });
 
   test('shows the final result and scorers after a match is finished', () => {

@@ -2,7 +2,8 @@
 
 ## Unreleased
 
-- Vorschauen der Live- und Tor-Ereigniskacheln im OpenLigaDB-Dashboard ein- und ausblendbar; Grafikvorlage und Aktionen kompakt nebeneinander angeordnet.
+- Live-Kachel höher und dynamisch erweitert, damit alle Torschützen angezeigt werden; Vorschauen ein- und ausblendbar.
+- SVG-Countdown-Vorschau und Grafikvorlagen-Aktionen im OpenLigaDB-Dashboard verbessert.
 
 ## [1.2.0] - 2026-10-26
 

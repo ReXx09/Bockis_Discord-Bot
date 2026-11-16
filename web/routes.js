@@ -93,6 +93,16 @@ function describeOpenLigaDbFailure(error, resource) {
   return { status: 502, message: `OpenLigaDB-${resource} fehlgeschlagen (HTTP ${error.response.status}).` };
 }
 
+function getOpenLigaDbCountdownPreviewEmbed(payload, countdownColor) {
+  if (payload.embeds?.[0]) return payload.embeds[0].toJSON();
+  return {
+    color: Number.parseInt(countdownColor.slice(1), 16),
+    title: 'Live-Countdown',
+    description: payload.content || '',
+    footer: { text: 'OpenLigaDB · Vorschau mit Beispieldaten' },
+  };
+}
+
 function normalizeOpenLigaDbFeeds(value) {
   let feeds;
   try { feeds = JSON.parse(String(value)); } catch { throw new Error('OpenLigaDB-Feeds müssen gültiges JSON sein.'); }
@@ -730,9 +740,15 @@ module.exports = function startWebServer({
         countdownColor,
         now,
       });
+      const embed = payload.embeds?.[0]?.toJSON() || {
+        color: Number.parseInt(countdownColor.slice(1), 16),
+        title: 'Live-Countdown',
+        description: payload.content || '',
+        footer: { text: 'OpenLigaDB · Vorschau mit Beispieldaten' },
+      };
       return res.set('Cache-Control', 'no-store').json({
         ok: true,
-        embed: payload.embeds[0].toJSON(),
+        embed,
         graphic: payload.files?.[0]?.attachment.toString('base64') || null,
       });
     } catch (err) {
@@ -3819,3 +3835,5 @@ module.exports = function startWebServer({
 
   return server;
 };
+
+module.exports.getOpenLigaDbCountdownPreviewEmbed = getOpenLigaDbCountdownPreviewEmbed;
