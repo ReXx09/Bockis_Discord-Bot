@@ -2,8 +2,9 @@
 
 ## Unreleased
 
-- Live-Kachel höher und dynamisch erweitert, damit alle Torschützen angezeigt werden; Vorschauen ein- und ausblendbar.
-- SVG-Countdown-Vorschau und Grafikvorlagen-Aktionen im OpenLigaDB-Dashboard verbessert.
+- Live-Kachel höher und dynamisch erweitert, damit alle Torschützen unter den jeweiligen Teams angezeigt werden.
+- OpenLigaDB-Kachelvorschau startet mit einer Live-Torschützenansicht; per Klick kann zwischen Live-Spiel, Countdown und Endstand gewechselt werden.
+- Vorschauen und Grafikvorlagen-Aktionen im OpenLigaDB-Dashboard verbessert.
 
 ## [1.2.0] - 2026-10-26
 

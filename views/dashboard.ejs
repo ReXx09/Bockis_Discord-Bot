@@ -6593,6 +6593,65 @@
       .replace(/\n/g, '<br>');
   }
 
+  function renderOpenLigaDbCountdownPreviewVariant(row, variant) {
+    const preview = row.querySelector('[data-openliga-role="countdown-preview"]');
+    const embed = variant.embed;
+    const accent = Number.isInteger(embed.color) ? `#${embed.color.toString(16).padStart(6, '0')}` : '#d6b32a';
+    preview.style.borderLeftColor = accent;
+    const author = preview.querySelector('[data-openliga-role="countdown-preview-author"]');
+    author.textContent = embed.author?.name || '';
+    author.hidden = !embed.author?.name;
+    preview.querySelector('[data-openliga-role="countdown-preview-title"]').textContent = embed.title || '';
+    preview.querySelector('[data-openliga-role="countdown-preview-description"]').innerHTML = formatOpenLigaDbEmbedText(embed.description);
+    preview.querySelector('[data-openliga-role="countdown-preview-footer"]').textContent = embed.footer?.text || '';
+    const graphic = preview.querySelector('[data-openliga-role="countdown-preview-image"]');
+    if (variant.graphic) {
+      graphic.src = `data:image/png;base64,${variant.graphic}`;
+      graphic.hidden = false;
+    } else {
+      graphic.removeAttribute('src');
+      graphic.hidden = true;
+    }
+    const fields = preview.querySelector('[data-openliga-role="countdown-preview-fields"]');
+    fields.replaceChildren();
+    for (const field of embed.fields || []) {
+      const fieldElement = document.createElement('div');
+      const name = document.createElement('strong');
+      name.textContent = field.name;
+      const value = document.createElement('div');
+      value.innerHTML = formatOpenLigaDbEmbedText(field.value);
+      value.style.marginTop = '4px';
+      fieldElement.append(name, value);
+      fields.appendChild(fieldElement);
+    }
+    const status = row.querySelector('[data-openliga-role="countdown-preview-status"]');
+    const variants = graphic.previewVariants || [];
+    const label = variant.label || row.querySelector('[data-openliga-role="countdown-team"]').selectedOptions[0]?.textContent || 'Kachel';
+    status.textContent = `Vorschau: ${label} · Beispieldaten${variants.length > 1 ? ' · Klicken zum Wechseln' : ''}`;
+    if (variants.length > 1) {
+      preview.setAttribute('role', 'button');
+      preview.tabIndex = 0;
+      preview.setAttribute('aria-label', 'Klicken oder Enter drücken, um zwischen Live-, Countdown- und Endstandansicht zu wechseln.');
+      preview.style.cursor = 'pointer';
+    } else {
+      preview.removeAttribute('role');
+      preview.removeAttribute('tabindex');
+      preview.removeAttribute('aria-label');
+      preview.style.cursor = '';
+    }
+    preview.hidden = false;
+  }
+
+  function cycleOpenLigaDbCountdownPreview(row) {
+    const preview = row.querySelector('[data-openliga-role="countdown-preview"]');
+    const button = row.querySelector('[data-openliga-role="countdown-preview-button"]');
+    const graphic = preview.querySelector('[data-openliga-role="countdown-preview-image"]');
+    const variants = graphic.previewVariants || [];
+    if (preview.hidden || button.disabled || variants.length < 2) return;
+    graphic.previewVariantIndex = ((graphic.previewVariantIndex || 0) + 1) % variants.length;
+    renderOpenLigaDbCountdownPreviewVariant(row, variants[graphic.previewVariantIndex]);
+  }
+
   async function renderOpenLigaDbCountdownPreview(row) {
     const select = row.querySelector('[data-openliga-role="countdown-team"]');
     const preview = row.querySelector('[data-openliga-role="countdown-preview"]');
@@ -6605,7 +6664,7 @@
     const requestId = Number(row.dataset.countdownPreviewRequest || 0) + 1;
     row.dataset.countdownPreviewRequest = String(requestId);
     button.disabled = true;
-    status.textContent = 'Embed-Vorschau wird erstellt …';
+    status.textContent = 'Kachelvorschau wird erstellt …';
     status.className = 'cfg-hint';
     try {
       const response = await fetch('/api/openligadb/countdown-preview', {
@@ -6623,38 +6682,14 @@
       if (!response.ok || !result.ok) throw new Error(result.error || 'Embed-Vorschau konnte nicht erstellt werden.');
       if (requestId !== Number(row.dataset.countdownPreviewRequest)) return;
 
-      const embed = result.embed;
-      const accent = Number.isInteger(embed.color) ? `#${embed.color.toString(16).padStart(6, '0')}` : '#d6b32a';
-      preview.style.borderLeftColor = accent;
-      const author = preview.querySelector('[data-openliga-role="countdown-preview-author"]');
-      author.textContent = embed.author?.name || '';
-      author.hidden = !embed.author?.name;
-      preview.querySelector('[data-openliga-role="countdown-preview-title"]').textContent = embed.title || '';
-      preview.querySelector('[data-openliga-role="countdown-preview-description"]').innerHTML = formatOpenLigaDbEmbedText(embed.description);
-      preview.querySelector('[data-openliga-role="countdown-preview-footer"]').textContent = embed.footer?.text || '';
       const graphic = preview.querySelector('[data-openliga-role="countdown-preview-image"]');
-      if (result.graphic) {
-        graphic.src = `data:image/png;base64,${result.graphic}`;
-        graphic.hidden = false;
-      } else {
-        graphic.removeAttribute('src');
-        graphic.hidden = true;
-      }
-      const fields = preview.querySelector('[data-openliga-role="countdown-preview-fields"]');
-      fields.replaceChildren();
-      for (const field of embed.fields || []) {
-        const fieldElement = document.createElement('div');
-        const name = document.createElement('strong');
-        name.textContent = field.name;
-        const value = document.createElement('div');
-        value.innerHTML = formatOpenLigaDbEmbedText(field.value);
-        value.style.marginTop = '4px';
-        fieldElement.append(name, value);
-        fields.appendChild(fieldElement);
-      }
-      status.textContent = `Vorschau: ${select.selectedOptions[0]?.textContent || 'Countdown'} · Beispieldaten`;
-      preview.hidden = false;
-      button.textContent = 'Countdown-Vorschau ausblenden';
+      graphic.previewVariants = Array.isArray(result.variants) ? result.variants : [];
+      graphic.previewVariantIndex = 0;
+      renderOpenLigaDbCountdownPreviewVariant(row, graphic.previewVariants[0] || {
+        embed: result.embed,
+        graphic: result.graphic,
+      });
+      button.textContent = 'Kachelvorschau ausblenden';
     } catch (error) {
       if (requestId !== Number(row.dataset.countdownPreviewRequest)) return;
       status.textContent = error.message;
@@ -6896,9 +6931,9 @@
       <label class="cfg-label">Countdown-Farbe (pro Liga)
         <input class="cfg-input" data-openliga-role="countdown-color" type="color" style="width:76px;height:40px;padding:4px">
       </label>
-      <div class="cfg-hint">Die Grafik wird als SVG erstellt und für Discord als PNG eingebettet. Teams und Live-Countdown stehen im Mittelpunkt.</div>
+      <div class="cfg-hint">Die Grafik wird als SVG erstellt und für Discord als PNG eingebettet. Beim Grafik-Timer kannst du in der Vorschau per Klick zwischen Live-Torschützen, Countdown und Endstand wechseln.</div>
       <div style="display:flex;flex-wrap:wrap;gap:8px">
-        <button class="btn" type="button" data-openliga-role="countdown-preview-button" disabled>Countdown-Vorschau anzeigen</button>
+        <button class="btn" type="button" data-openliga-role="countdown-preview-button" disabled>Kachelvorschau anzeigen</button>
         <button class="btn" type="button" data-openliga-role="countdown-test-button" disabled>Countdown-Test an Discord senden</button>
       </div>
       <div data-openliga-role="countdown-preview-status" class="cfg-hint" aria-live="polite"></div>
@@ -7035,11 +7070,18 @@
       const button = row.querySelector('[data-openliga-role="countdown-preview-button"]');
       if (!preview.hidden) {
         preview.hidden = true;
-        button.textContent = 'Countdown-Vorschau anzeigen';
+        button.textContent = 'Kachelvorschau anzeigen';
         row.querySelector('[data-openliga-role="countdown-preview-status"]').textContent = '';
         return;
       }
-      renderOpenLigaDbCountdownPreview(row);
+      void renderOpenLigaDbCountdownPreview(row);
+    });
+    const countdownPreview = row.querySelector('[data-openliga-role="countdown-preview"]');
+    countdownPreview.addEventListener('click', () => cycleOpenLigaDbCountdownPreview(row));
+    countdownPreview.addEventListener('keydown', event => {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      event.preventDefault();
+      cycleOpenLigaDbCountdownPreview(row);
     });
     row.querySelector('[data-openliga-role="countdown-test-button"]').addEventListener('click', () => {
       void sendOpenLigaDbCountdownTest(row);

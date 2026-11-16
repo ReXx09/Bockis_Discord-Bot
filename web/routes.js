@@ -103,6 +103,37 @@ function getOpenLigaDbCountdownPreviewEmbed(payload, countdownColor) {
   };
 }
 
+function getOpenLigaDbCountdownPreviewCases({ now, teamId, teamName, countdownStyle }) {
+  const team1 = { teamId, teamName, shortName: teamName };
+  const team2 = { teamId: teamId + 1, teamName: 'Beispielgegner', shortName: 'Beispielgegner' };
+  const countdownMatch = {
+    matchDateTimeUTC: new Date(now + 7 * 24 * 60 * 60 * 1000).toISOString(),
+    group: { groupName: 'Beispiel-Spieltag' },
+    team1,
+    team2,
+  };
+  if (countdownStyle !== 'graphic_timer') return [{ label: 'Countdown-Vorschau', match: countdownMatch }];
+
+  const goals = [
+    { matchMinute: 12, scoreTeam1: 1, scoreTeam2: 0, scoringTeamId: teamId, goalGetterName: 'A. Beispiel' },
+    { matchMinute: 34, scoreTeam1: 1, scoreTeam2: 1, scoringTeamId: teamId + 1, goalGetterName: 'B. Muster' },
+    { matchMinute: 61, scoreTeam1: 2, scoreTeam2: 1, scoringTeamId: teamId, goalGetterName: 'C. Beispiel' },
+    { matchMinute: 78, scoreTeam1: 2, scoreTeam2: 2, scoringTeamId: teamId + 1, goalGetterName: 'D. Muster' },
+  ];
+  const playedMatch = (matchIsFinished) => ({
+    matchDateTimeUTC: new Date(now - 70 * 60_000).toISOString(),
+    matchIsFinished,
+    team1,
+    team2,
+    goals,
+  });
+  return [
+    { label: 'Live-Spiel · Torschützen', match: playedMatch(false) },
+    { label: 'Nächstes Spiel · Countdown', match: countdownMatch },
+    { label: 'Endstand · Torschützen', match: playedMatch(true) },
+  ];
+}
+
 function normalizeOpenLigaDbFeeds(value) {
   let feeds;
   try { feeds = JSON.parse(String(value)); } catch { throw new Error('OpenLigaDB-Feeds müssen gültiges JSON sein.'); }
@@ -726,30 +757,33 @@ module.exports = function startWebServer({
     }
     try {
       const now = Date.now();
-      const match = {
-        matchDateTimeUTC: new Date(now + 7 * 24 * 60 * 60 * 1000).toISOString(),
-        group: { groupName: 'Beispiel-Spieltag' },
-        team1: { teamId, teamName, shortName: teamName },
-        team2: { teamId: teamId + 1, teamName: 'Beispielgegner', shortName: 'Beispielgegner' },
-      };
-      const payload = await buildNextMatchCountdownMessage({
-        leagueName,
-        match,
-        teamId,
-        countdownStyle,
-        countdownColor,
+      const previewCases = getOpenLigaDbCountdownPreviewCases({
         now,
+        teamId,
+        teamName,
+        countdownStyle,
       });
-      const embed = payload.embeds?.[0]?.toJSON() || {
-        color: Number.parseInt(countdownColor.slice(1), 16),
-        title: 'Live-Countdown',
-        description: payload.content || '',
-        footer: { text: 'OpenLigaDB · Vorschau mit Beispieldaten' },
-      };
+      const variants = await Promise.all(previewCases.map(async ({ label, match }) => {
+        const payload = await buildNextMatchCountdownMessage({
+          leagueName,
+          match,
+          teamId,
+          countdownStyle,
+          countdownColor,
+          now,
+        });
+        return {
+          label,
+          embed: getOpenLigaDbCountdownPreviewEmbed(payload, countdownColor),
+          graphic: payload.files?.[0]?.attachment.toString('base64') || null,
+        };
+      }));
+      const initialVariant = variants[0];
       return res.set('Cache-Control', 'no-store').json({
         ok: true,
-        embed,
-        graphic: payload.files?.[0]?.attachment.toString('base64') || null,
+        embed: initialVariant.embed,
+        graphic: initialVariant.graphic,
+        variants,
       });
     } catch (err) {
       logger.error(`OpenLigaDB-Countdownvorschau fehlgeschlagen: ${err.message}`);
@@ -3837,3 +3871,4 @@ module.exports = function startWebServer({
 };
 
 module.exports.getOpenLigaDbCountdownPreviewEmbed = getOpenLigaDbCountdownPreviewEmbed;
+module.exports.getOpenLigaDbCountdownPreviewCases = getOpenLigaDbCountdownPreviewCases;

@@ -21,7 +21,10 @@ const {
   getOpenLigaDbMessageType,
   OPENLIGADB_COUNTDOWN_STYLES,
 } = require('../services/openligadb');
-const { getOpenLigaDbCountdownPreviewEmbed } = require('../web/routes');
+const {
+  getOpenLigaDbCountdownPreviewCases,
+  getOpenLigaDbCountdownPreviewEmbed,
+} = require('../web/routes');
 const { createApiUsageTracker } = require('../services/api-usage');
 const {
   API_FOOTBALL_COMPETITIONS,
@@ -773,6 +776,28 @@ describe('OpenLigaDB data formatting', () => {
     expect(embed.footer.text).toContain('Beispieldaten');
   });
 
+  test('provides live, countdown, and final-result preview cases for the graphic tile', () => {
+    const now = Date.parse('2026-11-16T18:00:00Z');
+    const cases = getOpenLigaDbCountdownPreviewCases({
+      now,
+      teamId: 40,
+      teamName: 'Deutschland',
+      countdownStyle: 'graphic_timer',
+    });
+
+    expect(cases.map(item => item.label)).toEqual([
+      'Live-Spiel · Torschützen',
+      'Nächstes Spiel · Countdown',
+      'Endstand · Torschützen',
+    ]);
+    expect(cases[0].match.matchIsFinished).toBe(false);
+    expect(cases[0].match.goals).toHaveLength(4);
+    expect(cases[0].match.goals[0].scoringTeamId).toBe(40);
+    expect(cases[0].match.goals[1].scoringTeamId).toBe(41);
+    expect(Date.parse(cases[1].match.matchDateTimeUTC)).toBeGreaterThan(now);
+    expect(cases[2].match.matchIsFinished).toBe(true);
+  });
+
   test('shows the live match label, score, and scorers on the countdown graphic', () => {
     const svg = buildNextMatchCountdownSvg({
       leagueName: 'DFB Nationalspiele',
@@ -812,8 +837,9 @@ describe('OpenLigaDB data formatting', () => {
         team2: { teamId: 65, shortName: 'NED' },
         goals: scorers.map((goalGetterName, index) => ({
           matchMinute: index + 1,
-          scoreTeam1: index + 1,
-          scoreTeam2: 0,
+          scoreTeam1: [1, 1, 2, 2, 3][index],
+          scoreTeam2: [0, 1, 1, 2, 2][index],
+          scoringTeamId: [40, 65, 40, 65, 40][index],
           goalGetterName,
         })),
       },
@@ -822,10 +848,12 @@ describe('OpenLigaDB data formatting', () => {
 
     expect(svg).toContain('height="696" viewBox="0 0 1200 696"');
     for (const scorer of scorers) expect(svg).toContain(scorer);
-    expect(svg.match(/Torschützen:/g)).toHaveLength(1);
-    expect(svg).toContain('y="486"');
-    expect(svg).toContain('y="514"');
-    expect(svg).toContain('y="542"');
+    expect(svg.match(/>Torschützen<\/text>/g)).toHaveLength(2);
+    expect(svg).toContain('x="330" y="448"');
+    expect(svg).toContain('x="870" y="448"');
+    expect(svg).toContain('x="330" y="476"');
+    expect(svg).toContain('x="870" y="476"');
+    expect(svg).toContain('x="330" y="504"');
   });
 
   test('shows the final result and scorers after a match is finished', () => {
