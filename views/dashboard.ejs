@@ -2629,6 +2629,13 @@
           <div class="cfg-hint">Wähle deinen Provider. Falls in deiner .env bereits eine andere URL steht, wird sie automatisch als zusätzliche Option geladen.</div>
         </div>
         <div class="cfg-field">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px">
+            <input type="checkbox" id="cfgOpenaiWebSearch" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
+            <span>Websuche für aktuelle KI-Fragen aktivieren</span>
+          </label>
+          <div class="cfg-hint">Funktioniert mit OpenRouter und lässt dein gewähltes (auch kostenloses) Modell unverändert. Nur aktuelle oder ausdrücklich recherchierte Fragen lösen eine Suche aus; Exa liefert höchstens 3 Ergebnisse. Laut OpenRouter ca. 0,007&nbsp;$ je Suche zusätzlich zu den Modell-Tokens. Bei anderen API-Anbietern wird keine Websuche angefordert.</div>
+        </div>
+        <div class="cfg-field">
           <label class="cfg-label" for="cfgOpenaiApiKey">API-Key</label>
           <input class="cfg-input" id="cfgOpenaiApiKey" type="password" autocomplete="off" placeholder="sk-...">
           <div class="cfg-hint">Key deines Providers. Für OpenAI z. B. unter <a href="https://platform.openai.com/api-keys" target="_blank" style="color:var(--blue)">platform.openai.com/api-keys</a>. Der Key wird in der .env gespeichert.</div>
@@ -8231,6 +8238,7 @@
         setCfg('cfgOpenaiChannelIds', d.OPENAI_CHANNEL_IDS || '');
         setCheckboxValue('cfgOpenaiAllowDMs', (d.OPENAI_ALLOW_DMS || 'true') === 'true', { force });
         setCheckboxValue('cfgOpenaiNameTriggerEnabled', (d.OPENAI_NAME_TRIGGER_ENABLED || 'true') === 'true', { force });
+        setCheckboxValue('cfgOpenaiWebSearch', (d.OPENAI_WEB_SEARCH_ENABLED || 'true') === 'true', { force });
 
         if (force) clearConfigDirtyTracking();
     } catch (e) {
@@ -8702,6 +8710,9 @@
       const openaiNameTriggerEl = document.getElementById('cfgOpenaiNameTriggerEnabled');
       const curOpenaiNameTrigger = openaiNameTriggerEl.checked ? 'true' : 'false';
       if (curOpenaiNameTrigger !== (openaiNameTriggerEl.dataset.initialValue || 'false')) body.OPENAI_NAME_TRIGGER_ENABLED = curOpenaiNameTrigger;
+      const openaiWebSearchEl = document.getElementById('cfgOpenaiWebSearch');
+      const curOpenaiWebSearch = openaiWebSearchEl.checked ? 'true' : 'false';
+      if (curOpenaiWebSearch !== (openaiWebSearchEl.dataset.initialValue || 'true')) body.OPENAI_WEB_SEARCH_ENABLED = curOpenaiWebSearch;
 
       const indicatorEl = document.getElementById('cfgChannelIndicator');
     const currentIndicator = indicatorEl.checked ? 'true' : 'false';
@@ -8798,7 +8809,7 @@
           'DISCORD_GITHUB_CHANNEL_ID', 'DISCORD_GITHUB_SECONDARY_CHANNEL_ID', 'DISCORD_GITHUB_REPOS',
           'DISCORD_GITHUB_MODE', 'DISCORD_GITHUB_POLL_INTERVAL_MS', 'DISCORD_GITHUB_HIGHLIGHTS_MAX',
           'DISCORD_GITHUB_HIGHLIGHTS_AI', 'DISCORD_GITHUB_RELEASE_TEMPLATE', 'OPENAI_ENABLED',
-          'OPENAI_CHANNEL_IDS', 'OPENAI_ALLOW_DMS', 'OPENAI_NAME_TRIGGER_ENABLED',
+          'OPENAI_CHANNEL_IDS', 'OPENAI_ALLOW_DMS', 'OPENAI_NAME_TRIGGER_ENABLED', 'OPENAI_WEB_SEARCH_ENABLED',
           'OPENAI_RATE_LIMIT_PER_MINUTE', 'OPENAI_PERSONA_NAME', 'OPENAI_SYSTEM_PROMPT',
           'DISCORD_TRANSLATE_ENABLED', 'DISCORD_TRANSLATE_DEFAULT_TARGET', 'DISCORD_TRANSLATE_DEFAULT_SOURCE',
           'DISCORD_TRANSLATE_PROVIDER', 'DISCORD_TRANSLATE_API_URL', 'DISCORD_TRANSLATE_ALLOWED_GUILD_IDS',

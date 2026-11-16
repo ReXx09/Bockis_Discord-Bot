@@ -482,6 +482,7 @@ Der Updater legt die Datei automatisch aus der Vorlage an, falls sie noch fehlt.
 | Variable | Pflicht | Beschreibung |
 |----------|---------|-------------|
 | `OPENAI_ENABLED` | ❌ | KI-Chat aktivieren (`true`/`false`) |
+| `OPENAI_WEB_SEARCH_ENABLED` | ❌ | OpenRouter-Websuche für aktuelle Recherchefragen erlauben (`true`/`false`, Standard: `true`; Suchkosten zusätzlich) |
 | `OPENAI_API_KEY` | ❌ | API-Key (OpenAI oder kompatibler Provider) |
 | `OPENAI_BASE_URL` | ❌ | API-Basis-URL (Standard: `https://api.openai.com/v1`) |
 | `OPENAI_MODEL` | ❌ | Modellname (Standard: `gpt-4o-mini`) |

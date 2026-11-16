@@ -581,7 +581,29 @@ async function buildNextMatchCountdownMessage(options) {
       .replace(/[^a-z0-9-]/g, '-')
       .replace(/-+/g, '-');
     const filename = `${filenamePrefix}-${minuteKey}.png`;
-    return { files: [new AttachmentBuilder(png, { name: filename })] };
+    const { match, teamId, teamInfo, leagueName, now = Date.now() } = options;
+    const team = [match?.team1, match?.team2].find(candidate => Number(candidate?.teamId) === Number(teamId));
+    const opponent = [match?.team1, match?.team2].find(candidate => candidate && candidate !== team);
+    const teamName = team?.shortName || team?.teamName || teamInfo?.shortName || teamInfo?.teamName || 'Favorit';
+    const opponentName = opponent?.shortName || opponent?.teamName || 'Gegner offen';
+    const matchTime = Date.parse(match?.matchDateTimeUTC || match?.matchDateTime || '');
+    let content;
+    if (match?.matchIsFinished === true) {
+      const [home, away] = getMatchScore(match);
+      const teamScore = Number(team?.teamId) === Number(match?.team1?.teamId) ? home : away;
+      const opponentScore = Number(team?.teamId) === Number(match?.team1?.teamId) ? away : home;
+      content = `🏁 **Spiel beendet:** ${teamName} **${teamScore}:${opponentScore}** ${opponentName} · ${leagueName || 'OpenLigaDB'}`;
+    } else if (Number.isFinite(matchTime) && matchTime <= now) {
+      const [home, away] = getMatchScore(match);
+      const teamScore = Number(team?.teamId) === Number(match?.team1?.teamId) ? home : away;
+      const opponentScore = Number(team?.teamId) === Number(match?.team1?.teamId) ? away : home;
+      content = `⚽ **LIVE:** ${teamName} **${teamScore}:${opponentScore}** ${opponentName} · ${leagueName || 'OpenLigaDB'}`;
+    } else if (Number.isFinite(matchTime)) {
+      content = `⏳ **Nächstes Spiel:** ${teamName} – ${opponentName} · Anstoß <t:${Math.floor(matchTime / 1000)}:R>`;
+    } else {
+      content = `⏳ **Nächstes Spiel:** ${teamName} · ${leagueName || 'OpenLigaDB'}`;
+    }
+    return { content, files: [new AttachmentBuilder(png, { name: filename })] };
   }
   return payload;
 }

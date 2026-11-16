@@ -660,6 +660,9 @@ describe('OpenLigaDB data formatting', () => {
     const png = await buildNextMatchCountdownPng(options);
 
     expect(payload.embeds).toBeUndefined();
+    expect(payload.content).toContain('Nächstes Spiel');
+    expect(payload.content).toContain('Bayern – Köln');
+    expect(payload.content).toContain('<t:1795203000:R>');
     expect(payload.files[0].name).toBe(
       `openligadb-countdown-bl1-2026-${Math.floor(options.now / 60_000)}.png`,
     );
@@ -1207,6 +1210,8 @@ describe('OpenLigaDB data formatting', () => {
     });
 
     expect(actualPayload.files[0].attachment).toEqual(expectedPng);
+    expect(actualPayload.content).toContain('GER – NED');
+    expect(actualPayload.content).toContain('<t:1794858300:R>');
     expect(http.get).not.toHaveBeenCalledWith(
       'https://api.openligadb.de/getnextmatchbyleagueteam/5981/139',
       expect.any(Object),

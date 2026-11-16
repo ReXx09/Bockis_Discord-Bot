@@ -623,6 +623,12 @@ const config = convict({
       default: false,
       env: 'OPENAI_ENABLED'
     },
+    webSearchEnabled: {
+      doc: 'OpenRouter-Websuche für aktuelle oder ausdrücklich recherchierte KI-Fragen aktivieren',
+      format: Boolean,
+      default: true,
+      env: 'OPENAI_WEB_SEARCH_ENABLED'
+    },
     baseUrl: {
       doc: 'OpenAI-kompatible API Base URL (z.B. https://api.openai.com/v1 oder https://api.groq.com/openai/v1)',
       format: String,
