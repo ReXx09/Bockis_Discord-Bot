@@ -12,6 +12,8 @@ Bockis Discord Bot verbindet deine **Uptime Kuma**-Instanz mit Discord und hält
 
 Optimiert für den Betrieb auf dem **Raspberry Pi** — mit interaktivem Installer, whiptail-Verwaltungsmenü, automatischem Update-Skript und systemd-Integration.
 
+> **Self-hosted:** Bockis ist kein gehosteter Discord-Dienst. Du installierst und betreibst den Bot selbst auf einem Rechner oder Server, zum Beispiel auf einem Raspberry Pi, einem Linux-Server oder mit Docker. Dafür benötigst du eine eigene Discord-Bot-Anwendung und einen Bot-Token. Der Bot läuft, solange der Host und der Bot-Prozess aktiv sind. Zugangsdaten gehören ausschließlich in deine lokale `.env`-Datei und dürfen nicht veröffentlicht oder committed werden.
+
 ---
 
 ## ✨ Features
