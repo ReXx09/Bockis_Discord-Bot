@@ -44,7 +44,7 @@ describe('AI capability prompt', () => {
       question: 'Kannst du mir helfen?',
       personaName: 'Bockis',
       webSearchAvailable: false,
-    })).toContain('Erzähl mir kurz');
+    })).toContain('Wobei brauchst du Unterstützung?');
   });
 
   test('passes specific help requests through to the AI', () => {

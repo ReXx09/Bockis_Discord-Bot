@@ -50,7 +50,7 @@ function buildAiQuickReply({ question, personaName, webSearchAvailable }) {
         'Die verfügbaren Bot-Befehle findest du unter `/hilfe`; ich führe sie nicht selbst aus.',
       ].join(' ');
     case 'help':
-      return 'Klar! Erzähl mir kurz, wobei du Unterstützung brauchst. Ich kann Fragen beantworten, etwas erklären oder dir beim Schreiben und Ideenfinden helfen.';
+      return 'Klar! Ich helfe dir gern. Wobei brauchst du Unterstützung?';
     default:
       return null;
   }

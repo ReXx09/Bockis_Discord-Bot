@@ -27,6 +27,10 @@ const {
   buildAiCapabilitiesPrompt,
   buildAiQuickReply,
 } = require('./services/ai-capabilities');
+const {
+  assistantInvitesFollowUp,
+  createAiFollowUpTracker,
+} = require('./services/ai-conversation');
 
 // #region 1. ENV-VALIDIERUNG
 const path = require('path');
@@ -111,6 +115,7 @@ const {
   getServerProfileSettings,
   setServerProfileSettings,
   installServerProfileConfig,
+  runWithServerProfile,
   withServerProfile,
 } = require('./server-profiles');
 const { createOpenLigaDbWatcher } = require('./services/openligadb');
@@ -5344,6 +5349,8 @@ client.on('messageCreate', (message) => {
   captureWigiDashMessage(message);
 });
 
+const _aiFollowUpTracker = createAiFollowUpTracker();
+
 client.on('messageCreate', withServerProfile(async (message) => {
   if (message.author?.bot) return;
   if (message.system) return;
@@ -5353,9 +5360,16 @@ client.on('messageCreate', withServerProfile(async (message) => {
   if (!isDM && message.mentions?.everyone) return;
   const isMention = message.mentions.has(client.user);
   const isNameTrigger = !isDM && _messageHasAiNameTrigger(message);
+  const conversationContext = {
+    guildId: message.guildId,
+    channelId: message.channelId,
+    userId: message.author.id,
+  };
+  const isConversationFollowUp = _aiFollowUpTracker.has(conversationContext);
 
   // Fallback wenn KI deaktiviert: @Erwähnung trotzdem beantworten
   if (!config.get('openai.enabled')) {
+    _aiFollowUpTracker.clear(conversationContext);
     if (!isDM && (isMention || isNameTrigger)) {
       const q = message.content.replace(/<@!?\d+>/g, '').trim();
       if (q && /\b(hilf|help|hilfe|wie|was kannst|kannst du|erkl[äa]r|was machst|commands|befehle|kommandos)\b/i.test(q)) {
@@ -5373,7 +5387,7 @@ client.on('messageCreate', withServerProfile(async (message) => {
     return;
   }
 
-  if (!isDM && !isMention && !isNameTrigger) return;
+  if (!isDM && !isMention && !isNameTrigger && !isConversationFollowUp) return;
   if (isDM && !config.get('openai.allowDMs')) return;
 
   // Kanal-Filter (nur bei Guild-Nachrichten)
@@ -5392,6 +5406,7 @@ client.on('messageCreate', withServerProfile(async (message) => {
   }
   history.push(now);
   _chatRateLimitMap.set(message.author.id, history);
+  _aiFollowUpTracker.clear(conversationContext);
 
   // Mention-Prefix entfernen
   let content = message.content.replace(/<@!?\d+>/g, '').trim();
@@ -5452,7 +5467,10 @@ client.on('messageCreate', withServerProfile(async (message) => {
     if (reply) {
       // Discord-Limit: 2000 Zeichen
       const truncated = reply.length > 1900 ? reply.slice(0, 1897) + '…' : reply;
-      await message.reply({ content: truncated }).catch(() => {});
+      const sentMessage = await message.reply({ content: truncated }).catch(() => null);
+      if (sentMessage && assistantInvitesFollowUp(truncated)) {
+        _aiFollowUpTracker.refresh(conversationContext);
+      }
     } else {
       await message.reply({ content: '🤔 Ich konnte gerade keine Antwort generieren. Bitte versuche es später nochmal.' }).catch(() => {});
     }
@@ -5713,49 +5731,81 @@ client.on('messageCreate', withServerProfile(async (message) => {
 }));
 
 // #region 22. UPDATE-ZYKLUS
-function initializeCleanupTimers() {
-  const globalIntervalMs = Math.max(60_000, _toNonNegativeInt(config.get('discord.messageCleanupIntervalMs'), 300000));
-  const channels = getMessageCleanupChannels();
+const _messageCleanupLastRunAt = new Map();
+let _messageCleanupCycleRunning = false;
 
-  if (!channels.length) {
-    // Kein Kanal konfiguriert – globaler Fallback (nutzt DISCORD_NOTIFICATION_CHANNEL falls gesetzt)
+async function runProfileMessageCleanupCycle() {
+  if (_messageCleanupCycleRunning) return;
+  _messageCleanupCycleRunning = true;
+  const activeChannelKeys = new Set();
+
+  try {
+    for (const guildId of client.guilds.cache.keys()) {
+      await runWithServerProfile(guildId, async () => {
+        const globalOptions = getMessageCleanupOptions();
+        if (!globalOptions.enabled) return;
+
+        const channels = getMessageCleanupChannels();
+        if (!channels.length) {
+          logger.warn(`Nachrichten-Cleanup: aktiviert, aber im Serverprofil ${guildId} ist kein Kanal konfiguriert`);
+          return;
+        }
+
+        for (const { id: channelId, overrides } of channels) {
+          const channelOptions = Object.assign({}, globalOptions, overrides);
+          const intervalMs = Math.max(
+            60_000,
+            _toNonNegativeInt(channelOptions.cleanupIntervalMs ?? config.get('discord.messageCleanupIntervalMs'), 300000)
+          );
+          const key = JSON.stringify([guildId, channelId]);
+          activeChannelKeys.add(key);
+
+          const now = Date.now();
+          if (now - (_messageCleanupLastRunAt.get(key) || 0) < intervalMs) continue;
+
+          let channel = client.channels.cache.get(channelId);
+          if (!channel) {
+            try {
+              channel = await client.channels.fetch(channelId);
+            } catch (err) {
+              logger.warn(`Nachrichten-Cleanup: Kanal ${channelId} im Serverprofil ${guildId} konnte nicht geladen werden: ${err.message}`);
+              continue;
+            }
+          }
+
+          try {
+            await ensureCleanupInfoMessage(channel, channelOptions);
+            const result = await cleanupMessagesInChannel(channel, channelOptions);
+            _messageCleanupLastRunAt.set(key, Date.now());
+            if (result.deleted > 0 || result.skipped > 0) {
+              logger.info(`Nachrichten-Cleanup: #${channel.name || channel.id} gescannt=${result.scanned} kandidat=${result.candidates} gelöscht=${result.deleted} fehler=${result.skipped}`);
+            }
+          } catch (err) {
+            logger.warn(`Nachrichten-Cleanup: Bereinigung in #${channel.name || channel.id} fehlgeschlagen: ${err.message}`);
+          }
+        }
+      });
+    }
+  } catch (err) {
+    logger.error(`Nachrichten-Cleanup-Zyklus fehlgeschlagen: ${err.message}`);
+  } finally {
+    for (const key of _messageCleanupLastRunAt.keys()) {
+      if (!activeChannelKeys.has(key)) _messageCleanupLastRunAt.delete(key);
+    }
+    _messageCleanupCycleRunning = false;
+  }
+}
+
+function initializeCleanupTimers() {
+  if (!client.guilds.cache.size) {
+    const globalIntervalMs = Math.max(60_000, _toNonNegativeInt(config.get('discord.messageCleanupIntervalMs'), 300000));
     runConfiguredMessageCleanup();
     setInterval(runConfiguredMessageCleanup, globalIntervalMs);
     return;
   }
 
-  // Kanäle nach ihrem effektiven Intervall gruppieren und separate Timer erstellen
-  const byInterval = new Map();
-  for (const ch of channels) {
-    const ms = Math.max(60_000, ch.overrides.cleanupIntervalMs ?? globalIntervalMs);
-    if (!byInterval.has(ms)) byInterval.set(ms, []);
-    byInterval.get(ms).push(ch);
-  }
-
-  for (const [ms, group] of byInterval) {
-    const runGroup = async () => {
-      const globalOptions = getMessageCleanupOptions();
-      if (!globalOptions.enabled) return;
-      for (const { id: channelId, overrides } of group) {
-        const channelOptions = Object.assign({}, globalOptions, overrides);
-        let channel = client.channels.cache.get(channelId);
-        if (!channel) {
-          try {
-            channel = await client.channels.fetch(channelId);
-          } catch (err) {
-            logger.warn(`Nachrichten-Cleanup: Kanal ${channelId} konnte nicht geladen werden: ${err.message}`);
-            continue;
-          }
-        }
-        const result = await cleanupMessagesInChannel(channel, channelOptions);
-        if (result.deleted > 0 || result.skipped > 0) {
-          logger.info(`Nachrichten-Cleanup: #${channel.name || channel.id} gescannt=${result.scanned} kandidat=${result.candidates} gelöscht=${result.deleted} fehler=${result.skipped}`);
-        }
-      }
-    };
-    runGroup();
-    setInterval(runGroup, ms);
-  }
+  runProfileMessageCleanupCycle();
+  setInterval(runProfileMessageCleanupCycle, 60_000);
 }
 
 function initializeUpdateCycle() {
