@@ -6540,6 +6540,7 @@
     if (!select.value) {
       row.dataset.countdownPreviewRequest = String(Number(row.dataset.countdownPreviewRequest || 0) + 1);
       preview.hidden = true;
+      if (previewButton) previewButton.textContent = 'Countdown-Vorschau anzeigen';
     }
     else if (!preview.hidden) {
       void renderOpenLigaDbCountdownPreview(row);
@@ -6653,6 +6654,7 @@
       }
       status.textContent = `Vorschau: ${select.selectedOptions[0]?.textContent || 'Countdown'} · Beispieldaten`;
       preview.hidden = false;
+      button.textContent = 'Countdown-Vorschau ausblenden';
     } catch (error) {
       if (requestId !== Number(row.dataset.countdownPreviewRequest)) return;
       status.textContent = error.message;
@@ -6839,16 +6841,18 @@
             <span>Datum und Uhrzeit anzeigen</span>
           </label>
         </div>
-        <label class="cfg-label" style="display:block;margin-top:10px">Grafikvorlage
-          <select class="cfg-input" data-openliga-role="finished-image-template">
-            <option value="stadium">Stadion · dunkelgrün</option>
-            <option value="classic">Klassisch · dunkelblau/gold</option>
-            <option value="minimal">Minimal · hell</option>
-          </select>
-        </label>
-        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px">
-          <button class="btn" type="button" data-openliga-role="finished-image-preview">Vorschau anzeigen</button>
-          <button class="btn" type="button" data-openliga-role="finished-image-test">Test an Discord senden</button>
+        <div style="display:flex;align-items:flex-end;flex-wrap:wrap;gap:8px;margin-top:10px">
+          <label class="cfg-label" style="flex:1 1 260px;margin:0">Grafikvorlage
+            <select class="cfg-input" data-openliga-role="finished-image-template">
+              <option value="stadium">Stadion · dunkelgrün</option>
+              <option value="classic">Klassisch · dunkelblau/gold</option>
+              <option value="minimal">Minimal · hell</option>
+            </select>
+          </label>
+          <div style="display:flex;flex-wrap:wrap;gap:8px">
+            <button class="btn" type="button" data-openliga-role="finished-image-preview">Vorschau anzeigen</button>
+            <button class="btn" type="button" data-openliga-role="finished-image-test">Test an Discord senden</button>
+          </div>
         </div>
         <div data-openliga-role="finished-image-status" class="cfg-hint" aria-live="polite"></div>
         <div class="cfg-hint">Der Test nutzt die aktuellen Grafikoptionen und sendet Beispieldaten an den Meldungskanal.</div>
@@ -7027,6 +7031,14 @@
       updateOpenLigaDbFavoriteSelection(row, true);
     });
     row.querySelector('[data-openliga-role="countdown-preview-button"]').addEventListener('click', () => {
+      const preview = row.querySelector('[data-openliga-role="countdown-preview"]');
+      const button = row.querySelector('[data-openliga-role="countdown-preview-button"]');
+      if (!preview.hidden) {
+        preview.hidden = true;
+        button.textContent = 'Countdown-Vorschau anzeigen';
+        row.querySelector('[data-openliga-role="countdown-preview-status"]').textContent = '';
+        return;
+      }
       renderOpenLigaDbCountdownPreview(row);
     });
     row.querySelector('[data-openliga-role="countdown-test-button"]').addEventListener('click', () => {
@@ -7057,6 +7069,14 @@
       void sendOpenLigaDbFinishedImageTest(row);
     });
     row.querySelector('[data-openliga-role="goal-event-preview"]').addEventListener('click', () => {
+      const image = row.querySelector('[data-openliga-role="goal-event-image"]');
+      const button = row.querySelector('[data-openliga-role="goal-event-preview"]');
+      if (!image.hidden) {
+        image.hidden = true;
+        button.textContent = 'Tor-Ereignisvorschau anzeigen';
+        row.querySelector('[data-openliga-role="goal-event-status"]').textContent = '';
+        return;
+      }
       void previewOpenLigaDbGoalEvent(row);
     });
     for (const role of ['finished-image-scorers', 'finished-image-competition', 'finished-image-date', 'finished-image-template']) {
@@ -7159,6 +7179,9 @@
   async function previewOpenLigaDbGoalEvent(row) {
     const status = row.querySelector('[data-openliga-role="goal-event-status"]');
     const image = row.querySelector('[data-openliga-role="goal-event-image"]');
+    const button = row.querySelector('[data-openliga-role="goal-event-preview"]');
+    if (button.disabled) return;
+    button.disabled = true;
     status.textContent = 'Tor-Ereignisvorschau wird erstellt …';
     status.className = 'cfg-hint';
     try {
@@ -7178,10 +7201,14 @@
       image.dataset.objectUrl = URL.createObjectURL(await response.blob());
       image.src = image.dataset.objectUrl;
       image.hidden = false;
+      button.textContent = 'Tor-Ereignisvorschau ausblenden';
       status.textContent = 'Vorschau mit Beispieldaten.';
     } catch (error) {
       status.textContent = error.message;
       status.className = 'cfg-hint err';
+    } finally {
+      button.disabled = false;
+      button.textContent = image.hidden ? 'Tor-Ereignisvorschau anzeigen' : 'Tor-Ereignisvorschau ausblenden';
     }
   }
 

@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Vorschauen der Live- und Tor-Ereigniskacheln im OpenLigaDB-Dashboard ein- und ausblendbar; Grafikvorlage und Aktionen kompakt nebeneinander angeordnet.
+
 ## [1.2.0] - 2026-10-26
 
 - Grafische Discord-Karten für Befehlsübersicht und GitHub-Releases, inklusive PNG-Vorschauen im Dashboard.
