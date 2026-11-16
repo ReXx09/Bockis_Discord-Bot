@@ -623,6 +623,8 @@ function buildNextMatchCountdownSvg({ leagueName, match, teamId, teamInfo, count
   const opponent = [match?.team1, match?.team2].find(candidate => candidate && candidate !== team);
   const teamName = fitSvgText(team?.shortName || team?.teamName || teamInfo?.shortName || teamInfo?.teamName || 'Favorit', 28);
   const opponentName = fitSvgText(opponent?.shortName || opponent?.teamName || 'Gegner offen', 28);
+  const stadiumName = String(match?.location?.locationStadium || '').trim();
+  const stadium = stadiumName ? fitSvgText(`STADION · ${stadiumName}`, 68) : '';
   const matchTime = Date.parse(match?.matchDateTimeUTC || match?.matchDateTime || '');
   const competition = fitSvgText(leagueName, 55);
   const hasUpcomingMatch = match && match.matchIsFinished !== true && Number.isFinite(matchTime) && matchTime > now;
@@ -686,6 +688,7 @@ function buildNextMatchCountdownSvg({ leagueName, match, teamId, teamInfo, count
     <circle cx="600" cy="275" r="220" fill="none" stroke="${accent}" stroke-opacity=".08" stroke-width="2"/>
     <text x="600" y="86" text-anchor="middle" fill="${accent}" font-family="Arial, sans-serif" font-size="30" font-weight="700" letter-spacing="5">${escapeSvgText(heading)}</text>
     <text x="600" y="142" text-anchor="middle" fill="#b9c0ce" font-family="Arial, sans-serif" font-size="22">${escapeSvgText(competition)}</text>
+    ${stadium ? `<text x="600" y="192" text-anchor="middle" fill="#b9c0ce" font-family="Arial, sans-serif" font-size="18">${escapeSvgText(stadium)}</text>` : ''}
     <text x="330" y="${teamNameY}" text-anchor="middle" fill="${favoriteColor}" font-family="Arial, sans-serif" font-size="42" font-weight="700">${escapeSvgText(teamName)}</text>
     <text x="600" y="${teamNameY}" text-anchor="middle" fill="${accent}" font-family="Arial, sans-serif" font-size="28" font-weight="700">VS</text>
     <text x="870" y="${teamNameY}" text-anchor="middle" fill="${opponentColor}" font-family="Arial, sans-serif" font-size="42" font-weight="700">${escapeSvgText(opponentName)}</text>

@@ -796,6 +796,7 @@ describe('OpenLigaDB data formatting', () => {
     expect(cases[0].match.goals[1].scoringTeamId).toBe(41);
     expect(Date.parse(cases[1].match.matchDateTimeUTC)).toBeGreaterThan(now);
     expect(cases[2].match.matchIsFinished).toBe(true);
+    expect(cases[0].match.location.locationStadium).toBe('Beispielstadion');
   });
 
   test('shows the live match label, score, and scorers on the countdown graphic', () => {
@@ -805,6 +806,7 @@ describe('OpenLigaDB data formatting', () => {
       match: {
         matchIsFinished: false,
         matchDateTimeUTC: '2026-11-13T19:45:00Z',
+        location: { locationCity: 'Dortmund', locationStadium: 'Signal & Iduna Park' },
         team1: { teamId: 1404, shortName: 'SRB' },
         team2: { teamId: 139, shortName: 'GER' },
         goals: [
@@ -816,6 +818,7 @@ describe('OpenLigaDB data formatting', () => {
     });
 
     expect(svg).toContain('LIVE-SPIEL');
+    expect(svg).toContain('STADION · Signal &amp; Iduna Park');
     expect(svg).toContain('>2:0</text>');
     expect(svg).not.toContain('LIVE  ·  2:0');
     expect(svg).toContain('<tspan fill="#75B9FF">3&apos; S. Babic (Eigentor für GER)</tspan>');

@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Live-Kachel höher und dynamisch erweitert, damit alle Torschützen unter den jeweiligen Teams angezeigt werden.
+- Live-Kachel zeigt das Stadion an, sofern OpenLigaDB für die Partie einen Spielort liefert.
 - OpenLigaDB-Kachelvorschau startet mit einer Live-Torschützenansicht; per Klick kann zwischen Live-Spiel, Countdown und Endstand gewechselt werden.
 - Vorschauen und Grafikvorlagen-Aktionen im OpenLigaDB-Dashboard verbessert.
 

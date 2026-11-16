@@ -111,6 +111,7 @@ function getOpenLigaDbCountdownPreviewCases({ now, teamId, teamName, countdownSt
     group: { groupName: 'Beispiel-Spieltag' },
     team1,
     team2,
+    location: { locationCity: 'Beispielstadt', locationStadium: 'Beispielstadion' },
   };
   if (countdownStyle !== 'graphic_timer') return [{ label: 'Countdown-Vorschau', match: countdownMatch }];
 
@@ -125,6 +126,7 @@ function getOpenLigaDbCountdownPreviewCases({ now, teamId, teamName, countdownSt
     matchIsFinished,
     team1,
     team2,
+    location: { locationCity: 'Beispielstadt', locationStadium: 'Beispielstadion' },
     goals,
   });
   return [
