@@ -1093,6 +1093,18 @@ module.exports = function startWebServer({
   app.post('/api/github-watcher/send-preview', dashboardAuth, async (req, res) => {
     try {
       if (typeof sendGitHubReleasePreview !== 'function') throw new Error('Release-Versand nicht verfügbar');
+      const guildId = String(req.body?.guildId || '').trim();
+      if (!guildId || !client.guilds.cache.has(guildId)) {
+        return res.status(400).json({ ok: false, error: 'Bitte ein Serverprofil auswählen, das der Bot erreichen kann.' });
+      }
+      if (ServerProfile?.findByPk) {
+        const profile = await ServerProfile.findByPk(guildId);
+        if (!profile) return res.status(404).json({ ok: false, error: 'Serverprofil wurde nicht gefunden.' });
+        let settings = {};
+        try { settings = JSON.parse(profile.settingsJson || '{}'); } catch { /* use empty profile */ }
+        settings.GUILD_ID = guildId;
+        setServerProfileSettings(guildId, settings);
+      }
       const repository = String(req.body?.repository || '').trim().toLowerCase();
       const text = req.body?.text;
       if (!/^[a-z0-9_.-]+\/[a-z0-9_.-]+$/.test(repository)) {
@@ -1103,11 +1115,11 @@ module.exports = function startWebServer({
       }
       const textColor = String(req.body?.textColor || '#e8eef9').trim();
       if (!/^#[0-9a-f]{6}$/i.test(textColor)) return res.status(400).json({ ok: false, error: 'Ungültige Schriftfarbe' });
-      const channelCount = await sendGitHubReleasePreview(repository, text, textColor);
+      const channelCount = await sendGitHubReleasePreview(repository, text, textColor, guildId);
       res.json({ ok: true, message: `Release-Text an ${channelCount} Kanal/Kanäle gesendet` });
     } catch (err) {
       logger.error(`/api/github-watcher/send-preview Fehler: ${err.message}`);
-      res.status(500).json({ ok: false, error: err.message });
+      res.status(err.code === 'GITHUB_REPOSITORY_NOT_CONFIGURED' ? 400 : 500).json({ ok: false, error: err.message });
     }
   });
 
@@ -1118,9 +1130,21 @@ module.exports = function startWebServer({
         logger.error('GitHub-Watcher: runGitHubReleaseCheck nicht verfügbar');
         return res.status(503).json({ ok: false, error: 'GitHub-Watcher nicht verfügbar' });
       }
+      const guildId = String(req.body?.guildId || '').trim();
+      if (!guildId || !client.guilds.cache.has(guildId)) {
+        return res.status(400).json({ ok: false, error: 'Bitte ein Serverprofil auswählen, das der Bot erreichen kann.' });
+      }
+      if (ServerProfile?.findByPk) {
+        const profile = await ServerProfile.findByPk(guildId);
+        if (!profile) return res.status(404).json({ ok: false, error: 'Serverprofil wurde nicht gefunden.' });
+        let settings = {};
+        try { settings = JSON.parse(profile.settingsJson || '{}'); } catch { /* use empty profile */ }
+        settings.GUILD_ID = guildId;
+        setServerProfileSettings(guildId, settings);
+      }
       logger.info('GitHub-Watcher: Manueller Check ausgelöst via Dashboard');
       // notify=true sendet auch bei bereits bekannten Releases (force send)
-      await runGitHubReleaseCheck({ notify: true });
+      await runGitHubReleaseCheck({ notify: true, guildId });
       logger.info('GitHub-Watcher: Manueller Check abgeschlossen');
       res.json({ ok: true, message: 'GitHub-Watcher manuell ausgeführt' });
     } catch (err) {

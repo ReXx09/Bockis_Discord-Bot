@@ -6273,6 +6273,7 @@
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          guildId: activeServerProfileGuildId,
           repository,
           text,
           textColor: document.getElementById('cfgGithubReleaseTextColor')?.value || '#e8eef9'

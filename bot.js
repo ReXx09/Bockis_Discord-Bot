@@ -287,7 +287,8 @@ let lastChannelNameMs      = _initState.lastChannelNameMs  ?? 0;
 let serviceCategoryId      = _initState.serviceCategoryId  ?? null;
 let serviceChannels        = _initState.serviceChannels     ?? {};  // { monitorName: channelId }
 let cleanupInfoMessageIds  = _initState.cleanupInfoMessageIds ?? {}; // { channelId: messageId }
-let githubWatchState        = _initState.githubWatchState ?? {}; // { repo: { releaseId, release } }
+let githubWatchState        = _initState.githubWatchState ?? {}; // { "guildId:repo": { releaseId, release } }
+const githubWatchLastCheckAt = new Map();
 let userSubscriptions      = _initState.userSubscriptions   ?? {};  // { monitorId: [userId, ...] }
 let savedQuotes            = Array.isArray(_initState.quotes) ? _initState.quotes : [];
 let pendingReminders       = Array.isArray(_initState.reminders) ? _initState.reminders : [];
@@ -3194,8 +3195,9 @@ async function fetchGitHubLatestRelease(repository) {
   const token = String(config.get('discord.githubToken') || '').trim();
   const headers = { Accept: 'application/vnd.github+json', 'User-Agent': 'Bockis-Discord-Bot' };
   if (token) headers.Authorization = `Bearer ${token}`;
-  const response = await axios.get(`https://api.github.com/repos/${repository}/releases/latest`, { headers, timeout: 12_000 });
-  const data = response.data || {};
+  const response = await axios.get(`https://api.github.com/repos/${repository}/releases?per_page=10`, { headers, timeout: 12_000 });
+  const data = Array.isArray(response.data) ? response.data.find(release => !release?.draft) : null;
+  if (!data) throw new Error('Kein veröffentlichter Release gefunden');
   return {
     id: data.id,
     repository,
@@ -3244,31 +3246,38 @@ function buildGitHubCommitPayload(commit) {
   return { embeds: [embed], components: [row], allowedMentions: { parse: [] } };
 }
 
-async function runGitHubReleaseCheck({ notify = true } = {}) {
+async function runGitHubReleaseCheckForProfile({ notify, guildId }) {
   if (config.get('discord.githubWatchEnabled') !== true) {
-    logger.info('GitHub-Watcher: ABBRUCH - Feature deaktiviert (githubWatchEnabled=false)');
+    logger.info(`GitHub-Watcher: Guild ${guildId} übersprungen (Feature deaktiviert)`);
     return;
   }
+  if (!notify) {
+    const interval = Math.max(60_000, Number(config.get('discord.githubPollIntervalMs')) || 300_000);
+    const previousCheckAt = githubWatchLastCheckAt.get(guildId) || 0;
+    if (Date.now() - previousCheckAt < interval) return;
+    githubWatchLastCheckAt.set(guildId, Date.now());
+  }
   const repositories = parseGitHubRepositories();
-  logger.info(`GitHub-Watcher: Repositories nach Parsing: ${repositories.join(', ') || 'KEINE'}`);
+  logger.info(`GitHub-Watcher: Guild ${guildId} Repositories: ${repositories.join(', ') || 'KEINE'}`);
   const channelId = String(config.get('discord.githubChannelId') || '').trim();
   const secondaryChannelId = String(config.get('discord.githubSecondaryChannelId') || '').trim();
   const channelIds = [...new Set([channelId, secondaryChannelId].filter(Boolean))];
   const commitChannelIds = channelId ? [channelId] : [];
   const bannerChannelId = secondaryChannelId && secondaryChannelId !== channelId ? secondaryChannelId : '';
-  logger.info(`GitHub-Watcher: Channel IDs: ${channelIds.join(', ') || 'KEINE'}`);
+  logger.info(`GitHub-Watcher: Guild ${guildId} Channel IDs: ${channelIds.join(', ') || 'KEINE'}`);
   if (!repositories.length) {
-    logger.warn('GitHub-Watcher: ABBRUCH - keine Repositories konfiguriert (nach Parsing leer)');
+    logger.warn(`GitHub-Watcher: Guild ${guildId} übersprungen (keine Repositories konfiguriert)`);
     return;
   }
   if (!channelIds.length) {
-    logger.warn('GitHub-Watcher: ABBRUCH - keine Channel IDs konfiguriert');
+    logger.warn(`GitHub-Watcher: Guild ${guildId} übersprungen (keine Channel IDs konfiguriert)`);
     return;
   }
 
   for (const repository of repositories) {
     const settings = getGitHubRepositorySettings(repository);
-    const previous = githubWatchState[repository] || {};
+    const stateKey = `${guildId}:${repository}`;
+    const previous = githubWatchState[stateKey] || githubWatchState[repository] || {};
     const nextState = { ...previous };
     let stateChanged = false;
 
@@ -3297,10 +3306,11 @@ async function runGitHubReleaseCheck({ notify = true } = {}) {
           logger.info(`GitHub-Watcher: Prüfe Releases für ${repository}...`);
           const release = await fetchGitHubLatestRelease(repository);
           const hasPreviousRelease = Boolean(previous.releaseId);
-          const isNewRelease = !hasPreviousRelease || String(previous.releaseId) !== String(release.id);
+          const isNewRelease = hasPreviousRelease && String(previous.releaseId) !== String(release.id);
           const isFresh = !hasPreviousRelease && release.published_at &&
+            Date.now() - new Date(release.published_at).getTime() >= 0 &&
             (Date.now() - new Date(release.published_at).getTime()) < 7 * 24 * 3600 * 1000;
-          const shouldNotify = notify ? true : (isNewRelease || isFresh);
+          const shouldNotify = notify || isNewRelease || isFresh;
 
           if (shouldNotify) {
             let allSent = true;
@@ -3367,7 +3377,7 @@ async function runGitHubReleaseCheck({ notify = true } = {}) {
 
       if (stateChanged) {
         nextState.checkedAt = new Date().toISOString();
-        githubWatchState[repository] = nextState;
+        githubWatchState[stateKey] = nextState;
         persistState();
       }
     } catch (err) {
@@ -3376,14 +3386,27 @@ async function runGitHubReleaseCheck({ notify = true } = {}) {
   }
 }
 
+async function runGitHubReleaseCheck({ notify = false, guildId } = {}) {
+  const guildIds = guildId
+    ? [String(guildId)]
+    : [...client.guilds.cache.keys()].map(String);
+  if (!guildIds.length) {
+    logger.warn('GitHub-Watcher: Keine Discord-Server für Profilprüfung verfügbar');
+    return;
+  }
+  for (const currentGuildId of guildIds) {
+    await runWithServerProfile(currentGuildId, () =>
+      runGitHubReleaseCheckForProfile({ notify, guildId: currentGuildId })
+    );
+  }
+}
+
+let githubWatchTimer = null;
 function initializeGitHubWatcher() {
-  if (config.get('discord.githubWatchEnabled') !== true) return;
-  const interval = Math.max(60_000, Number(config.get('discord.githubPollIntervalMs')) || 300_000);
-  // Startup: nur Baseline setzen (notify=false), NICHT senden
-  runGitHubReleaseCheck({ notify: false });
-  // Periodisch: nur bei NEUEN Releases senden (notify=false)
-  setInterval(() => runGitHubReleaseCheck({ notify: false }), interval);
-  logger.info(`GitHub-Watcher gestartet (alle ${Math.round(interval / 1000)}s)`);
+  if (githubWatchTimer) return;
+  void runGitHubReleaseCheck({ notify: false });
+  githubWatchTimer = setInterval(() => runGitHubReleaseCheck({ notify: false }), 60_000);
+  logger.info('GitHub-Watcher gestartet (Serverprofile werden minütlich auf Fälligkeit geprüft)');
 }
 
 function getCommandTilePreviewText(template) {
@@ -3393,7 +3416,9 @@ function getCommandTilePreviewText(template) {
 async function getGitHubReleasePreviewPng(repository) {
   const repo = normalizeGitHubRepository(repository);
   if (!repo) throw new Error('Ungültiges Repository-Format');
-  const release = githubWatchState[repo]?.release || await fetchGitHubLatestRelease(repo);
+  const cachedRelease = Object.entries(githubWatchState)
+    .find(([key]) => key === repo || key.endsWith(`:${repo}`))?.[1]?.release;
+  const release = cachedRelease || await fetchGitHubLatestRelease(repo);
   return convertSvgToPngBuffer(buildReleaseNotesSvg(release));
 }
 
@@ -3428,39 +3453,50 @@ async function getGitHubReleaseGraphicPreviewPng(repository, text, textColor) {
   ));
 }
 
-async function sendGitHubReleasePreview(repository, text, textColor) {
-  const repo = normalizeGitHubRepository(repository);
-  if (!repo || !parseGitHubRepositories().includes(repo)) throw new Error('Repository ist nicht im GitHub-Watcher eingetragen');
-  const message = String(text || '');
-  if (!message.trim() || message.length > 20_000) throw new Error('Ungültiger Release-Vorschautext');
-  const channelIds = [...new Set([
-    String(config.get('discord.githubChannelId') || '').trim(),
-    String(config.get('discord.githubSecondaryChannelId') || '').trim()
-  ].filter(Boolean))];
-  if (!channelIds.length) throw new Error('Kein GitHub-Ausgabekanal konfiguriert');
-
-  const png = await convertSvgToPngBuffer(buildEditableTextSvg(
-    `GitHub Release · ${repo}`,
-    message,
-    getGitHubReleaseColor(repo),
-    textColor || config.get('discord.githubReleaseTextColor')
-  ));
-  const attachment = new AttachmentBuilder(png, { name: 'github-release-vorschau.png' });
-
-  for (const channelId of channelIds) {
-    let channel = client.channels.cache.get(channelId);
-    if (!channel) channel = await client.channels.fetch(channelId);
-    if (!channel?.isTextBased?.() || typeof channel.send !== 'function') {
-      throw new Error(`Kanal ${channelId} ist kein beschreibbarer Textkanal`);
-    }
-    await channel.send({
-      content: `📦 Release-Text · ${repo}`,
-      files: [attachment],
-      allowedMentions: { parse: [] }
-    });
+async function sendGitHubReleasePreview(repository, text, textColor, guildId) {
+  if (!guildId || !client.guilds.cache.has(String(guildId))) {
+    throw new Error('Bitte ein Serverprofil auswählen, das der Bot erreichen kann');
   }
-  logger.info(`GitHub-Watcher: Editor-Release-Text für ${repo} an ${channelIds.length} Kanal/Kanäle gesendet`);
-  return channelIds.length;
+  return runWithServerProfile(String(guildId), async () => {
+    const repo = normalizeGitHubRepository(repository);
+    const configuredRepositories = parseGitHubRepositories();
+    if (!repo || !configuredRepositories.includes(repo)) {
+      logger.warn(`GitHub-Watcher: Vorschau-Repository ${repo || JSON.stringify(repository)} ist in Guild ${guildId} nicht eingetragen; konfiguriert: ${configuredRepositories.join(', ') || 'KEINE'}`);
+      const error = new Error(`Repository ${repo || 'ungültig'} ist im ausgewählten Serverprofil nicht eingetragen. Gespeichert: ${configuredRepositories.join(', ') || 'keine'}`);
+      error.code = 'GITHUB_REPOSITORY_NOT_CONFIGURED';
+      throw error;
+    }
+    const message = String(text || '');
+    if (!message.trim() || message.length > 20_000) throw new Error('Ungültiger Release-Vorschautext');
+    const channelIds = [...new Set([
+      String(config.get('discord.githubChannelId') || '').trim(),
+      String(config.get('discord.githubSecondaryChannelId') || '').trim()
+    ].filter(Boolean))];
+    if (!channelIds.length) throw new Error('Kein GitHub-Ausgabekanal konfiguriert');
+
+    const png = await convertSvgToPngBuffer(buildEditableTextSvg(
+      `GitHub Release · ${repo}`,
+      message,
+      getGitHubReleaseColor(repo),
+      textColor || config.get('discord.githubReleaseTextColor')
+    ));
+    const attachment = new AttachmentBuilder(png, { name: 'github-release-vorschau.png' });
+
+    for (const channelId of channelIds) {
+      let channel = client.channels.cache.get(channelId);
+      if (!channel) channel = await client.channels.fetch(channelId);
+      if (!channel?.isTextBased?.() || typeof channel.send !== 'function') {
+        throw new Error(`Kanal ${channelId} ist kein beschreibbarer Textkanal`);
+      }
+      await channel.send({
+        content: `📦 Release-Text · ${repo}`,
+        files: [attachment],
+        allowedMentions: { parse: [] }
+      });
+    }
+    logger.info(`GitHub-Watcher: Editor-Release-Text für ${repo} an ${channelIds.length} Kanal/Kanäle gesendet`);
+    return channelIds.length;
+  });
 }
 
 let commandTileRecoveryRunning = false;
@@ -5975,7 +6011,8 @@ if (process.env.NODE_ENV === 'test') {
     async close() {
       await sequelize.close();
     },
-    buildReleaseBannerPayload
+    buildReleaseBannerPayload,
+    runGitHubReleaseCheck
   };
   module.exports = { client, sequelize, testSuite };
 }
