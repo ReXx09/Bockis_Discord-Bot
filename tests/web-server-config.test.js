@@ -8,6 +8,11 @@ const {
   SERVER_PROFILE_ENV_PATHS,
   setServerProfileSettings,
 } = require('../server-profiles');
+const {
+  decodeGitHubRepoProfileSetting,
+  normalizeGitHubRepoColors,
+  normalizeGitHubRepoSettings,
+} = require('../web/routes');
 
 describe('dashboard web server configuration', () => {
   test.each([
@@ -35,6 +40,42 @@ describe('dashboard web server configuration', () => {
 
     expect(SERVER_PROFILE_ENV_PATHS.API_FOOTBALL_FEEDS).toBe('discord.apiFootball.feeds');
     expect(createServerProfileDefaults(config, 'guild-id').API_FOOTBALL_FEEDS).toBe('[]');
+  });
+
+  test('reads GitHub repository presentation settings from the active server profile', async () => {
+    const defaults = {
+      'discord.githubRepoColorsB64': '',
+      'discord.githubRepoSettingsB64': '',
+      'discord.githubPostStyle': 'highlights',
+      'discord.githubReleaseTextColor': '#e8eef9',
+    };
+    const config = { get: path => defaults[path] };
+    installServerProfileConfig(config);
+    setServerProfileSettings('github-profile-test', {
+      DISCORD_GITHUB_REPO_COLORS_B64: Buffer.from('{"rexX09/bockis":"#1e47eb"}').toString('base64'),
+      DISCORD_GITHUB_REPO_SETTINGS_B64: Buffer.from('{"rexX09/bockis":{"mode":"releases","postStyle":"highlights"}}').toString('base64'),
+      DISCORD_GITHUB_POST_STYLE: 'image',
+      DISCORD_GITHUB_RELEASE_TEXT_COLOR: '#123456',
+    });
+
+    await runWithServerProfile('github-profile-test', async () => {
+      expect(config.get('discord.githubRepoColorsB64')).toBe(Buffer.from('{"rexX09/bockis":"#1e47eb"}').toString('base64'));
+      expect(config.get('discord.githubRepoSettingsB64')).toBe(Buffer.from('{"rexX09/bockis":{"mode":"releases","postStyle":"highlights"}}').toString('base64'));
+      expect(config.get('discord.githubPostStyle')).toBe('image');
+      expect(config.get('discord.githubReleaseTextColor')).toBe('#123456');
+    });
+    expect(config.get('discord.githubPostStyle')).toBe('highlights');
+  });
+
+  test('validates and round-trips GitHub repository settings for profiles', () => {
+    const colors = normalizeGitHubRepoColors('{"ReXx09/Bockis":"#1E47EB"}');
+    const settings = normalizeGitHubRepoSettings('{"ReXx09/Bockis":{"mode":"releases","postStyle":"highlights"}}');
+
+    expect(colors).toEqual({ 'rexx09/bockis': '#1e47eb' });
+    expect(settings).toEqual({ 'rexx09/bockis': { mode: 'releases', postStyle: 'highlights' } });
+    expect(decodeGitHubRepoProfileSetting(Buffer.from(JSON.stringify(colors)).toString('base64'))).toEqual(colors);
+    expect(() => normalizeGitHubRepoColors('{"invalid":"red"}')).toThrow('Ungültige Repository-Farbe');
+    expect(() => normalizeGitHubRepoSettings('{"rexx09/bockis":{"mode":"invalid"}}')).toThrow('Ungültiger Überwachungs-Modus');
   });
 
   test('reads cleanup settings from the active server profile', async () => {

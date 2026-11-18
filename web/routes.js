@@ -93,6 +93,57 @@ function describeOpenLigaDbFailure(error, resource) {
   return { status: 502, message: `OpenLigaDB-${resource} fehlgeschlagen (HTTP ${error.response.status}).` };
 }
 
+function normalizeGitHubRepoColors(value) {
+  let colors;
+  try { colors = JSON.parse(String(value)); }
+  catch { throw new Error('Repository-Farben müssen gültiges JSON sein'); }
+  if (!colors || typeof colors !== 'object' || Array.isArray(colors) || Object.keys(colors).length > 100) {
+    throw new Error('Repository-Farben müssen ein Objekt mit höchstens 100 Einträgen sein');
+  }
+  const normalized = {};
+  for (const [repository, colorValue] of Object.entries(colors)) {
+    const key = repository.trim().toLowerCase();
+    const color = String(colorValue || '').trim().toLowerCase();
+    if (!/^[a-z0-9_.-]+\/[a-z0-9_.-]+$/.test(key) || !/^#[0-9a-f]{6}$/.test(color)) {
+      throw new Error('Ungültige Repository-Farbe; erwartet owner/repo und #RRGGBB');
+    }
+    normalized[key] = color;
+  }
+  return normalized;
+}
+
+function normalizeGitHubRepoSettings(value) {
+  let settings;
+  try { settings = JSON.parse(String(value)); }
+  catch { throw new Error('Repository-Einstellungen müssen gültiges JSON sein'); }
+  if (!settings || typeof settings !== 'object' || Array.isArray(settings) || Object.keys(settings).length > 100) {
+    throw new Error('Repository-Einstellungen müssen ein Objekt mit höchstens 100 Einträgen sein');
+  }
+  const normalized = {};
+  for (const [repository, repoSettings] of Object.entries(settings)) {
+    const key = repository.trim().toLowerCase();
+    if (!/^[a-z0-9_.-]+\/[a-z0-9_.-]+$/.test(key)
+      || !repoSettings || typeof repoSettings !== 'object' || Array.isArray(repoSettings)) {
+      throw new Error('Ungültige Repository-Einstellung');
+    }
+    const mode = String(repoSettings.mode || 'releases');
+    const postStyle = String(repoSettings.postStyle || 'highlights');
+    if (!['releases', 'commits', 'both'].includes(mode) || !['highlights', 'image'].includes(postStyle)) {
+      throw new Error('Ungültiger Überwachungs-Modus oder Darstellungsstil');
+    }
+    normalized[key] = { mode, postStyle };
+  }
+  return normalized;
+}
+
+function decodeGitHubRepoProfileSetting(value) {
+  const parsed = JSON.parse(Buffer.from(String(value || ''), 'base64').toString('utf8') || '{}');
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('GitHub-Repository-Einstellungen müssen ein JSON-Objekt sein');
+  }
+  return parsed;
+}
+
 function getOpenLigaDbCountdownPreviewEmbed(payload, countdownColor) {
   if (payload.embeds?.[0]) return payload.embeds[0].toJSON();
   return {
@@ -419,7 +470,11 @@ module.exports = function startWebServer({
       if (!changes || typeof changes !== 'object' || Array.isArray(changes)) {
         return res.status(400).json({ ok: false, error: 'Profilwerte müssen als Objekt übermittelt werden.' });
       }
-      const allowedKeys = new Set(Object.keys(SERVER_PROFILE_ENV_PATHS));
+      const allowedKeys = new Set([
+        ...Object.keys(SERVER_PROFILE_ENV_PATHS),
+        'DISCORD_GITHUB_REPO_COLORS',
+        'DISCORD_GITHUB_REPO_SETTINGS',
+      ]);
       const invalidKey = Object.keys(changes).find((key) => !allowedKeys.has(key));
       if (invalidKey) return res.status(400).json({ ok: false, error: `Einstellung ist nicht serverbezogen oder nicht erlaubt: ${invalidKey}` });
       if (Object.hasOwn(changes, 'GUILD_ID') && String(changes.GUILD_ID) !== guildId) {
@@ -439,6 +494,28 @@ module.exports = function startWebServer({
         if (key === 'DISCORD_OPENLIGADB_FEEDS') {
           try { normalizedChanges[key] = JSON.stringify(normalizeOpenLigaDbFeeds(value)); }
           catch (error) { return res.status(400).json({ ok: false, error: error.message }); }
+          continue;
+        }
+        if (key === 'DISCORD_GITHUB_REPO_COLORS') {
+          try {
+            normalizedChanges.DISCORD_GITHUB_REPO_COLORS_B64 = Buffer.from(
+              JSON.stringify(normalizeGitHubRepoColors(value)),
+              'utf8',
+            ).toString('base64');
+          } catch (error) {
+            return res.status(400).json({ ok: false, error: error.message });
+          }
+          continue;
+        }
+        if (key === 'DISCORD_GITHUB_REPO_SETTINGS') {
+          try {
+            normalizedChanges.DISCORD_GITHUB_REPO_SETTINGS_B64 = Buffer.from(
+              JSON.stringify(normalizeGitHubRepoSettings(value)),
+              'utf8',
+            ).toString('base64');
+          } catch (error) {
+            return res.status(400).json({ ok: false, error: error.message });
+          }
           continue;
         }
         const defaultValue = config.get(SERVER_PROFILE_ENV_PATHS[key]);
@@ -2698,6 +2775,16 @@ module.exports = function startWebServer({
             if (!Object.hasOwn(SERVER_PROFILE_ENV_PATHS, envKey)) continue;
             if (envKey === 'DISCORD_COMMAND_TILE_TEMPLATE_B64') {
               configData.DISCORD_COMMAND_TILE_TEMPLATE = Buffer.from(String(value || ''), 'base64').toString('utf8') || '{{commands}}';
+            } else if (envKey === 'DISCORD_GITHUB_REPO_COLORS_B64' || envKey === 'DISCORD_GITHUB_REPO_SETTINGS_B64') {
+              const configKey = envKey === 'DISCORD_GITHUB_REPO_COLORS_B64'
+                ? 'DISCORD_GITHUB_REPO_COLORS'
+                : 'DISCORD_GITHUB_REPO_SETTINGS';
+              try {
+                configData[configKey] = JSON.stringify(decodeGitHubRepoProfileSetting(value));
+              } catch (error) {
+                logger.warn(`Serverprofil ${guildId} enthält ungültige GitHub-Einstellungen ${envKey}: ${error.message}`);
+                configData[configKey] = '{}';
+              }
             } else {
               configData[envKey] = String(value ?? '');
             }
@@ -2896,51 +2983,25 @@ module.exports = function startWebServer({
         continue;
       }
       if (key === 'DISCORD_GITHUB_REPO_COLORS') {
-        let parsedColors;
         try {
-          parsedColors = JSON.parse(val);
-        } catch {
-          return res.json({ ok: false, error: 'Repository-Farben müssen gültiges JSON sein' });
+          updates.DISCORD_GITHUB_REPO_COLORS_B64 = Buffer.from(
+            JSON.stringify(normalizeGitHubRepoColors(val)),
+            'utf8',
+          ).toString('base64');
+        } catch (error) {
+          return res.json({ ok: false, error: error.message });
         }
-        if (!parsedColors || typeof parsedColors !== 'object' || Array.isArray(parsedColors) || Object.keys(parsedColors).length > 100) {
-          return res.json({ ok: false, error: 'Repository-Farben müssen ein Objekt mit höchstens 100 Einträgen sein' });
-        }
-        const normalizedColors = {};
-        for (const [repository, colorValue] of Object.entries(parsedColors)) {
-          const normalizedRepository = repository.trim().toLowerCase();
-          const color = String(colorValue || '').trim().toLowerCase();
-          if (!/^[a-z0-9_.-]+\/[a-z0-9_.-]+$/.test(normalizedRepository) || !/^#[0-9a-f]{6}$/.test(color)) {
-            return res.json({ ok: false, error: 'Ungültige Repository-Farbe; erwartet owner/repo und #RRGGBB' });
-          }
-          normalizedColors[normalizedRepository] = color;
-        }
-        updates.DISCORD_GITHUB_REPO_COLORS_B64 = Buffer.from(JSON.stringify(normalizedColors), 'utf8').toString('base64');
         continue;
       }
       if (key === 'DISCORD_GITHUB_REPO_SETTINGS') {
-        let parsedSettings;
         try {
-          parsedSettings = JSON.parse(val);
-        } catch {
-          return res.json({ ok: false, error: 'Repository-Einstellungen müssen gültiges JSON sein' });
+          updates.DISCORD_GITHUB_REPO_SETTINGS_B64 = Buffer.from(
+            JSON.stringify(normalizeGitHubRepoSettings(val)),
+            'utf8',
+          ).toString('base64');
+        } catch (error) {
+          return res.json({ ok: false, error: error.message });
         }
-        if (!parsedSettings || typeof parsedSettings !== 'object' || Array.isArray(parsedSettings) || Object.keys(parsedSettings).length > 100) {
-          return res.json({ ok: false, error: 'Repository-Einstellungen müssen ein Objekt mit höchstens 100 Einträgen sein' });
-        }
-        const normalizedSettings = {};
-        for (const [repository, settings] of Object.entries(parsedSettings)) {
-          const normalizedRepository = repository.trim().toLowerCase();
-          if (!/^[a-z0-9_.-]+\/[a-z0-9_.-]+$/.test(normalizedRepository) || !settings || typeof settings !== 'object' || Array.isArray(settings)) {
-            return res.json({ ok: false, error: 'Ungültige Repository-Einstellung' });
-          }
-          const mode = String(settings.mode || 'releases');
-          const postStyle = String(settings.postStyle || 'highlights');
-          if (!['releases', 'commits', 'both'].includes(mode) || !['highlights', 'image'].includes(postStyle)) {
-            return res.json({ ok: false, error: 'Ungültiger Überwachungs-Modus oder Darstellungsstil' });
-          }
-          normalizedSettings[normalizedRepository] = { mode, postStyle };
-        }
-        updates.DISCORD_GITHUB_REPO_SETTINGS_B64 = Buffer.from(JSON.stringify(normalizedSettings), 'utf8').toString('base64');
         continue;
       }
       if (key === 'DISCORD_COMMAND_TILE_TEMPLATE') {
@@ -3874,3 +3935,6 @@ module.exports = function startWebServer({
 
 module.exports.getOpenLigaDbCountdownPreviewEmbed = getOpenLigaDbCountdownPreviewEmbed;
 module.exports.getOpenLigaDbCountdownPreviewCases = getOpenLigaDbCountdownPreviewCases;
+module.exports.normalizeGitHubRepoColors = normalizeGitHubRepoColors;
+module.exports.normalizeGitHubRepoSettings = normalizeGitHubRepoSettings;
+module.exports.decodeGitHubRepoProfileSetting = decodeGitHubRepoProfileSetting;

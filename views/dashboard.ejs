@@ -1041,9 +1041,9 @@
       <div class="cfg-panels">
         <div class="cfg-header">
           <div class="cfg-actions">
-            <label class="cfg-label" for="serverProfileSelect">Discord-Server</label>
-            <select class="cfg-input" id="serverProfileSelect" onchange="switchServerProfile(this.value)" aria-label="Serverprofil auswählen">
-              <option value="">Serverprofile werden geladen …</option>
+            <label class="cfg-label" for="serverProfileSelect">Einstellungsbereich</label>
+            <select class="cfg-input" id="serverProfileSelect" onchange="switchServerProfile(this.value)" aria-label="Einstellungsbereich auswählen">
+              <option value="">Globale Bot-Einstellungen</option>
             </select>
             <button class="btn" id="btnCreateServerProfile" type="button" onclick="toggleServerProfileCreate()">＋ Profil erstellen</button>
             <div id="serverProfileCreateControls" hidden>
@@ -4604,6 +4604,7 @@
     }
     const current = String(el.value ?? '').trim();
     const initial = String(el.dataset.initialValue || '').trim();
+    if (initial === '__MASKED__' && !current) return false;
     return current !== initial;
   }
 
@@ -6381,18 +6382,18 @@
         throw new Error(response.error || 'Serverliste nicht verfügbar');
       }
       select.replaceChildren();
+      select.add(new Option('Globale Bot-Einstellungen', ''));
       for (const guild of response.profiles) {
         const option = document.createElement('option');
         option.value = guild.id;
         option.textContent = guild.name;
         select.appendChild(option);
       }
-      if (!response.profiles.length) select.appendChild(new Option('Noch kein Profil angelegt', ''));
       activeServerProfileGuildId = response.profiles.some(guild => guild.id === response.primaryGuildId)
         ? response.primaryGuildId
         : response.profiles[0]?.id || '';
       select.value = activeServerProfileGuildId;
-      select.disabled = response.profiles.length < 2;
+      select.disabled = response.profiles.length === 0;
 
       const createSelect = document.getElementById('serverProfileCreateGuild');
       createSelect.replaceChildren(new Option(
@@ -8897,8 +8898,9 @@
           'DISCORD_AUTO_REPLY_RESPONSE_MODE', 'DISCORD_AUTO_REPLY_CONNECTOR', 'DISCORD_WELCOME_ENABLED',
           'DISCORD_WELCOME_CHANNEL_ID', 'DISCORD_WELCOME_MESSAGE_TEMPLATE', 'DISCORD_GITHUB_WATCH_ENABLED',
           'DISCORD_GITHUB_CHANNEL_ID', 'DISCORD_GITHUB_SECONDARY_CHANNEL_ID', 'DISCORD_GITHUB_REPOS',
-          'DISCORD_GITHUB_MODE', 'DISCORD_GITHUB_POLL_INTERVAL_MS', 'DISCORD_GITHUB_HIGHLIGHTS_MAX',
-          'DISCORD_GITHUB_HIGHLIGHTS_AI', 'DISCORD_GITHUB_RELEASE_TEMPLATE', 'OPENAI_ENABLED',
+          'DISCORD_GITHUB_REPO_COLORS', 'DISCORD_GITHUB_REPO_SETTINGS',
+          'DISCORD_GITHUB_MODE', 'DISCORD_GITHUB_POLL_INTERVAL_MS', 'DISCORD_GITHUB_POST_STYLE', 'DISCORD_GITHUB_HIGHLIGHTS_MAX',
+          'DISCORD_GITHUB_HIGHLIGHTS_AI', 'DISCORD_GITHUB_RELEASE_TEMPLATE', 'DISCORD_GITHUB_RELEASE_TEXT_COLOR', 'OPENAI_ENABLED',
           'OPENAI_CHANNEL_IDS', 'OPENAI_ALLOW_DMS', 'OPENAI_NAME_TRIGGER_ENABLED', 'OPENAI_WEB_SEARCH_ENABLED',
           'OPENAI_RATE_LIMIT_PER_MINUTE', 'OPENAI_PERSONA_NAME', 'OPENAI_SYSTEM_PROMPT',
           'DISCORD_TRANSLATE_ENABLED', 'DISCORD_TRANSLATE_DEFAULT_TARGET', 'DISCORD_TRANSLATE_DEFAULT_SOURCE',
@@ -8907,11 +8909,14 @@
           'DISCORD_OPENLIGADB_ENABLED', 'DISCORD_OPENLIGADB_CHANNEL_ID', 'DISCORD_OPENLIGADB_FAVORITES', 'DISCORD_OPENLIGADB_FEEDS',
         ]);
         const settings = Object.fromEntries(Object.entries(body).filter(([key]) => profileKeys.has(key)));
-        if (Object.hasOwn(body, 'DISCORD_COMMAND_TILE_TEMPLATE')) {
-          const bytes = new TextEncoder().encode(body.DISCORD_COMMAND_TILE_TEMPLATE);
+        const encodeUtf8Base64 = value => {
+          const bytes = new TextEncoder().encode(value);
           let binary = '';
           for (const byte of bytes) binary += String.fromCharCode(byte);
-          settings.DISCORD_COMMAND_TILE_TEMPLATE_B64 = btoa(binary);
+          return btoa(binary);
+        };
+        if (Object.hasOwn(body, 'DISCORD_COMMAND_TILE_TEMPLATE')) {
+          settings.DISCORD_COMMAND_TILE_TEMPLATE_B64 = encodeUtf8Base64(body.DISCORD_COMMAND_TILE_TEMPLATE);
         }
         if (!Object.keys(settings).length) {
           st.textContent = 'Keine serverbezogenen Änderungen erkannt. Globale Einstellungen werden nicht im Serverprofil gespeichert.';

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Dashboard speichert globale Einstellungen jetzt getrennt von Serverprofilen; unveränderte maskierte Geheimnisse werden nicht mehr als Änderungen angezeigt.
+- GitHub-Watcher speichert Repository-Farben, Repository-Modi und Release-Darstellung jetzt korrekt im jeweiligen Serverprofil.
 - Live-Kachel höher und dynamisch erweitert, damit alle Torschützen unter den jeweiligen Teams angezeigt werden.
 - Die Live-Kachel zeigt das letzte beendete Spiel noch 24 Stunden, bevor sie zum nächsten anstehenden Spiel wechselt.
 - Live-Kachel zeigt das Stadion an, sofern OpenLigaDB für die Partie einen Spielort liefert.
